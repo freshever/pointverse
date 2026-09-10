@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="点界 PointVerse H5 交互原型" />
+    <title>点界 PointVerse</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="toolbar">
+      <h1>
+        点界 / 交互线框
+        <small>v0.8</small>
+      </h1>
+      <p>对话产生点子 · 3D 空间连接点子 · SQLite 本地存储</p>
+      <button id="overview" aria-pressed="true">页面总览</button>
+      <button id="demo" aria-pressed="false">单屏演示</button>
+      <select id="jump" aria-label="选择页面">
+        <option value="01">01 / 对话录入</option>
+        <option value="03">03 / 三维点图</option>
+        <option value="04">04 / 点子详情</option>
+        <option value="05">05 / Play 确认</option>
+        <option value="06">06 / 结果预览</option>
+        <option value="07">07 / 再发现</option>
+        <option value="08">08 / 多模态附件</option>
+        <option value="09">09 / 分享预览</option>
+        <option value="10">10 / 接收与共振</option>
+        <option value="11">11 / 保存失败</option>
+        <option value="12">12 / 生成状态</option>
+        <option value="13">13 / 形成行动</option>
+        <option value="14">14 / 行动反馈</option>
+        <option value="15">15 / 探索分支</option>
+        <option value="16">16 / 过程记录</option>
+      </select>
+    </div>
+    <main class="board">
+      <article id="s01" class="screen">
+        <h2>
+          <span>01</span>
+          对话录入
+          <small>自动保存</small>
+        </h2>
+        <div class="phone chatphone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100%</span>
+          </div>
+          <header>
+            <button data-go="03">‹ 点界</button>
+            <strong id="chatTitle">新点子</strong>
+            <button data-process="more">···</button>
+            <button data-action="newChat">＋ 新点子</button>
+          </header>
+          <div class="chatflow" id="messages" aria-live="polite">
+            <div class="welcome" id="welcome">
+              <h3>此刻，想到什么？</h3>
+              <p>一句话、一张图，或一段声音。</p>
+            </div>
+          </div>
+          <div id="attachmentTray" hidden></div>
+          <div class="inputdock">
+            <div class="inputwrap">
+              <textarea
+                id="chatInput"
+                aria-label="输入想法"
+                placeholder="说说你的想法……"
+                rows="1"
+              ></textarea>
+              <div class="inputtools">
+                <button data-action="addFile" aria-label="添加图片">＋</button>
+                <span id="saveStatus">示例原型 · 仅当前会话保留</span>
+                <button data-action="voice" aria-label="语音输入">语音</button>
+                <button
+                  data-action="sendChat"
+                  class="send"
+                  aria-label="发送消息"
+                >
+                  ↑
+                </button>
+              </div>
+            </div>
+            <input id="fileInput" type="file" accept="image/*" hidden />
+          </div>
+        </div>
+      </article>
+      <article id="s03" class="screen">
+        <h2>
+          <span>03</span>
+          我的点界
+          <small>P0</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>我的点界</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="graphbar">
+              <input
+                id="graphSearch"
+                aria-label="搜索点子"
+                placeholder="搜索并定位点子……"
+              />
+              <button data-action="resetGraph">复位</button>
+            </div>
+            <div class="graphstage">
+              <canvas
+                id="graphCanvas"
+                tabindex="0"
+                aria-label="三维点图；拖动旋转，滚轮缩放，也可用下方点子选择框"
+              ></canvas>
+              <div class="graphhint">拖动旋转 · 滚轮 / 双指缩放</div>
+              <div class="axisbadge">3D / 私人空间</div>
+            </div>
+            <div class="graphcontrols">
+              <button data-action="zoomIn">＋ 放大</button>
+              <button data-action="zoomOut">－ 缩小</button>
+              <button data-action="rotateGraph">旋转</button>
+            </div>
+            <label class="srlabel">
+              选择点子
+              <select id="nodeSelect">
+                <option value="">选择点子…</option>
+              </select>
+            </label>
+            <div id="nodePreview" class="nodepreview">
+              <small>点选一个点，查看内容与直接关联</small>
+              <h3>你的想法，连接成空间</h3>
+              <p>选中后显示预览，点击打开继续对话。</p>
+            </div>
+          </div>
+          <nav>
+            <button class="" data-go="01">记录</button>
+            <button class="" data-go="03">空间</button>
+            <button class="" data-action="settings">设置</button>
+          </nav>
+        </div>
+      </article>
+      <article id="s04" class="screen">
+        <h2>
+          <span>04</span>
+          点子详情
+          <small>P0</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>点子详情</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <h3 id="pointTitle">未命名点子</h3>
+            <p class="note">
+              今天 10:32 · 私人 ·
+              <span id="version">版本 1</span>
+            </p>
+            <div class="tabs">
+              <button data-detail="原始内容">原始内容</button>
+              <button data-detail="生成结果">生成结果</button>
+              <button data-detail="关系">关系</button>
+            </div>
+            <div id="detailContent">
+              <div class="box">
+                <small>我的原话</small>
+                <p>看到雨后的窗户，想起小时候放学。</p>
+                <p>想把这段感觉写进故事。标题还没想好。</p>
+              </div>
+            </div>
+            <button class="" data-go="01">继续对话</button>
+            <button class="primary" data-go="05">Play · 换个角度</button>
+            <button class="" data-go="09">分享 · P2</button>
+            <p class="note">原始内容与生成解释分开保留。</p>
+          </div>
+          <nav>
+            <button class="" data-go="01">记录</button>
+            <button class="" data-go="03">空间</button>
+            <button class="" data-action="settings">设置</button>
+          </nav>
+        </div>
+      </article>
+      <article id="s05" class="screen">
+        <h2>
+          <span>05</span>
+          Play 范围确认
+          <small>P0</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>Play 范围确认</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <label>
+              视角
+              <select>
+                <option>写成故事片段</option>
+                <option>换个角度理解</option>
+                <option>提出一个问题</option>
+              </select>
+            </label>
+            <div class="box">
+              <strong>本次处理内容</strong>
+              <label class="check">
+                <input type="checkbox" checked id="scope" />
+                当前会话：2 条消息
+              </label>
+              <label class="check">
+                <input type="checkbox" />
+                加入关联点：底片显影
+              </label>
+              <small>附件：无</small>
+            </div>
+            <label>
+              执行位置
+              <select id="location">
+                <option>本地 · 演示</option>
+                <option>云端 · 演示</option>
+              </select>
+            </label>
+            <p class="note">本文件不调用模型，不上传内容；仅演示确认步骤。</p>
+            <div class="box">费用：本演示不产生费用</div>
+            <div class="row">
+              <button class="" data-go="04">取消</button>
+              <button class="primary" data-action="generate">确认生成</button>
+            </div>
+          </div>
+        </div>
+      </article>
+      <article id="s06" class="screen">
+        <h2>
+          <span>06</span>
+          结果预览
+          <small>P0</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>结果预览</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="box">
+              <p class="eyebrow">生成解释 / 示例</p>
+              <p class="story">
+                雨停后，玻璃上还留着水痕。
+                <br />
+                <br />
+                他忽然想起放学铃响时，那个总在校门口等他的身影。
+              </p>
+              <button class="" data-go="01">查看原始会话</button>
+            </div>
+            <p class="note">来源：未命名点子 · 版本 1</p>
+            <button class="primary" data-action="saveResult">
+              保存为新点子
+            </button>
+            <button class="" data-action="attach">附着原点</button>
+            <div class="row">
+              <button class="" data-go="05">再次 Play</button>
+              <button class="" data-go="04">丢弃</button>
+            </div>
+            <p class="note">未经选择，不进入空间；原文保留。</p>
+          </div>
+        </div>
+      </article>
+      <article id="s07" class="screen">
+        <h2>
+          <span>07</span>
+          再发现
+          <small>P0 / P1</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>再发现</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="tabs">
+              <button data-rec="旧点">旧点</button>
+              <button data-rec="相关线索">相关线索</button>
+              <button data-rec="另一种观点">另一种观点</button>
+            </div>
+            <div id="recCard">
+              <div class="box">
+                <small>可能互补 · 尚未确认</small>
+                <h3>学习像底片显影</h3>
+                <p>已有经验在新的条件下显现意义。</p>
+                <hr />
+                <p>为何出现：与你的“放学记忆”都涉及旧经验被重新理解。</p>
+                <button class="" data-go="04">打开点子</button>
+              </div>
+            </div>
+            <div class="row">
+              <button class="" data-action="feedback">有用</button>
+              <button class="" data-action="feedback">不贴切</button>
+            </div>
+            <div class="row">
+              <button class="" data-action="feedback">稍后</button>
+              <button class="" data-action="closeRec">关闭推荐</button>
+            </div>
+            <p class="note">反驳关系需要具体命题和证据。</p>
+          </div>
+          <nav>
+            <button class="" data-go="01">记录</button>
+            <button class="" data-go="03">空间</button>
+            <button class="" data-action="settings">设置</button>
+          </nav>
+        </div>
+      </article>
+      <article id="s08" class="screen">
+        <h2>
+          <span>08</span>
+          多模态附件
+          <small>P1</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>多模态附件</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="box">
+              <div class="placeholder">
+                图片原件预览
+                <br />
+                <small>示例占位</small>
+              </div>
+            </div>
+            <div class="box">
+              <strong>语音原件</strong>
+              <p>00:18 · 示例录音</p>
+              <button class="" data-action="audio">试听说明</button>
+            </div>
+            <button class="" data-action="transcript">转文本 · 可选</button>
+            <div id="transcript" hidden class="box">
+              示例转写：雨后的窗户让我想起放学。
+            </div>
+            <button class="primary" data-action="attachment">
+              添加到当前会话
+            </button>
+            <p class="note">附件为示意内容；原型不访问相机或麦克风。</p>
+          </div>
+        </div>
+      </article>
+      <article id="s09" class="screen">
+        <h2>
+          <span>09</span>
+          分享预览
+          <small>P2</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>分享预览</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="box">
+              <div class="placeholder">
+                一个尚未揭示的点
+                <br />
+                <small>不展示标题或正文预告</small>
+              </div>
+            </div>
+            <div class="box">
+              内容：当前点的选定快照
+              <br />
+              <br />
+              受众：指定接收者
+              <br />
+              <br />
+              不包含私人关联点
+            </div>
+            <div class="box">
+              <strong>允许操作</strong>
+              <label class="check">
+                <input type="checkbox" checked />
+                查看原件
+              </label>
+              <label class="check">
+                <input type="checkbox" />
+                云端处理
+              </label>
+              <label class="check">
+                <input type="checkbox" />
+                创作解释
+              </label>
+              <label class="check">
+                <input type="checkbox" />
+                再次分享
+              </label>
+            </div>
+            <button class="primary" data-go="10">预览接收者页面</button>
+            <p class="note">只演示分享，不创建链接或发送给他人。</p>
+          </div>
+        </div>
+      </article>
+      <article id="s10" class="screen">
+        <h2>
+          <span>10</span>
+          接收与共振
+          <small>P2</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>接收与共振</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="tabs">
+              <button class="" data-action="audio">原件</button>
+              <button class="" data-action="revealText">转文本</button>
+            </div>
+            <div class="box">
+              <small>授权内容 · 示例</small>
+              <p id="received">语音 00:18 · 点击“转文本”查看</p>
+            </div>
+            <label>
+              写下你的回应
+              <textarea id="reply" placeholder="这让我想到……"></textarea>
+            </label>
+            <button class="primary" data-action="resonate">
+              保存为我的共振点
+            </button>
+            <p class="note">默认私人；回传须另行选择。</p>
+          </div>
+        </div>
+      </article>
+      <article id="s11" class="screen">
+        <h2>
+          <span>11</span>
+          保存失败
+          <small>P0</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>保存失败</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="box">
+              <strong>已输入的内容</strong>
+              <p>看到雨后的窗户……</p>
+            </div>
+            <div class="box alert">
+              <strong>保存失败</strong>
+              <p>当前输入仍保留，请重试。</p>
+            </div>
+            <button class="primary" data-action="retry">重试本地保存</button>
+            <div class="box">
+              <strong>离开前确认</strong>
+              <div class="row">
+                <button class="" data-go="01">继续编辑</button>
+                <button class="" data-go="01">放弃未保存部分</button>
+              </div>
+            </div>
+            <p class="note">这是异常状态示意；实际原型不写入本地存储。</p>
+          </div>
+        </div>
+      </article>
+      <article id="s12" class="screen">
+        <h2>
+          <span>12</span>
+          生成状态
+          <small>P0</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>100% ▰</span>
+          </div>
+          <header>
+            <button class="" data-action="back">‹</button>
+            <strong>生成状态</strong>
+            <button class="" data-go="01">新点子</button>
+          </header>
+          <div class="body">
+            <div class="box" id="generation">
+              <strong>正在生成……</strong>
+              <div class="progress"></div>
+              <p>模型处理状态示意</p>
+              <button class="" data-action="cancel">取消</button>
+            </div>
+            <div class="box">
+              <strong>演示状态切换</strong>
+              <div class="row">
+                <button class="" data-go="06">成功</button>
+                <button class="" data-action="fail">失败 / 超时</button>
+              </div>
+            </div>
+            <p class="note">生成结果使用预置示例，不调用真实模型。</p>
+          </div>
+        </div>
+      </article>
+      <article id="s13" class="screen">
+        <h2>
+          <span>13</span>
+          形成行动
+          <small>过程原型</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>演示</span>
+          </div>
+          <header>
+            <button data-go="01">‹ 对话</button>
+            <strong>形成行动</strong>
+            <button data-go="03">空间</button>
+          </header>
+          <div class="body">
+            <p class="note">从当前点出发，先明确要解决什么。</p>
+            <label>
+              这个点表达的是
+              <select id="pointKind">
+                <option>待解问题</option>
+                <option>行动意图</option>
+                <option>开放想法</option>
+              </select>
+            </label>
+            <label>
+              目标
+              <input
+                id="actionGoal"
+                placeholder="例如：把这段记忆写成故事开头"
+              />
+            </label>
+            <label>
+              完成标准
+              <textarea
+                id="actionCriteria"
+                placeholder="怎样判断完成了？"
+              ></textarea>
+            </label>
+            <label>
+              下一步
+              <input id="nextStep" placeholder="先做哪一件事？" />
+            </label>
+            <div class="box">
+              执行方式：自己完成并记录结果
+              <br />
+              <small>不调用Agent或物理设备</small>
+            </div>
+            <button data-process="confirm">确认行动</button>
+            <p class="note" id="actionSource">来源将在确认时记录。</p>
+          </div>
+        </div>
+      </article>
+      <article id="s14" class="screen">
+        <h2>
+          <span>14</span>
+          行动与反馈
+          <small>过程原型</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>演示</span>
+          </div>
+          <header>
+            <button data-go="01">‹ 对话</button>
+            <strong>行动与反馈</strong>
+            <button data-go="03">空间</button>
+          </header>
+          <div class="body">
+            <h3 id="goalDisplay">还没有行动</h3>
+            <p id="processState">状态：草稿</p>
+            <div class="row">
+              <button data-process="start">开始</button>
+              <button data-process="pause">暂停</button>
+              <button data-process="resume">恢复</button>
+            </div>
+            <label>
+              实际观察
+              <textarea
+                id="observation"
+                placeholder="发生了什么？包括无结果或失败"
+              ></textarea>
+            </label>
+            <label>
+              证据或来源
+              <input id="evidence" placeholder="记录、作品位置或观察时间" />
+            </label>
+            <label>
+              与预期相比
+              <select id="assessment">
+                <option>达到完成标准</option>
+                <option>部分达到，需要调整</option>
+                <option>未达到或无法判断</option>
+              </select>
+            </label>
+            <button data-process="feedback">保存观测与反馈</button>
+            <div class="row">
+              <button data-process="complete">完成</button>
+              <button data-process="failed">失败</button>
+              <button data-process="cancelAction">取消行动</button>
+            </div>
+            <div class="box" id="feedbackRecord">尚未记录观测</div>
+            <button data-go="16">查看过程记录 →</button>
+          </div>
+        </div>
+      </article>
+      <article id="s15" class="screen">
+        <h2>
+          <span>15</span>
+          探索分支
+          <small>过程原型</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>演示</span>
+          </div>
+          <header>
+            <button data-go="01">‹ 对话</button>
+            <strong>探索分支</strong>
+            <button data-go="03">空间</button>
+          </header>
+          <div class="body">
+            <p class="note">从同一个点保留不同假设，不覆盖原始对话。</p>
+            <div class="box" id="branchSource">选择当前点作为来源</div>
+            <label>
+              分支视角
+              <input id="branchName" placeholder="例如：科学解释 / 故事表达" />
+            </label>
+            <button data-process="branch">创建探索分支</button>
+            <div id="branches" class="stack"></div>
+            <label>
+              合并结果
+              <textarea
+                id="mergeText"
+                placeholder="比较分支后，写下要保留的内容与仍未解决的差异"
+              ></textarea>
+            </label>
+            <button data-process="previewMerge">预览合并</button>
+            <div class="box" id="mergePreview" hidden></div>
+            <button data-process="merge">确认合并</button>
+            <button data-process="undoMerge">撤销最近合并</button>
+          </div>
+        </div>
+      </article>
+      <article id="s16" class="screen">
+        <h2>
+          <span>16</span>
+          过程与节奏
+          <small>过程原型</small>
+        </h2>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <span>演示</span>
+          </div>
+          <header>
+            <button data-go="01">‹ 对话</button>
+            <strong>过程与节奏</strong>
+            <button data-go="03">空间</button>
+          </header>
+          <div class="body">
+            <div class="box">
+              <strong>个人闭环 · 手工执行</strong>
+              <p>外部执行未连接，队列与限制仅演示。</p>
+            </div>
+            <label>
+              并发上限
+              <input id="concurrency" type="number" min="1" max="3" value="1" />
+            </label>
+            <label>
+              重试上限
+              <input id="retryLimit" type="number" min="0" max="3" value="0" />
+            </label>
+            <button data-process="limits">保存限制</button>
+            <div class="row">
+              <button data-process="stopQueue">暂停新行动</button>
+              <button data-process="resumeQueue">恢复接收</button>
+            </div>
+            <p id="queueState">可接收手工行动</p>
+            <div id="eventLog" class="box">还没有事件</div>
+            <p class="note">日志用于回看；回看不会重放外部动作。</p>
+          </div>
+        </div>
+      </article>
+    </main>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="dialog">
+      <p id="dialogText"></p>
+      <button id="closeDialog">知道了</button>
+    </dialog>
+    <script src="/src/api.js"></script>
+    <script src="/src/main.js"></script>
+  </body>
+</html>
