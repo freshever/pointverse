@@ -10,6 +10,12 @@ packages:
     path: Vendor/WhisperRuntime
   LlamaRuntime:
     path: Vendor/LlamaRuntime
+  StableDiffusionRuntime:
+    url: https://github.com/apple/ml-stable-diffusion.git
+    revision: e12202c1f6405b83918b58a5d097cd61e3e1f702
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    revision: d17566fdcb293c2d2304c6b445dd729dd66d470e
 targets:
   PointVerse:
     type: application
@@ -24,6 +30,10 @@ targets:
       - package: PointVerseKit
       - target: WhisperAdapter
       - target: QwenAdapter
+      - package: StableDiffusionRuntime
+        product: StableDiffusion
+      - package: ZIPFoundation
+        product: ZIPFoundation
     postBuildScripts:
       - name: Embed AI runtimes
         inputFiles:

@@ -85,14 +85,53 @@ public struct ModelManifest: Codable, Equatable, Sendable {
         license: "Apache-2.0",
         minimumFreeDiskBytes: 4_000_000_000
     )
+
+    public static let stableDiffusion21Base6Bit = ModelManifest(
+        id: "stable-diffusion-2.1-base-coreml-6bit",
+        revision: "bf4734c9f67dc7b7f9ced335d1cee9a860bf3a85",
+        filename: "stable-diffusion-2.1-base-coreml-6bit.zip",
+        downloadURL: URL(string: "https://huggingface.co/apple/coreml-stable-diffusion-2-1-base-palettized/resolve/bf4734c9f67dc7b7f9ced335d1cee9a860bf3a85/coreml-stable-diffusion-2-1-base-palettized_split_einsum_v2_compiled.zip?download=true")!,
+        mirrorDownloadURLs: [URL(string: "https://hf-mirror.com/apple/coreml-stable-diffusion-2-1-base-palettized/resolve/bf4734c9f67dc7b7f9ced335d1cee9a860bf3a85/coreml-stable-diffusion-2-1-base-palettized_split_einsum_v2_compiled.zip?download=true")!],
+        displayByteCount: 1_140_000_000,
+        sha256: "90c532943d460c559a8d84b7a0f05a4d265fee78ca355fdd5aa734fd43e08972",
+        license: "OpenRAIL++",
+        minimumFreeDiskBytes: 4_000_000_000
+    )
+
+    public static let qwen3VL2BQ8 = ModelManifest(
+        id: "qwen3-vl-2b-q8_0",
+        revision: "ea6a110",
+        filename: "Qwen3-VL-2B-Instruct-Q8_0.gguf",
+        downloadURL: URL(string: "https://huggingface.co/ggml-org/Qwen3-VL-2B-Instruct-GGUF/resolve/ea6a110/Qwen3-VL-2B-Instruct-Q8_0.gguf?download=true")!,
+        mirrorDownloadURLs: [URL(string: "https://hf-mirror.com/ggml-org/Qwen3-VL-2B-Instruct-GGUF/resolve/ea6a110/Qwen3-VL-2B-Instruct-Q8_0.gguf?download=true")!],
+        displayByteCount: 1_830_000_000,
+        sha256: "b7802e29f71a9e5b5e3f83f613df898a2204342dcea71a231ea501d481813c39",
+        license: "Apache-2.0",
+        minimumFreeDiskBytes: 5_000_000_000
+    )
+
+    public static let qwen3VL2BProjectorQ8 = ModelManifest(
+        id: "qwen3-vl-2b-mmproj-q8_0",
+        revision: "ea6a110",
+        filename: "mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf",
+        downloadURL: URL(string: "https://huggingface.co/ggml-org/Qwen3-VL-2B-Instruct-GGUF/resolve/ea6a110/mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf?download=true")!,
+        mirrorDownloadURLs: [URL(string: "https://hf-mirror.com/ggml-org/Qwen3-VL-2B-Instruct-GGUF/resolve/ea6a110/mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf?download=true")!],
+        displayByteCount: 445_000_000,
+        sha256: "69066c8f279ec85ff48ab4059f6ebba0d2932ca57667f2bbdac7d9805bca9e7b",
+        license: "Apache-2.0",
+        minimumFreeDiskBytes: 3_000_000_000
+    )
 }
 
 public enum ModelSelection {
     public static let speechDefaultsKey = "selectedSpeechModelID"
     public static let languageDefaultsKey = "selectedLanguageModelID"
+    public static let imageDefaultsKey = "selectedImageModelID"
     public static let disabledLanguageModelID = "disabled"
     public static let speechModels: [ModelManifest] = [.whisperTinyQ5, .whisperBaseQ5, .whisperSmallQ5]
     public static let languageModels: [ModelManifest] = [.qwen3_0_6BQ8, .qwen3_1_7BQ8]
+    public static let imageModels: [ModelManifest] = [.stableDiffusion21Base6Bit]
+    public static let visionModels: [ModelManifest] = [.qwen3VL2BQ8, .qwen3VL2BProjectorQ8]
 
     public static func selectedSpeechModel(defaults: UserDefaults = .standard) -> ModelManifest {
         let id = defaults.string(forKey: speechDefaultsKey) ?? ModelManifest.whisperBaseQ5.id
@@ -103,6 +142,11 @@ public enum ModelSelection {
         let id = defaults.string(forKey: languageDefaultsKey) ?? ModelManifest.qwen3_0_6BQ8.id
         guard id != disabledLanguageModelID else { return nil }
         return languageModels.first(where: { $0.id == id }) ?? .qwen3_0_6BQ8
+    }
+
+    public static func selectedImageModel(defaults: UserDefaults = .standard) -> ModelManifest {
+        let id = defaults.string(forKey: imageDefaultsKey) ?? ModelManifest.stableDiffusion21Base6Bit.id
+        return imageModels.first(where: { $0.id == id }) ?? .stableDiffusion21Base6Bit
     }
 }
 
@@ -130,6 +174,10 @@ public actor ModelRegistry {
         modelsDirectory.appending(path: manifest.filename + ".partial")
     }
 
+    public func resumeDataURL(for manifest: ModelManifest) -> URL {
+        modelsDirectory.appending(path: manifest.filename + ".resume")
+    }
+
     public func prepareForDownload(_ manifest: ModelManifest) throws -> URL {
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
         var directory = modelsDirectory
@@ -139,9 +187,7 @@ public actor ModelRegistry {
 
         let capacity = try modelsDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
         guard capacity >= manifest.minimumFreeDiskBytes else { throw PointVerseError.insufficientDiskSpace }
-        let partial = partialURL(for: manifest)
-        if FileManager.default.fileExists(atPath: partial.path) { try FileManager.default.removeItem(at: partial) }
-        return partial
+        return partialURL(for: manifest)
     }
 
     public func installPartial(_ manifest: ModelManifest) throws -> URL {
@@ -165,8 +211,16 @@ public actor ModelRegistry {
     }
 
     public func remove(_ manifest: ModelManifest) throws {
-        for url in [installedURL(for: manifest), partialURL(for: manifest)] where FileManager.default.fileExists(atPath: url.path) {
+        for url in [installedURL(for: manifest), partialURL(for: manifest), resumeDataURL(for: manifest)] where FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
+        }
+        if manifest.filename.hasSuffix(".zip") {
+            let extracted = modelsDirectory
+                .deletingLastPathComponent()
+                .appending(path: "image-models/" + manifest.id, directoryHint: .isDirectory)
+            if FileManager.default.fileExists(atPath: extracted.path) {
+                try FileManager.default.removeItem(at: extracted)
+            }
         }
         PointVerseLog.storage.info("Model removed")
     }

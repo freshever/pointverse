@@ -10,6 +10,14 @@ import Testing
     #expect(manifest.minimumFreeDiskBytes > manifest.displayByteCount)
 }
 
+@Test func imageManifestIsPinnedAndDownloadable() {
+    let manifest = ModelManifest.stableDiffusion21Base6Bit
+    #expect(manifest.filename.hasSuffix(".zip"))
+    #expect(manifest.sha256.count == 64)
+    #expect(manifest.minimumFreeDiskBytes > manifest.displayByteCount)
+    #expect(ModelSelection.imageModels.contains(manifest))
+}
+
 @Test func modelInstallsOnlyAfterChecksumVerification() async throws {
     let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -53,4 +61,19 @@ import Testing
         try await registry.installPartial(manifest)
     }
     #expect(!(await registry.isInstalled(manifest)))
+}
+
+@Test func preparingDownloadKeepsExistingPartialDataForResume() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let manifest = ModelManifest(
+        id: "resume-fixture", revision: "1", filename: "resume.bin",
+        downloadURL: URL(string: "https://example.invalid/resume.bin")!, displayByteCount: 3,
+        sha256: String(repeating: "0", count: 64), license: "test", minimumFreeDiskBytes: 0
+    )
+    let registry = ModelRegistry(rootURL: root)
+    let partial = try await registry.prepareForDownload(manifest)
+    try Data("part".utf8).write(to: partial)
+    _ = try await registry.prepareForDownload(manifest)
+    #expect(try Data(contentsOf: partial) == Data("part".utf8))
 }

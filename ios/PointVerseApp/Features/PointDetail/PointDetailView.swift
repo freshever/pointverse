@@ -1,5 +1,7 @@
 import PointVerseKit
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct PointDetailView: View {
     @EnvironmentObject private var container: AppContainer
@@ -15,12 +17,50 @@ struct PointDetailView: View {
     @State private var messageText = ""
     @State private var isReplying = false
     @State private var conversationFailed = false
+    @State private var isPressingVoiceInput = false
+    @State private var isRecordingVoiceInput = false
+    @State private var isTranscribingVoiceInput = false
+    @State private var voiceInputFailed = false
     @State private var confirmingDelete = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var pointImages: [LoadedPointImage] = []
+    @State private var isAddingPhotos = false
+    @State private var photoError = false
     @Environment(\.appLanguage) private var appLanguage
     let point: PointSummary
 
     var body: some View {
+        let addPhotosTitle = AppLocalization.string("添加照片", language: appLanguage)
         List {
+            Section {
+                if !pointImages.isEmpty {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 12) {
+                            ForEach(pointImages) { item in
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: item.image)
+                                        .resizable().scaledToFill()
+                                        .frame(width: 150, height: 150).clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    Button(role: .destructive) { removePhoto(item) } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .symbolRenderingMode(.palette)
+                                            .foregroundStyle(.white, .black.opacity(0.65))
+                                    }
+                                    .padding(6).buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
+                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 10, matching: .images) {
+                    Label(addPhotosTitle, systemImage: "photo.badge.plus")
+                }
+                .disabled(isAddingPhotos)
+                if isAddingPhotos { HStack { ProgressView(); AppText("正在保存照片") } }
+                if photoError { AppText("照片保存失败").font(.footnote).foregroundStyle(.red) }
+            } header: { AppText("照片") }
+
             Section {
                 HStack {
                     Label { AppText("原音已保存") } icon: { Image(systemName: "checkmark.circle.fill") }
@@ -137,6 +177,21 @@ struct PointDetailView: View {
                 }
                 HStack {
                     TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText, axis: .vertical)
+                    ZStack {
+                        Circle().fill(isRecordingVoiceInput ? Color.red : Color.secondary.opacity(0.14))
+                        if isTranscribingVoiceInput {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "mic.fill")
+                                .foregroundStyle(isRecordingVoiceInput ? .white : .primary)
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+                    .scaleEffect(isPressingVoiceInput ? 1.08 : 1)
+                    .onLongPressGesture(minimumDuration: 0.18, maximumDistance: 60, pressing: handleVoiceInputPressing, perform: startVoiceInput)
+                    .accessibilityLabel(AppLocalization.string("按住语音输入", language: appLanguage))
+                    .disabled(isReplying || isTranscribingVoiceInput)
                     Button {
                         sendMessage()
                     } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }
@@ -145,10 +200,16 @@ struct PointDetailView: View {
                 if conversationFailed {
                     AppText("回复失败，请确认 Qwen 模型已安装").font(.footnote).foregroundStyle(.red)
                 }
+                if isRecordingVoiceInput {
+                    AppText("松开转为文字").font(.footnote).foregroundStyle(.red)
+                } else if voiceInputFailed {
+                    AppText("语音输入识别失败").font(.footnote).foregroundStyle(.red)
+                }
             } header: { AppText("对话") }
         }
         .navigationTitle(currentTitle.isEmpty ? AppLocalization.string("语音想法", language: appLanguage) : currentTitle)
         .task { await reload() }
+        .onChange(of: selectedPhotos) { _, items in addPhotos(items) }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }
@@ -175,6 +236,14 @@ struct PointDetailView: View {
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded
         messages = (try? await container.database.conversationMessages(pointID: point.id)) ?? []
+        let storedImages = (try? await container.database.images(pointID: point.id)) ?? []
+        var loadedImages: [LoadedPointImage] = []
+        for stored in storedImages {
+            guard let url = try? await container.imageBlobStore.url(for: stored.relativePath),
+                  let image = UIImage(contentsOfFile: url.path) else { continue }
+            loadedImages.append(LoadedPointImage(asset: stored, image: image))
+        }
+        pointImages = loadedImages
         if let url = try? await container.blobStore.url(for: loaded.audioRelativePath) {
             player.prepare(url: url)
         }
@@ -208,6 +277,44 @@ struct PointDetailView: View {
         }
     }
 
+    private func handleVoiceInputPressing(_ pressing: Bool) {
+        isPressingVoiceInput = pressing
+        if !pressing, isRecordingVoiceInput { finishVoiceInput() }
+    }
+
+    private func startVoiceInput() {
+        let savedLocaleIdentifier = detail?.localeIdentifier ?? ""
+        let localeIdentifier = !savedLocaleIdentifier.isEmpty
+            ? savedLocaleIdentifier
+            : (appLanguage == "system" ? Locale.current.identifier : appLanguage)
+        voiceInputFailed = false
+        Task {
+            do {
+                try await container.conversationVoiceInputService.start(localeIdentifier: localeIdentifier)
+                isRecordingVoiceInput = true
+                if !isPressingVoiceInput { finishVoiceInput() }
+            } catch {
+                isRecordingVoiceInput = false
+                voiceInputFailed = true
+            }
+        }
+    }
+
+    private func finishVoiceInput() {
+        guard isRecordingVoiceInput else { return }
+        isRecordingVoiceInput = false
+        isTranscribingVoiceInput = true
+        Task {
+            do {
+                let text = try await container.conversationVoiceInputService.finish()
+                messageText += (messageText.isEmpty ? "" : " ") + text
+            } catch {
+                voiceInputFailed = true
+            }
+            isTranscribingVoiceInput = false
+        }
+    }
+
     private func retryTranscription() {
         Task {
             await container.transcriptionService.transcribe(pointID: point.id)
@@ -225,8 +332,59 @@ struct PointDetailView: View {
         }
     }
 
+    private func addPhotos(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        isAddingPhotos = true
+        photoError = false
+        Task {
+            for item in items {
+                do {
+                    guard let source = try await item.loadTransferable(type: Data.self),
+                          let uiImage = UIImage(data: source),
+                          let data = uiImage.jpegData(compressionQuality: 0.9) else { throw PointVerseError.invalidModelOutput }
+                    let id = UUID()
+                    let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
+                    let recognized = try? await container.imageTextRecognizer.recognize(data: data, language: appLanguage)
+                    let storedURL = try await container.imageBlobStore.url(for: stored.relativePath)
+                    let visualDescription = try? await container.visionGenerator.describe(
+                        imageURL: storedURL,
+                        localeIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
+                    )
+                    let imageContext = [visualDescription, recognized]
+                        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }.joined(separator: "\n")
+                    do {
+                        try await container.database.addImage(pointID: point.id, id: id, relativePath: stored.relativePath,
+                                                              sha256: stored.sha256, byteCount: stored.byteCount,
+                                                              recognizedText: imageContext.isEmpty ? nil : imageContext)
+                    } catch {
+                        try? await container.imageBlobStore.delete(relativePath: stored.relativePath)
+                        throw error
+                    }
+                } catch { photoError = true }
+            }
+            selectedPhotos = []
+            isAddingPhotos = false
+            await reload()
+        }
+    }
+
+    private func removePhoto(_ item: LoadedPointImage) {
+        Task {
+            guard let path = try? await container.database.removeImage(id: item.id) else { return }
+            try? await container.imageBlobStore.delete(relativePath: path)
+            await reload()
+        }
+    }
+
     private func duration(_ milliseconds: Int) -> String {
         let seconds = milliseconds / 1_000
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
+}
+
+private struct LoadedPointImage: Identifiable {
+    let asset: PointImage
+    let image: UIImage
+    var id: UUID { asset.id }
 }

@@ -16,8 +16,13 @@ actor ConversationService {
             try await repository.appendConversationMessage(pointID: pointID, role: "user", text: text)
             let detail = try await repository.pointDetail(id: pointID)
             let messages = try await repository.conversationMessages(pointID: pointID)
+            let imageText = try await repository.images(pointID: pointID)
+                .compactMap(\.recognizedText).filter { !$0.isEmpty }.joined(separator: "\n")
+            let context = imageText.isEmpty
+                ? (detail.effectiveTranscript ?? "")
+                : (detail.effectiveTranscript ?? "") + "\n\nText found in attached photos:\n" + imageText
             let reply = try await generator.generateReply(
-                context: detail.effectiveTranscript ?? "",
+                context: context,
                 conversation: messages,
                 localeIdentifier: languageIdentifier
             )

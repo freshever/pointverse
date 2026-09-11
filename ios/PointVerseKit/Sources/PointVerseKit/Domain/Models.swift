@@ -38,6 +38,20 @@ public struct StoredAudio: Equatable, Sendable {
     }
 }
 
+public struct PointImage: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let relativePath: String
+    public let recognizedText: String?
+    public let createdAt: Date
+
+    public init(id: UUID, relativePath: String, recognizedText: String?, createdAt: Date) {
+        self.id = id
+        self.relativePath = relativePath
+        self.recognizedText = recognizedText
+        self.createdAt = createdAt
+    }
+}
+
 public struct RecordingResult: Sendable {
     public let temporaryURL: URL
     public let durationMilliseconds: Int

@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		059B1ACD5CA8EC65D212AE49 /* QwenTitleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */; };
+		09AE63B68223FE04E8EE49A3 /* StableDiffusion in Frameworks */ = {isa = PBXBuildFile; productRef = 5AE96570FF89D79748742B6A /* StableDiffusion */; };
+		40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */; };
 		42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A72376C331A5411479AD783 /* Localizable.strings */; };
 		47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */; };
 		49B5F93E98E22678E689C3DE /* QwenAdapter.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A8D65E3405B008E1C081E305 /* QwenAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -22,13 +24,17 @@
 		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
 		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
 		8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E117BAE13164C24CE628D0 /* AppLocalization.swift */; };
+		8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */; };
+		8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
 		95954644EAA1D1837CD48006 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = B430E296F7E046097A251A8A /* llama */; };
 		A9698B83131CD1FF7285C3B0 /* WhisperAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */; };
 		B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */; };
 		B605428A4B68511E9FED8AC7 /* QwenAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A8D65E3405B008E1C081E305 /* QwenAdapter.framework */; };
 		D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7D3EA7AA748408B7A2F1DA5F /* InfoPlist.strings */; };
 		DD25805861582A2E0CD38F34 /* PointVerseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6F5166BFEC828BA1323CFA2B /* PointVerseKit */; };
+		DEB22754FC8E1E6C3011AF91 /* ImageGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */; };
 		E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD50731098248359D1259BC /* ModelDownloadManager.swift */; };
+		E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */; };
 		E81F8EF9E9C3CA0CC94591F8 /* whisper in Frameworks */ = {isa = PBXBuildFile; productRef = 5345C31724AE01318A8530F0 /* whisper */; };
 		F39E94764FB17533DF598918 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAEA797E538F30926794551 /* AppContainer.swift */; };
 		F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716533EFD2901EC614D27CC1 /* PointVerseApp.swift */; };
@@ -69,12 +75,14 @@
 /* Begin PBXFileReference section */
 		1295EBA18DDFC6F925F284D4 /* 点界.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "点界.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = WhisperAdapter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		24E265A97970E7093BC60BA7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		26DFE56B963C328D0138CCA7 /* PointVerseKit */ = {isa = PBXFileReference; lastKnownFileType = folder; path = PointVerseKit; sourceTree = SOURCE_ROOT; };
 		2B2085183CD43466B8E2F5B7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QwenTitleGenerator.swift; sourceTree = "<group>"; };
 		4BBDC78A40E54C9A91860E9B /* WhisperRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WhisperRuntime; path = Vendor/WhisperRuntime; sourceTree = SOURCE_ROOT; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
+		4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalImageGenerator.swift; sourceTree = "<group>"; };
 		57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		5B725E10B707CD2D76D20BE3 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		5E1E2217C4EB458898C792E5 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
@@ -83,10 +91,12 @@
 		716533EFD2901EC614D27CC1 /* PointVerseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseApp.swift; sourceTree = "<group>"; };
 		7BC1CB606858B87E1316B5A6 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
 		952A2774D33165C315F2D5F3 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSessionEvents.swift; sourceTree = "<group>"; };
 		9C6D968845E46BF90D462603 /* LlamaRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LlamaRuntime; path = Vendor/LlamaRuntime; sourceTree = SOURCE_ROOT; };
 		9EA9DD5DE4312BC132DD0DB6 /* ConversationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationService.swift; sourceTree = "<group>"; };
 		A8D65E3405B008E1C081E305 /* QwenAdapter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = QwenAdapter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointDetailView.swift; sourceTree = "<group>"; };
+		B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
 		BB8FC5C9693E7897ADE1AD80 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C49D567E2157613FF575EBB9 /* PointListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointListView.swift; sourceTree = "<group>"; };
 		C90EF4F0CEE530E84E5262BB /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -114,6 +124,8 @@
 				57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */,
 				A9698B83131CD1FF7285C3B0 /* WhisperAdapter.framework in Frameworks */,
 				B605428A4B68511E9FED8AC7 /* QwenAdapter.framework in Frameworks */,
+				09AE63B68223FE04E8EE49A3 /* StableDiffusion in Frameworks */,
+				8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -211,6 +223,7 @@
 			isa = PBXGroup;
 			children = (
 				FC153A3B722ECC263F440A3D /* Capture */,
+				F118855ED00548C902C2640A /* ImageGeneration */,
 				5900BEFDD6595398DEFECE2F /* ModelSettings */,
 				2CC9756829FE102BD437FA02 /* PointDetail */,
 				23947489219C6D320A1E0E29 /* PointList */,
@@ -223,9 +236,20 @@
 			children = (
 				4CAEA797E538F30926794551 /* AppContainer.swift */,
 				66E117BAE13164C24CE628D0 /* AppLocalization.swift */,
+				99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */,
 				716533EFD2901EC614D27CC1 /* PointVerseApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		F118855ED00548C902C2640A /* ImageGeneration */ = {
+			isa = PBXGroup;
+			children = (
+				1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */,
+				B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */,
+				4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */,
+			);
+			path = ImageGeneration;
 			sourceTree = "<group>";
 		};
 		FC153A3B722ECC263F440A3D /* Capture */ = {
@@ -299,6 +323,8 @@
 			name = PointVerse;
 			packageProductDependencies = (
 				EF1601925276AADCFA77677C /* PointVerseKit */,
+				5AE96570FF89D79748742B6A /* StableDiffusion */,
+				6011DC563607EA13BFF8E848 /* ZIPFoundation */,
 			);
 			productName = PointVerse;
 			productReference = 1295EBA18DDFC6F925F284D4 /* 点界.app */;
@@ -326,6 +352,8 @@
 			mainGroup = A994A31E2C289E4E910AB9C5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				7C70E9156B24B39EFE45C347 /* XCRemoteSwiftPackageReference "ml-stable-diffusion" */,
+				0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 				656D84356EA7D603F4E30D96 /* XCLocalSwiftPackageReference "Vendor/LlamaRuntime" */,
 				AFD9463716429DBB81244AF7 /* XCLocalSwiftPackageReference "PointVerseKit" */,
 				34E4FD5120D2F6F67C43FB14 /* XCLocalSwiftPackageReference "Vendor/WhisperRuntime" */,
@@ -387,8 +415,12 @@
 				F39E94764FB17533DF598918 /* AppContainer.swift in Sources */,
 				8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */,
 				79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */,
+				40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */,
 				68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */,
 				5B60BCE45A0C1F03A5D05B72 /* ConversationService.swift in Sources */,
+				DEB22754FC8E1E6C3011AF91 /* ImageGenerationView.swift in Sources */,
+				E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */,
+				8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */,
 				E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */,
 				47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */,
 				B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */,
@@ -767,10 +799,39 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = revision;
+				revision = d17566fdcb293c2d2304c6b445dd729dd66d470e;
+			};
+		};
+		7C70E9156B24B39EFE45C347 /* XCRemoteSwiftPackageReference "ml-stable-diffusion" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/ml-stable-diffusion.git";
+			requirement = {
+				kind = revision;
+				revision = e12202c1f6405b83918b58a5d097cd61e3e1f702;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		5345C31724AE01318A8530F0 /* whisper */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = whisper;
+		};
+		5AE96570FF89D79748742B6A /* StableDiffusion */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7C70E9156B24B39EFE45C347 /* XCRemoteSwiftPackageReference "ml-stable-diffusion" */;
+			productName = StableDiffusion;
+		};
+		6011DC563607EA13BFF8E848 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
 		};
 		6E9732F8163A064268D8E7F6 /* PointVerseKit */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -19,6 +19,20 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         migrator.registerMigration("v1") { db in
             try Self.createV1(in: db)
         }
+        migrator.registerMigration("v2-point-images") { db in
+            try db.execute(sql: """
+                CREATE TABLE point_images (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    relative_path TEXT NOT NULL UNIQUE,
+                    sha256 TEXT NOT NULL,
+                    byte_count INTEGER NOT NULL,
+                    recognized_text TEXT,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX point_images_point_id ON point_images(point_id, created_at);
+                """)
+        }
         try migrator.migrate(writer)
         PointVerseLog.database.info("Database migrations completed")
     }
@@ -89,8 +103,9 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                        OR COALESCE(t.user_text, t.engine_text, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(d.summary, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(d.tags_json, '') LIKE ? ESCAPE '\\'
+                       OR EXISTS (SELECT 1 FROM point_images pi WHERE pi.point_id = p.id AND COALESCE(pi.recognized_text, '') LIKE ? ESCAPE '\\')
                     ORDER BY p.created_at DESC
-                    """, arguments: [pattern, pattern, pattern, pattern])
+                    """, arguments: [pattern, pattern, pattern, pattern, pattern])
             }
             return rows.compactMap { row in
                 guard let uuid = UUID(uuidString: row["id"]) else { return nil }
@@ -244,6 +259,37 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 INSERT INTO messages (id, operation_id, point_id, sequence, role, modality, user_text, created_at)
                 VALUES (?, ?, ?, ?, ?, 'text', ?, ?)
                 """, arguments: [id.uuidString, "text:" + id.uuidString, pointID.rawValue.uuidString, sequence, role, text, Date().timeIntervalSince1970])
+        }
+    }
+
+    public func addImage(pointID: PointID, id: UUID, relativePath: String, sha256: String, byteCount: Int64, recognizedText: String?) async throws {
+        try await writer.write { db in
+            try db.execute(sql: """
+                INSERT INTO point_images (id, point_id, relative_path, sha256, byte_count, recognized_text, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [id.uuidString, pointID.rawValue.uuidString, relativePath, sha256, byteCount, recognizedText, Date().timeIntervalSince1970])
+            try db.execute(sql: "UPDATE points SET updated_at = ?, head_revision = head_revision + 1 WHERE id = ?",
+                           arguments: [Date().timeIntervalSince1970, pointID.rawValue.uuidString])
+        }
+    }
+
+    public func images(pointID: PointID) async throws -> [PointImage] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT id, relative_path, recognized_text, created_at FROM point_images WHERE point_id = ? ORDER BY created_at",
+                             arguments: [pointID.rawValue.uuidString]).compactMap { row in
+                guard let id = UUID(uuidString: row["id"]) else { return nil }
+                return PointImage(id: id, relativePath: row["relative_path"], recognizedText: row["recognized_text"], createdAt: Date(timeIntervalSince1970: row["created_at"]))
+            }
+        }
+    }
+
+    public func removeImage(id: UUID) async throws -> String {
+        try await writer.write { db in
+            guard let path = try String.fetchOne(db, sql: "SELECT relative_path FROM point_images WHERE id = ?", arguments: [id.uuidString]) else {
+                throw PointVerseError.databaseCommitFailed
+            }
+            try db.execute(sql: "DELETE FROM point_images WHERE id = ?", arguments: [id.uuidString])
+            return path
         }
     }
 

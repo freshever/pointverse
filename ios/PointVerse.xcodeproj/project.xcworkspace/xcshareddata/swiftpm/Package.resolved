@@ -1,5 +1,5 @@
 {
-  "originHash" : "3d714ecae954757e2478e7cc22a16f93c2dca3bf08b305db5aa2454ad712c6c5",
+  "originHash" : "671bcd2c26a18ffcc45cdb66a863f9c957408654f62f265527275b036f641119",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -8,6 +8,40 @@
       "state" : {
         "revision" : "36e30a6f1ef10e4194f6af0cff90888526f0c115",
         "version" : "7.10.0"
+      }
+    },
+    {
+      "identity" : "ml-stable-diffusion",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/ml-stable-diffusion.git",
+      "state" : {
+        "revision" : "e12202c1f6405b83918b58a5d097cd61e3e1f702"
+      }
+    },
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "c8ed701b513cf5177118a175d85fbbbcd707ab41",
+        "version" : "1.3.0"
+      }
+    },
+    {
+      "identity" : "swift-transformers",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/huggingface/swift-transformers.git",
+      "state" : {
+        "revision" : "fc6543263e4caed9bf6107466d625cfae9357f08",
+        "version" : "0.1.8"
+      }
+    },
+    {
+      "identity" : "zipfoundation",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/weichsel/ZIPFoundation.git",
+      "state" : {
+        "revision" : "d17566fdcb293c2d2304c6b445dd729dd66d470e"
       }
     }
   ],

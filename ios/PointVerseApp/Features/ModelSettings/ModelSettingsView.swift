@@ -5,6 +5,7 @@ struct ModelSettingsView: View {
     @AppStorage("appLanguage") private var appLanguage = "system"
     @AppStorage(ModelSelection.speechDefaultsKey) private var selectedSpeechModelID = ModelManifest.whisperBaseQ5.id
     @AppStorage(ModelSelection.languageDefaultsKey) private var selectedLanguageModelID = ModelManifest.qwen3_0_6BQ8.id
+    @AppStorage(ModelSelection.imageDefaultsKey) private var selectedImageModelID = ModelManifest.stableDiffusion21Base6Bit.id
     @EnvironmentObject private var container: AppContainer
 
     var body: some View {
@@ -47,6 +48,36 @@ struct ModelSettingsView: View {
                     }, onInstalled: regenerateTitles)
                 }
             } header: { AppText("本地整理") }
+
+            Section {
+                ForEach(container.imageModelManagers, id: \.manifest.id) { manager in
+                    ModelRow(
+                        manager: manager,
+                        name: "Stable Diffusion 2.1 Base · Core ML 6-bit",
+                        metadata: metadata(manager.manifest),
+                        explanation: "在设备端生成 512×512 图片；首次解压和加载需要较长时间。",
+                        isSelected: selectedImageModelID == manager.manifest.id,
+                        onSelect: { selectedImageModelID = manager.manifest.id }
+                    )
+                }
+            } header: { AppText("图片生成") }
+
+            Section {
+                ForEach(container.visionModelManagers, id: \.manifest.id) { manager in
+                    ModelRow(
+                        manager: manager,
+                        name: manager.manifest.id == ModelManifest.qwen3VL2BQ8.id
+                            ? "Qwen3-VL 2B Q8_0" : "Qwen3-VL Vision Projector Q8_0",
+                        metadata: metadata(manager.manifest),
+                        explanation: manager.manifest.id == ModelManifest.qwen3VL2BQ8.id
+                            ? "理解照片内容并用于标题和对话。需要同时安装视觉投影文件。"
+                            : "把照片转换为视觉模型可以理解的内容，是 Qwen3-VL 的必要组件。",
+                        isSelected: false,
+                        onSelect: {},
+                        canSelect: false
+                    )
+                }
+            } header: { AppText("图片理解") }
         }
         .navigationTitle(AppLocalization.string("本地模型", language: appLanguage))
         .onChange(of: selectedLanguageModelID) { _, _ in regenerateTitles() }
@@ -98,6 +129,7 @@ private struct ModelRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     var onInstalled: () -> Void = {}
+    var canSelect = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -151,7 +183,9 @@ private struct ModelRow: View {
     }
 
     @ViewBuilder private var selectButton: some View {
-        if isSelected {
+        if !canSelect {
+            AppText("已安装").foregroundStyle(.green)
+        } else if isSelected {
             Label { AppText("使用中") } icon: { Image(systemName: "checkmark.circle.fill") }.foregroundStyle(.green)
         } else {
             Button(action: onSelect) { AppText("使用此模型") }

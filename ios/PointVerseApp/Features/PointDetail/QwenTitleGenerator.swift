@@ -121,6 +121,121 @@ public actor QwenTitleGenerator {
     }
 }
 
+public actor QwenVisionGenerator {
+    private let registry: ModelRegistry
+
+    public init(registry: ModelRegistry) { self.registry = registry }
+
+    public func describe(imageURL: URL, localeIdentifier: String) async throws -> String {
+        let modelManifest = ModelManifest.qwen3VL2BQ8
+        let projectorManifest = ModelManifest.qwen3VL2BProjectorQ8
+        guard await registry.isInstalled(modelManifest), await registry.isInstalled(projectorManifest) else {
+            throw PointVerseError.modelNotInstalled
+        }
+        let engine = try LlamaVisionEngine(
+            modelURL: await registry.installedURL(for: modelManifest),
+            projectorURL: await registry.installedURL(for: projectorManifest)
+        )
+        return try engine.describe(imageURL: imageURL, language: Self.languageName(for: localeIdentifier))
+    }
+
+    private static func languageName(for identifier: String) -> String {
+        let value = identifier.lowercased()
+        if value.contains("hant") || value.contains("tw") || value.contains("hk") { return "Traditional Chinese" }
+        if value.hasPrefix("zh") { return "Simplified Chinese" }
+        if value.hasPrefix("ja") { return "Japanese" }
+        return "English"
+    }
+}
+
+private final class LlamaVisionEngine: @unchecked Sendable {
+    private let model: OpaquePointer
+    private let context: OpaquePointer
+    private let multimodal: OpaquePointer
+
+    init(modelURL: URL, projectorURL: URL) throws {
+        llama_backend_init()
+        var modelParameters = llama_model_default_params()
+#if targetEnvironment(simulator)
+        modelParameters.n_gpu_layers = 0
+#endif
+        guard let model = llama_model_load_from_file(modelURL.path, modelParameters) else { throw PointVerseError.modelNotInstalled }
+        var contextParameters = llama_context_default_params()
+        contextParameters.n_ctx = 8_192
+        contextParameters.n_batch = 1_024
+        contextParameters.n_ubatch = 1_024
+        guard let context = llama_init_from_model(model, contextParameters) else {
+            llama_model_free(model); throw PointVerseError.invalidModelOutput
+        }
+        var multimodalParameters = mtmd_context_params_default()
+        multimodalParameters.use_gpu = true
+        multimodalParameters.image_max_tokens = 256
+        guard let multimodal = mtmd_init_from_file(projectorURL.path, model, multimodalParameters),
+              mtmd_support_vision(multimodal) else {
+            llama_free(context); llama_model_free(model); throw PointVerseError.invalidModelOutput
+        }
+        self.model = model
+        self.context = context
+        self.multimodal = multimodal
+    }
+
+    deinit {
+        mtmd_free(multimodal)
+        llama_free(context)
+        llama_model_free(model)
+    }
+
+    func describe(imageURL: URL, language: String) throws -> String {
+        let wrapper = mtmd_helper_bitmap_init_from_file(multimodal, imageURL.path, false, mtmd_helper_init_opt_default())
+        guard let bitmap = wrapper.bitmap else { throw PointVerseError.invalidModelOutput }
+        defer { mtmd_bitmap_free(bitmap) }
+        guard let chunks = mtmd_input_chunks_init() else { throw PointVerseError.invalidModelOutput }
+        defer { mtmd_input_chunks_free(chunks) }
+        let marker = String(cString: mtmd_get_marker(multimodal))
+        let prompt = "<|im_start|>system\nDescribe the attached idea photo accurately in \(language). Mention important objects, scene, visible text, and intent. Be concise.<|im_end|>\n<|im_start|>user\n\(marker)\nDescribe this photo.<|im_end|>\n<|im_start|>assistant\n"
+        var bitmapValue: OpaquePointer? = bitmap
+        let tokenizeResult = prompt.withCString { textPointer in
+            var input = mtmd_input_text(text: textPointer, text_len: strlen(textPointer), add_special: true, parse_special: true)
+            return withUnsafePointer(to: &bitmapValue) { bitmapPointer in
+                mtmd_tokenize(multimodal, chunks, &input, bitmapPointer, 1)
+            }
+        }
+        guard tokenizeResult == 0 else { throw PointVerseError.invalidModelOutput }
+        var position: llama_pos = 0
+        guard mtmd_helper_eval_chunks(multimodal, context, chunks, 0, 0, 1_024, true, &position) == 0 else {
+            throw PointVerseError.invalidModelOutput
+        }
+
+        let vocabulary = llama_model_get_vocab(model)
+        let sampler = llama_sampler_chain_init(llama_sampler_chain_default_params())!
+        defer { llama_sampler_free(sampler) }
+        llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.2))
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist(UInt32.random(in: 0..<(UInt32.max - 1))))
+        var batch = llama_batch_init(1, 0, 1)
+        defer { llama_batch_free(batch) }
+        var output = ""
+        for _ in 0..<192 {
+            let token = llama_sampler_sample(sampler, context, -1)
+            if llama_vocab_is_eog(vocabulary, token) { break }
+            var buffer = [CChar](repeating: 0, count: 256)
+            let count = llama_token_to_piece(vocabulary, token, &buffer, Int32(buffer.count), 0, false)
+            if count > 0 { output += String(decoding: buffer.prefix(Int(count)).map(UInt8.init(bitPattern:)), as: UTF8.self) }
+            if output.contains("<|im_end|>") { break }
+            batch.n_tokens = 1
+            batch.token[0] = token
+            batch.pos[0] = position
+            batch.n_seq_id[0] = 1
+            batch.seq_id[0]![0] = 0
+            batch.logits[0] = 1
+            guard llama_decode(context, batch) == 0 else { throw PointVerseError.invalidModelOutput }
+            position += 1
+        }
+        let cleaned = (output.components(separatedBy: "<|im_end|>").first ?? output).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { throw PointVerseError.invalidModelOutput }
+        return cleaned
+    }
+}
+
 private final class LlamaEngine: @unchecked Sendable {
     private let model: OpaquePointer
     private let context: OpaquePointer

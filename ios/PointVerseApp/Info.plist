@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>点界需要麦克风权限来保存你的语音想法。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>点界需要相册权限来保存你生成的图片。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>点界使用设备端语音识别将原音转成可搜索文字。</string>
 	<key>UIApplicationSceneManifest</key>

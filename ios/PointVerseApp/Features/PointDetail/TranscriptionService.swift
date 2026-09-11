@@ -36,10 +36,12 @@ actor TranscriptionService {
         do {
             let detail = try await repository.pointDetail(id: pointID)
             guard let transcript = detail.effectiveTranscript, !transcript.isEmpty else { return nil }
+            let imageText = try await repository.images(pointID: pointID)
+                .compactMap(\.recognizedText).filter { !$0.isEmpty }.joined(separator: "\n")
             let conversation = try await repository.conversationMessages(pointID: pointID)
             let language = Self.titleLanguage(languageIdentifier)
             let title = try await titleGenerator.generateTitle(
-                transcript: transcript,
+                transcript: imageText.isEmpty ? transcript : transcript + "\n\nText found in attached photos:\n" + imageText,
                 conversation: conversation,
                 localeIdentifier: language
             )
@@ -131,6 +133,44 @@ actor HybridSpeechRecognizer {
         PointVerseLog.transcription.info("Whisper model is not installed; using Apple Speech; language=\(localeIdentifier, privacy: .public)")
         let text = try await apple.transcribe(audioURL: audioURL, localeIdentifier: localeIdentifier)
         return TranscriptionOutput(text: text, modelID: "apple-speech-on-device", modelSHA256: "system")
+    }
+}
+
+actor ConversationVoiceInputService {
+    private let recorder: SystemAudioRecorder
+    private let blobStore: any AudioBlobStoring
+    private let recognizer: HybridSpeechRecognizer
+    private var isRecording = false
+    private var localeIdentifier = Locale.current.identifier
+
+    init(recorder: SystemAudioRecorder, blobStore: any AudioBlobStoring, recognizer: HybridSpeechRecognizer) {
+        self.recorder = recorder
+        self.blobStore = blobStore
+        self.recognizer = recognizer
+    }
+
+    func start(localeIdentifier: String) async throws {
+        guard !isRecording else { return }
+        let url = try await blobStore.stagingURL(operationID: UUID())
+        try await recorder.start(at: url)
+        self.localeIdentifier = localeIdentifier
+        isRecording = true
+        PointVerseLog.transcription.info("Conversation voice input started; language=\(localeIdentifier, privacy: .public)")
+    }
+
+    func finish() async throws -> String {
+        guard isRecording else { throw PointVerseError.audioCommitFailed }
+        let recording = try await recorder.stop()
+        isRecording = false
+        defer { try? FileManager.default.removeItem(at: recording.temporaryURL) }
+        let output = try await recognizer.transcribe(audioURL: recording.temporaryURL, localeIdentifier: localeIdentifier)
+        PointVerseLog.transcription.info("Conversation voice input transcribed with model=\(output.modelID, privacy: .public)")
+        return output.text
+    }
+
+    func cancel() async {
+        await recorder.cancel()
+        isRecording = false
     }
 }
 

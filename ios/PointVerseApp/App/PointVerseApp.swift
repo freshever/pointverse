@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct PointVerseApp: App {
+    @UIApplicationDelegateAdaptor(PointVerseAppDelegate.self) private var appDelegate
     @StateObject private var container = AppContainer()
     @AppStorage("appLanguage") private var appLanguage = "system"
 
@@ -30,6 +31,8 @@ private struct RootView: View {
                 .tabItem { Label { AppText("想法") } icon: { Image(systemName: "circle.grid.2x2.fill") } }
             NavigationStack { ModelSettingsView() }
                 .tabItem { Label { AppText("模型") } icon: { Image(systemName: "cpu") } }
+            NavigationStack { ImageGenerationView() }
+                .tabItem { Label { AppText("图片") } icon: { Image(systemName: "photo.badge.plus") } }
         }
         .tint(.indigo)
     }
