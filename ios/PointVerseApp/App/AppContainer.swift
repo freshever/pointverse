@@ -43,6 +43,7 @@ final class AppContainer: ObservableObject {
         do {
             try await database.migrate()
             await transcriptionService.resumePending()
+            await transcriptionService.deriveMissingTitles()
         } catch {
             startupError = "本地资料库初始化失败"
         }

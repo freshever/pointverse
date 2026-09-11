@@ -22,6 +22,37 @@ actor TranscriptionService {
         for pointID in pointIDs { await transcribe(pointID: pointID) }
     }
 
+    func deriveMissingTitles() async {
+        let manifest = ModelManifest.qwen3_0_6BQ8
+        guard let pointIDs = try? await repository.pointIDsNeedingTitle(modelID: manifest.id) else { return }
+        PointVerseLog.transcription.info("Qwen title backfill requested for \(pointIDs.count, privacy: .public) points")
+        for pointID in pointIDs { await deriveTitle(pointID: pointID) }
+    }
+
+    func deriveTitle(pointID: PointID) async {
+        do {
+            let detail = try await repository.pointDetail(id: pointID)
+            guard let transcript = detail.effectiveTranscript, !transcript.isEmpty else { return }
+            let title = try await titleGenerator.generateTitle(
+                transcript: transcript,
+                localeIdentifier: detail.localeIdentifier
+            )
+            let manifest = ModelManifest.qwen3_0_6BQ8
+            try await repository.saveCandidateTitle(
+                pointID: pointID,
+                title: title,
+                modelID: manifest.id,
+                modelSHA256: manifest.sha256
+            )
+            PointVerseLog.transcription.info("Qwen title generated and persisted")
+        } catch PointVerseError.modelNotInstalled {
+            PointVerseLog.transcription.info("Qwen model is not installed; keeping rule title")
+        } catch {
+            let nsError = error as NSError
+            PointVerseLog.transcription.error("Qwen title generation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+        }
+    }
+
     func transcribe(pointID: PointID) async {
         PointVerseLog.transcription.info("Transcription requested")
         do {
@@ -38,24 +69,7 @@ actor TranscriptionService {
                 modelID: output.modelID,
                 modelSHA256: output.modelSHA256
             )
-            do {
-                let title = try await titleGenerator.generateTitle(
-                    transcript: output.text,
-                    localeIdentifier: detail.localeIdentifier
-                )
-                let manifest = ModelManifest.qwen3_0_6BQ8
-                try await repository.saveCandidateTitle(
-                    pointID: pointID,
-                    title: title,
-                    modelID: manifest.id,
-                    modelSHA256: manifest.sha256
-                )
-                PointVerseLog.transcription.info("Qwen title generated and persisted")
-            } catch PointVerseError.modelNotInstalled {
-                PointVerseLog.transcription.info("Qwen model is not installed; keeping rule title")
-            } catch {
-                PointVerseLog.transcription.error("Qwen title generation failed; keeping rule title")
-            }
+            await deriveTitle(pointID: pointID)
             PointVerseLog.transcription.info("Transcription completed and persisted")
         } catch let error as PointVerseError {
             PointVerseLog.transcription.error("Transcription failed: \(error.rawValue, privacy: .public)")

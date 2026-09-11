@@ -41,6 +41,10 @@ struct ModelSettingsView: View {
             }
         }
         .navigationTitle(AppLocalization.string("本地模型", language: appLanguage))
+        .onChange(of: container.qwenDownloadManager.state) { _, state in
+            guard state == .installed else { return }
+            Task { await container.transcriptionService.deriveMissingTitles() }
+        }
     }
 }
 

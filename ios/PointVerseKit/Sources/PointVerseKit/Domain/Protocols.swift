@@ -19,6 +19,7 @@ public protocol PointRepository: Sendable {
     func listPoints(matching query: String) async throws -> [PointSummary]
     func pointDetail(id: PointID) async throws -> PointDetail
     func queuedTranscriptionPointIDs() async throws -> [PointID]
+    func pointIDsNeedingTitle(modelID: String) async throws -> [PointID]
     func markTranscriptionRunning(pointID: PointID) async throws
     func saveTranscript(pointID: PointID, engineText: String, modelID: String, modelSHA256: String) async throws
     func saveCandidateTitle(pointID: PointID, title: String, modelID: String, modelSHA256: String) async throws

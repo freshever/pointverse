@@ -26,6 +26,12 @@ targets:
       - target: QwenAdapter
     postBuildScripts:
       - name: Embed AI runtimes
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/whisper.framework/whisper
+          - $(BUILT_PRODUCTS_DIR)/llama.framework/llama
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/whisper.framework/whisper
+          - $(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/llama.framework/llama
         script: |
           set -e
           destination="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"

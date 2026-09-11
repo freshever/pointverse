@@ -71,3 +71,4 @@
 "下载失败" = "Download failed";
 "模型下载完成并通过 SHA-256 校验后才会启用。录音不会因为模型缺失而受影响。" = "The model is enabled only after download and SHA-256 verification. Recording continues to work without it.";
 "用于在设备端提炼标题、摘要和标签；不影响录音与语音转写。" = "Creates titles, summaries, and tags on device. Recording and transcription work without it.";
+"使用 Qwen 生成标题" = "Generate title with Qwen";

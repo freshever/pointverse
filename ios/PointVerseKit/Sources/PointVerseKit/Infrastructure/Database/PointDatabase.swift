@@ -76,18 +76,21 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     ORDER BY p.created_at DESC
                     """)
             } else {
+                let pattern = "%" + Self.escapeLikePattern(query.trimmingCharacters(in: .whitespacesAndNewlines)) + "%"
                 rows = try Row.fetchAll(db, sql: """
                     SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
                            p.created_at, t.state AS transcript_state
-                    FROM point_search s
-                    JOIN points p ON p.id = s.point_id
+                    FROM points p
                     LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
                     LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC LIMIT 1)
-                    WHERE point_search MATCH ?
-                    ORDER BY rank
-                    """, arguments: [query])
+                    WHERE COALESCE(p.accepted_title, d.title, '') LIKE ? ESCAPE '\\'
+                       OR COALESCE(t.user_text, t.engine_text, '') LIKE ? ESCAPE '\\'
+                       OR COALESCE(d.summary, '') LIKE ? ESCAPE '\\'
+                       OR COALESCE(d.tags_json, '') LIKE ? ESCAPE '\\'
+                    ORDER BY p.created_at DESC
+                    """, arguments: [pattern, pattern, pattern, pattern])
             }
             return rows.compactMap { row in
                 guard let uuid = UUID(uuidString: row["id"]) else { return nil }
@@ -99,6 +102,13 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 )
             }
         }
+    }
+
+    private static func escapeLikePattern(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 
     public func pointDetail(id: PointID) async throws -> PointDetail {
@@ -140,6 +150,25 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 WHERE t.state IN ('queued', 'running')
                 ORDER BY t.created_at
                 """).compactMap(UUID.init(uuidString:)).map(PointID.init(rawValue:))
+        }
+    }
+
+    public func pointIDsNeedingTitle(modelID: String) async throws -> [PointID] {
+        try await writer.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT p.id
+                FROM points p
+                JOIN messages m ON m.point_id = p.id AND m.sequence = 1
+                JOIN audio_assets a ON a.message_id = m.id
+                JOIN transcripts t ON t.asset_id = a.id AND t.state = 'succeeded'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM derivations d
+                    WHERE d.point_id = p.id AND d.model_id = ? AND d.state = 'succeeded'
+                )
+                ORDER BY p.created_at
+                """, arguments: [modelID])
+                .compactMap(UUID.init(uuidString:))
+                .map(PointID.init(rawValue:))
         }
     }
 

@@ -14,6 +14,25 @@ import Testing
     #expect(try await database.listPoints(matching: "").count == 1)
 }
 
+@Test func searchSupportsChineseSubstringsAndLiteralWildcards() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let audio = StoredAudio(assetID: UUID(), relativePath: "blobs/audio/chinese.m4a", sha256: "abc", byteCount: 3, durationMilliseconds: 900)
+    let pointID = try await database.commitVoiceCapture(
+        VoiceCaptureCommand(operationID: UUID(), audio: audio, localeIdentifier: "zh-CN")
+    )
+    try await database.saveTranscript(
+        pointID: pointID,
+        engineText: "今天讨论本地语音模型和百分之百离线处理",
+        modelID: "test",
+        modelSHA256: "test-sha"
+    )
+
+    #expect(try await database.listPoints(matching: "语音模型").map(\.id) == [pointID])
+    #expect(try await database.listPoints(matching: "%").isEmpty)
+    #expect(try await database.listPoints(matching: "_").isEmpty)
+}
+
 @Test func draftRejectsFieldsOutsidePOCContract() {
     #expect(throws: PointVerseError.invalidModelOutput) {
         try PointDraft(title: String(repeating: "点", count: 21), summary: "摘要", tags: [], nextQuestion: nil)

@@ -360,11 +360,15 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/whisper.framework/whisper",
+				"$(BUILT_PRODUCTS_DIR)/llama.framework/llama",
 			);
 			name = "Embed AI runtimes";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/whisper.framework/whisper",
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/llama.framework/llama",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

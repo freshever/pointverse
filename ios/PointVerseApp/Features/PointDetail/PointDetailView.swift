@@ -78,9 +78,26 @@ struct PointDetailView: View {
                 AppText("使用系统设备端语音识别，不上传录音。支持简体中文、繁体中文、英文和日文。")
                     .font(.footnote).foregroundStyle(.secondary)
             } header: { AppText("识别方式") }
+
+            if detail?.transcriptState == "succeeded" {
+                Section {
+                    Button {
+                        Task {
+                            await container.transcriptionService.deriveTitle(pointID: point.id)
+                            await reload()
+                        }
+                    } label: {
+                        AppText("使用 Qwen 生成标题")
+                    }
+                } header: { AppText("本地整理") }
+            }
         }
-        .navigationTitle(point.title.isEmpty ? AppLocalization.string("语音想法", language: appLanguage) : point.title)
+        .navigationTitle(currentTitle.isEmpty ? AppLocalization.string("语音想法", language: appLanguage) : currentTitle)
         .task { await reload() }
+    }
+
+    private var currentTitle: String {
+        detail?.title ?? point.title
     }
 
     private func reload() async {
