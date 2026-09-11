@@ -10,6 +10,9 @@ final class AppContainer: ObservableObject {
     let transcriptionService: TranscriptionService
     let modelDownloadManager: ModelDownloadManager
     let qwenDownloadManager: ModelDownloadManager
+    let speechModelManagers: [ModelDownloadManager]
+    let languageModelManagers: [ModelDownloadManager]
+    let conversationService: ConversationService
     @Published private(set) var startupError: String?
 
     init() {
@@ -26,17 +29,28 @@ final class AppContainer: ObservableObject {
                 blobStore: blobStore,
                 repository: database
             )
+            let qwenGenerator = QwenTitleGenerator(registry: modelRegistry)
             self.transcriptionService = TranscriptionService(
                 repository: database,
                 blobStore: blobStore,
                 recognizer: HybridSpeechRecognizer(registry: modelRegistry),
-                titleGenerator: QwenTitleGenerator(registry: modelRegistry)
+                titleGenerator: qwenGenerator
             )
-            self.modelDownloadManager = ModelDownloadManager(registry: modelRegistry, manifest: .whisperBaseQ5)
-            self.qwenDownloadManager = ModelDownloadManager(registry: modelRegistry, manifest: .qwen3_0_6BQ8)
+            self.conversationService = ConversationService(repository: database, generator: qwenGenerator)
+            let speechManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
+            let languageManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
+            self.speechModelManagers = speechManagers
+            self.languageModelManagers = languageManagers
+            self.modelDownloadManager = speechManagers.first(where: { $0.manifest == .whisperBaseQ5 })!
+            self.qwenDownloadManager = languageManagers[0]
         } catch {
             fatalError("PointVerse storage could not be initialized: \(error)")
         }
+    }
+
+    func deletePoint(_ id: PointID) async throws {
+        let path = try await database.deletePoint(id: id)
+        try await blobStore.delete(relativePath: path)
     }
 
     func prepare() async {

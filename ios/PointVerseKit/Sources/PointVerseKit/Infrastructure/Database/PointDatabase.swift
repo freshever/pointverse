@@ -72,7 +72,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
-                    LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC LIMIT 1)
+                    LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
                     ORDER BY p.created_at DESC
                     """)
             } else {
@@ -84,7 +84,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
-                    LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC LIMIT 1)
+                    LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
                     WHERE COALESCE(p.accepted_title, d.title, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(t.user_text, t.engine_text, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(d.summary, '') LIKE ? ESCAPE '\\'
@@ -121,7 +121,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 JOIN audio_assets a ON a.message_id = m.id
                 JOIN transcripts t ON t.asset_id = a.id
-                LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC LIMIT 1)
+                LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
                 WHERE p.id = ?
                 """, arguments: [id.rawValue.uuidString]) else {
                 throw PointVerseError.databaseCommitFailed
@@ -222,6 +222,43 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
+    public func conversationMessages(pointID: PointID) async throws -> [ConversationMessage] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, role, user_text, created_at FROM messages
+                WHERE point_id = ? AND modality = 'text' AND user_text IS NOT NULL
+                ORDER BY sequence
+                """, arguments: [pointID.rawValue.uuidString]).compactMap { row in
+                    guard let id = UUID(uuidString: row["id"]), let text: String = row["user_text"] else { return nil }
+                    return ConversationMessage(id: id, role: row["role"], text: text, createdAt: Date(timeIntervalSince1970: row["created_at"]))
+                }
+        }
+    }
+
+    public func appendConversationMessage(pointID: PointID, role: String, text: String) async throws {
+        guard role == "user" || role == "assistant" else { throw PointVerseError.invalidModelOutput }
+        try await writer.write { db in
+            let sequence = (try Int.fetchOne(db, sql: "SELECT MAX(sequence) FROM messages WHERE point_id = ?", arguments: [pointID.rawValue.uuidString]) ?? 0) + 1
+            let id = UUID()
+            try db.execute(sql: """
+                INSERT INTO messages (id, operation_id, point_id, sequence, role, modality, user_text, created_at)
+                VALUES (?, ?, ?, ?, ?, 'text', ?, ?)
+                """, arguments: [id.uuidString, "text:" + id.uuidString, pointID.rawValue.uuidString, sequence, role, text, Date().timeIntervalSince1970])
+        }
+    }
+
+    public func deletePoint(id: PointID) async throws -> String {
+        try await writer.write { db in
+            guard let path = try String.fetchOne(db, sql: """
+                SELECT a.relative_path FROM audio_assets a
+                JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1
+                """, arguments: [id.rawValue.uuidString]) else { throw PointVerseError.databaseCommitFailed }
+            try db.execute(sql: "DELETE FROM point_search WHERE point_id = ?", arguments: [id.rawValue.uuidString])
+            try db.execute(sql: "DELETE FROM points WHERE id = ?", arguments: [id.rawValue.uuidString])
+            return path
+        }
+    }
+
     public func saveUserTranscript(pointID: PointID, userText: String) async throws {
         try await writer.write { db in
             try db.execute(sql: """
@@ -264,7 +301,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             JOIN transcripts t ON t.asset_id = a.id
             LEFT JOIN derivations d ON d.id = (
                 SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded'
-                ORDER BY created_at DESC LIMIT 1
+                ORDER BY created_at DESC, rowid DESC LIMIT 1
             )
             WHERE p.id = ? LIMIT 1
             """, arguments: [pointID.rawValue.uuidString])

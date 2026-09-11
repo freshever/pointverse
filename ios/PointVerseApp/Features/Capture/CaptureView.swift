@@ -8,6 +8,9 @@ struct CaptureView: View {
     @State private var startedAt: Date?
     @State private var elapsed = 0
     @State private var failureKey = "录音启动失败"
+    @State private var isPressingRecord = false
+    @State private var recordingStartTask: Task<Void, Never>?
+    @State private var activeLocaleIdentifier: String?
     @AppStorage("captureLanguage") private var captureLanguage = ""
     @Environment(\.appLanguage) private var appLanguage
 
@@ -37,20 +40,32 @@ struct CaptureView: View {
             .pickerStyle(.menu)
             .disabled(state == .recording || state == .saving)
 
-            Button(action: primaryAction) {
+            ZStack {
+                Circle()
+                    .fill(state == .recording ? Color.red : Color.indigo)
                 Image(systemName: state == .recording ? "stop.fill" : "mic.fill")
                     .font(.system(size: 42, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 112, height: 112)
-                    .background(state == .recording ? Color.red : Color.indigo, in: .circle)
             }
+            .frame(width: 112, height: 112)
+            .scaleEffect(isPressingRecord ? 1.08 : 1)
+            .animation(.easeOut(duration: 0.12), value: isPressingRecord)
+            .contentShape(Circle())
+            .onLongPressGesture(
+                minimumDuration: 0.22,
+                maximumDistance: 80,
+                pressing: handlePressing,
+                perform: beginRecording
+            )
             .accessibilityLabel(AppLocalization.string(state == .recording ? "完成录音" : "开始录音", language: appLanguage))
+            .accessibilityHint(AppLocalization.string("按住录音，松开结束", language: appLanguage))
             .disabled(state == .saving)
 
             if state == .recording {
                 Button(role: .cancel) {
                     Task {
                         await container.captureUseCase.cancel()
+                        activeLocaleIdentifier = nil
                         state = .idle
                     }
                 } label: { AppText("取消") }
@@ -76,27 +91,34 @@ struct CaptureView: View {
         }
     }
 
-    private func primaryAction() {
-        Task {
+    private func handlePressing(_ pressing: Bool) {
+        isPressingRecord = pressing
+        if !pressing, state == .recording {
+            finishRecording()
+        }
+    }
+
+    private func beginRecording() {
+        guard state == .idle || state == .saved || state == .failed else { return }
+        let localeIdentifier = resolvedCaptureLocaleIdentifier
+        activeLocaleIdentifier = localeIdentifier
+        PointVerseLog.capture.info("Recording language locked: \(localeIdentifier, privacy: .public)")
+        recordingStartTask = Task {
             do {
-                if state == .recording {
-                    state = .saving
-                    let locale = captureLanguage.isEmpty ? Locale.current.identifier : captureLanguage
-                    let pointID = try await container.captureUseCase.finish(localeIdentifier: locale)
-                    startedAt = nil
-                    state = .saved
-                    Task { await container.transcriptionService.transcribe(pointID: pointID) }
-                } else {
-                    elapsed = 0
-                    try await container.captureUseCase.start()
-                    startedAt = Date()
-                    state = .recording
+                elapsed = 0
+                try await container.captureUseCase.start()
+                startedAt = Date()
+                state = .recording
+                if !isPressingRecord {
+                    finishRecording()
                 }
             } catch PointVerseError.microphonePermissionDenied {
                 startedAt = nil
+                activeLocaleIdentifier = nil
                 state = .permissionDenied
             } catch let error as PointVerseError {
                 startedAt = nil
+                activeLocaleIdentifier = nil
                 failureKey = switch error {
                 case .audioSessionUnavailable: "无法启动录音会话"
                 case .insufficientDiskSpace: "设备可用空间不足"
@@ -107,10 +129,55 @@ struct CaptureView: View {
                 state = .failed
             } catch {
                 startedAt = nil
+                activeLocaleIdentifier = nil
                 failureKey = "录音启动失败"
                 state = .failed
             }
         }
+    }
+
+    private func finishRecording() {
+        guard state == .recording else { return }
+        state = .saving
+        Task {
+            do {
+                let localeIdentifier = activeLocaleIdentifier ?? resolvedCaptureLocaleIdentifier
+                let pointID = try await container.captureUseCase.finish(localeIdentifier: localeIdentifier)
+                startedAt = nil
+                activeLocaleIdentifier = nil
+                state = .saved
+                Task { await container.transcriptionService.transcribe(pointID: pointID) }
+            } catch let error as PointVerseError {
+                startedAt = nil
+                activeLocaleIdentifier = nil
+                failureKey = switch error {
+                case .insufficientDiskSpace: "设备可用空间不足"
+                case .audioCommitFailed: "无法保存录音文件"
+                case .databaseCommitFailed: "无法保存录音资料"
+                default: "录音启动失败"
+                }
+                state = .failed
+            } catch {
+                startedAt = nil
+                activeLocaleIdentifier = nil
+                failureKey = "录音启动失败"
+                state = .failed
+            }
+        }
+    }
+
+    private var resolvedCaptureLocaleIdentifier: String {
+        if !captureLanguage.isEmpty { return captureLanguage }
+        if appLanguage != "system", !appLanguage.isEmpty {
+            switch appLanguage {
+            case "zh-Hans": return "zh-CN"
+            case "zh-Hant": return "zh-TW"
+            case "ja": return "ja-JP"
+            case "en": return "en-US"
+            default: break
+            }
+        }
+        return Locale.current.identifier
     }
 }
 
@@ -130,8 +197,8 @@ private enum CaptureState: Equatable {
 
     var detail: String {
         switch self {
-        case .idle: "轻点一次开始，再点一次完成"
-        case .recording: "正在录音"
+        case .idle: "按住录音，松开结束"
+        case .recording: "松开即可结束"
         case .saving: "正在写入原音和本地资料库…"
         case .saved: "现在可以退出 App，原音仍会保留"
         case .failed: "录音启动失败"

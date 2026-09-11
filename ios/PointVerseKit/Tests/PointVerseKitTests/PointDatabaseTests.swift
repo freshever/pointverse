@@ -33,6 +33,20 @@ import Testing
     #expect(try await database.listPoints(matching: "_").isEmpty)
 }
 
+@Test func conversationPersistsAndPointDeletionCascades() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let audio = StoredAudio(assetID: UUID(), relativePath: "blobs/audio/delete.m4a", sha256: "abc", byteCount: 3, durationMilliseconds: 900)
+    let pointID = try await database.commitVoiceCapture(VoiceCaptureCommand(operationID: UUID(), audio: audio))
+    try await database.appendConversationMessage(pointID: pointID, role: "user", text: "还有什么可能？")
+    try await database.appendConversationMessage(pointID: pointID, role: "assistant", text: "可以从另一个角度思考。")
+    #expect(try await database.conversationMessages(pointID: pointID).count == 2)
+
+    #expect(try await database.deletePoint(id: pointID) == "blobs/audio/delete.m4a")
+    #expect(try await database.listPoints(matching: "").isEmpty)
+    #expect(try await database.conversationMessages(pointID: pointID).isEmpty)
+}
+
 @Test func draftRejectsFieldsOutsidePOCContract() {
     #expect(throws: PointVerseError.invalidModelOutput) {
         try PointDraft(title: String(repeating: "点", count: 21), summary: "摘要", tags: [], nextQuestion: nil)

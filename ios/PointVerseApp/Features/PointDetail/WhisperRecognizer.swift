@@ -13,7 +13,7 @@ public actor WhisperRecognizer {
     }
 
     public func transcribe(audioURL: URL, localeIdentifier: String) async throws -> TranscriptionOutput {
-        let manifest = ModelManifest.whisperBaseQ5
+        let manifest = ModelSelection.selectedSpeechModel()
         guard await registry.isInstalled(manifest) else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
         let whisperContext = try loadContext(modelURL: modelURL)
@@ -72,6 +72,7 @@ public actor WhisperRecognizer {
 
     private static func whisperLanguage(for identifier: String) -> String {
         let normalized = identifier.replacingOccurrences(of: "_", with: "-").lowercased()
+        if normalized.isEmpty { return "auto" }
         if normalized.hasPrefix("zh") { return "zh" }
         if normalized.hasPrefix("ja") { return "ja" }
         return "en"

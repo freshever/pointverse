@@ -22,35 +22,65 @@ actor TranscriptionService {
         for pointID in pointIDs { await transcribe(pointID: pointID) }
     }
 
-    func deriveMissingTitles() async {
-        let manifest = ModelManifest.qwen3_0_6BQ8
-        guard let pointIDs = try? await repository.pointIDsNeedingTitle(modelID: manifest.id) else { return }
-        PointVerseLog.transcription.info("Qwen title backfill requested for \(pointIDs.count, privacy: .public) points")
-        for pointID in pointIDs { await deriveTitle(pointID: pointID) }
+    func deriveMissingTitles(languageIdentifier: String? = nil) async {
+        guard let manifest = ModelSelection.selectedLanguageModel() else { return }
+        let language = Self.titleLanguage(languageIdentifier)
+        let derivationModelID = Self.derivationModelID(manifest: manifest, language: language)
+        guard let pointIDs = try? await repository.pointIDsNeedingTitle(modelID: derivationModelID) else { return }
+        PointVerseLog.transcription.info("Local-model title backfill requested for \(pointIDs.count, privacy: .public) points; preferred=\(manifest.id, privacy: .public)")
+        for pointID in pointIDs { _ = await deriveTitle(pointID: pointID, languageIdentifier: language) }
     }
 
-    func deriveTitle(pointID: PointID) async {
+    @discardableResult
+    func deriveTitle(pointID: PointID, languageIdentifier: String? = nil) async -> String? {
         do {
             let detail = try await repository.pointDetail(id: pointID)
-            guard let transcript = detail.effectiveTranscript, !transcript.isEmpty else { return }
+            guard let transcript = detail.effectiveTranscript, !transcript.isEmpty else { return nil }
+            let conversation = try await repository.conversationMessages(pointID: pointID)
+            let language = Self.titleLanguage(languageIdentifier)
             let title = try await titleGenerator.generateTitle(
                 transcript: transcript,
-                localeIdentifier: detail.localeIdentifier
+                conversation: conversation,
+                localeIdentifier: language
             )
-            let manifest = ModelManifest.qwen3_0_6BQ8
+            guard let manifest = ModelSelection.selectedLanguageModel() else { return nil }
             try await repository.saveCandidateTitle(
                 pointID: pointID,
                 title: title,
-                modelID: manifest.id,
+                modelID: Self.derivationModelID(manifest: manifest, language: language),
                 modelSHA256: manifest.sha256
             )
-            PointVerseLog.transcription.info("Qwen title generated and persisted")
+            PointVerseLog.transcription.info("Local-model title generated in \(language, privacy: .public): \(title, privacy: .public)")
+            return title
         } catch PointVerseError.modelNotInstalled {
-            PointVerseLog.transcription.info("Qwen model is not installed; keeping rule title")
+            PointVerseLog.transcription.info("No selected or fallback language model is installed; keeping rule title")
+            return nil
         } catch {
             let nsError = error as NSError
-            PointVerseLog.transcription.error("Qwen title generation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+            PointVerseLog.transcription.error("Local-model title generation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+            return nil
         }
+    }
+
+    private static func titleLanguage(_ requested: String?) -> String {
+        let stored = requested ?? UserDefaults.standard.string(forKey: "appLanguage") ?? "system"
+        if stored == "system" || stored.isEmpty { return Locale.current.identifier }
+        return stored
+    }
+
+    private static func derivationModelID(manifest: ModelManifest, language: String) -> String {
+        let normalized = language.replacingOccurrences(of: "_", with: "-").lowercased()
+        let suffix: String
+        if normalized.hasPrefix("zh-hant") || normalized.hasPrefix("zh-tw") || normalized.hasPrefix("zh-hk") {
+            suffix = "zh-hant"
+        } else if normalized.hasPrefix("zh") {
+            suffix = "zh-hans"
+        } else if normalized.hasPrefix("ja") {
+            suffix = "ja"
+        } else {
+            suffix = "en"
+        }
+        return manifest.id + "-title-" + suffix
     }
 
     func transcribe(pointID: PointID) async {
@@ -69,7 +99,7 @@ actor TranscriptionService {
                 modelID: output.modelID,
                 modelSHA256: output.modelSHA256
             )
-            await deriveTitle(pointID: pointID)
+            _ = await deriveTitle(pointID: pointID)
             PointVerseLog.transcription.info("Transcription completed and persisted")
         } catch let error as PointVerseError {
             PointVerseLog.transcription.error("Transcription failed: \(error.rawValue, privacy: .public)")
@@ -93,11 +123,12 @@ actor HybridSpeechRecognizer {
     }
 
     func transcribe(audioURL: URL, localeIdentifier: String) async throws -> TranscriptionOutput {
-        if await registry.isInstalled(.whisperBaseQ5) {
-            PointVerseLog.transcription.info("Using local Whisper model")
+        let manifest = ModelSelection.selectedSpeechModel()
+        if await registry.isInstalled(manifest) {
+            PointVerseLog.transcription.info("Using local Whisper model; language=\(localeIdentifier, privacy: .public)")
             return try await whisper.transcribe(audioURL: audioURL, localeIdentifier: localeIdentifier)
         }
-        PointVerseLog.transcription.info("Whisper model is not installed; using Apple Speech")
+        PointVerseLog.transcription.info("Whisper model is not installed; using Apple Speech; language=\(localeIdentifier, privacy: .public)")
         let text = try await apple.transcribe(audioURL: audioURL, localeIdentifier: localeIdentifier)
         return TranscriptionOutput(text: text, modelID: "apple-speech-on-device", modelSHA256: "system")
     }
@@ -152,6 +183,7 @@ final class OnDeviceSpeechRecognizer: @unchecked Sendable {
 
     private static func supportedLocale(from identifier: String) -> Locale {
         let normalized = identifier.replacingOccurrences(of: "_", with: "-").lowercased()
+        if normalized.isEmpty { return Locale.current }
         if normalized.hasPrefix("zh-hant") || normalized.hasPrefix("zh-tw") || normalized.hasPrefix("zh-hk") {
             return Locale(identifier: "zh-TW")
         }

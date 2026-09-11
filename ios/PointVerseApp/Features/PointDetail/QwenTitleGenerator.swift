@@ -5,23 +5,28 @@ import llama
 public actor QwenTitleGenerator {
     private let registry: ModelRegistry
     private var engine: LlamaEngine?
+    private var loadedModelPath: String?
 
     public init(registry: ModelRegistry) {
         self.registry = registry
     }
 
-    public func generateTitle(transcript: String, localeIdentifier: String) async throws -> String {
-        let manifest = ModelManifest.qwen3_0_6BQ8
-        guard await registry.isInstalled(manifest) else { throw PointVerseError.modelNotInstalled }
+    public func generateTitle(transcript: String, conversation: [ConversationMessage], localeIdentifier: String) async throws -> String {
+        guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
-        if engine == nil { engine = try LlamaEngine(modelURL: modelURL) }
+        try loadEngine(modelURL: modelURL)
 
         let language = Self.languageName(for: localeIdentifier)
+        let discussion = Self.formattedConversation(conversation)
         let prompt = """
         <|im_start|>system
-        You create a short title for a voice note. Output only the title in \(language), without quotes, explanation, or punctuation. Maximum 20 characters for Chinese or Japanese, maximum 8 words for English.<|im_end|>
+        Create a short title for a saved voice note and its follow-up discussion. Treat the voice-note transcript as the primary source of the topic. Use the discussion only for important clarification or a refined direction. The title MUST be written in \(language), regardless of the source languages. Output only the title, without quotes, explanation, or ending punctuation. Maximum 20 characters for Chinese or Japanese, maximum 8 words for English.<|im_end|>
         <|im_start|>user
-        \(String(transcript.prefix(6_000)))<|im_end|>
+        Voice-note transcript:
+        \(String(transcript.prefix(1_600)))
+
+        Follow-up discussion:
+        \(discussion)<|im_end|>
         <|im_start|>assistant
         <think>
 
@@ -36,8 +41,68 @@ public actor QwenTitleGenerator {
         return title
     }
 
+    public func generateReply(context: String, conversation: [ConversationMessage], localeIdentifier: String) async throws -> String {
+        guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
+        let modelURL = await registry.installedURL(for: manifest)
+        try loadEngine(modelURL: modelURL)
+        let language = Self.languageName(for: localeIdentifier)
+        let turns: [String] = conversation.suffix(8).map { message -> String in
+            let role = message.role == "assistant" ? "assistant" : "user"
+            let safeText = String(message.text
+                .replacingOccurrences(of: "<|im_start|>", with: "")
+                .replacingOccurrences(of: "<|im_end|>", with: "").prefix(300))
+            return "<|im_start|>\(role)\n\(safeText)<|im_end|>"
+        }
+        let history: String = turns.joined(separator: "\n")
+        let prompt = """
+        <|im_start|>system
+        You are discussing a saved voice note with the user. The voice-note transcript is the primary and authoritative context. Directly answer the user's latest message in \(language). Never restate the conversation, never say "the user said", and never describe what the user asked. Say when the note does not contain enough information.
+        Voice note:\n\(String(context.prefix(1_600)))<|im_end|>
+        \(history)
+        <|im_start|>assistant
+        <think>
+
+        </think>
+
+        """
+        guard let reply = try engine?.complete(prompt: prompt, maximumTokens: 192)
+            .trimmingCharacters(in: .whitespacesAndNewlines), !reply.isEmpty else {
+            throw PointVerseError.invalidModelOutput
+        }
+        return reply.components(separatedBy: "<|im_end|>").first ?? reply
+    }
+
+    private func loadEngine(modelURL: URL) throws {
+        guard loadedModelPath != modelURL.path || engine == nil else { return }
+        engine = try LlamaEngine(modelURL: modelURL)
+        loadedModelPath = modelURL.path
+    }
+
+    private func resolveInstalledModel() async -> ModelManifest? {
+        guard let preferred = ModelSelection.selectedLanguageModel() else { return nil }
+        guard let resolved = await registry.resolveInstalledModel(preferred: preferred, candidates: ModelSelection.languageModels) else {
+            PointVerseLog.transcription.error("No installed language model found; preferred=\(preferred.id, privacy: .public)")
+            return nil
+        }
+        if resolved.id != preferred.id {
+            UserDefaults.standard.set(resolved.id, forKey: ModelSelection.languageDefaultsKey)
+            PointVerseLog.transcription.notice("Preferred model unavailable; selected installed fallback=\(resolved.id, privacy: .public)")
+        } else {
+            PointVerseLog.transcription.info("Selected installed language model=\(resolved.id, privacy: .public)")
+        }
+        return resolved
+    }
+
+    private static func formattedConversation(_ messages: [ConversationMessage]) -> String {
+        guard !messages.isEmpty else { return "No follow-up discussion yet." }
+        return messages.suffix(4).map {
+            ($0.role == "assistant" ? "Assistant: " : "User: ") + String($0.text.prefix(250))
+        }.joined(separator: "\n")
+    }
+
     private static func languageName(for identifier: String) -> String {
         let value = identifier.lowercased()
+        if value.isEmpty { return "the same language as the voice-note transcript" }
         if value.contains("hant") || value.contains("tw") || value.contains("hk") { return "Traditional Chinese" }
         if value.hasPrefix("zh") { return "Simplified Chinese" }
         if value.hasPrefix("ja") { return "Japanese" }
@@ -60,7 +125,7 @@ private final class LlamaEngine: @unchecked Sendable {
     private let model: OpaquePointer
     private let context: OpaquePointer
     private let vocabulary: OpaquePointer
-    private let sampler: UnsafeMutablePointer<llama_sampler>
+    private var sampler: UnsafeMutablePointer<llama_sampler>
     private var batch: llama_batch
 
     init(modelURL: URL) throws {
@@ -73,7 +138,7 @@ private final class LlamaEngine: @unchecked Sendable {
             throw PointVerseError.modelNotInstalled
         }
         var contextParameters = llama_context_default_params()
-        contextParameters.n_ctx = 2_048
+        contextParameters.n_ctx = 4_096
         let threads = Int32(max(1, min(8, ProcessInfo.processInfo.processorCount - 2)))
         contextParameters.n_threads = threads
         contextParameters.n_threads_batch = threads
@@ -84,10 +149,8 @@ private final class LlamaEngine: @unchecked Sendable {
         self.model = model
         self.context = context
         vocabulary = llama_model_get_vocab(model)
-        batch = llama_batch_init(2_048, 0, 1)
-        sampler = llama_sampler_chain_init(llama_sampler_chain_default_params())
-        llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.2))
-        llama_sampler_chain_add(sampler, llama_sampler_init_dist(42))
+        batch = llama_batch_init(4_096, 0, 1)
+        sampler = Self.makeSampler()
     }
 
     deinit {
@@ -99,7 +162,8 @@ private final class LlamaEngine: @unchecked Sendable {
 
     func complete(prompt: String, maximumTokens: Int) throws -> String {
         llama_memory_clear(llama_get_memory(context), true)
-        llama_sampler_reset(sampler)
+        llama_sampler_free(sampler)
+        sampler = Self.makeSampler()
         let tokens = tokenize(prompt)
         guard !tokens.isEmpty, tokens.count + maximumTokens < Int(llama_n_ctx(context)) else {
             throw PointVerseError.invalidModelOutput
@@ -124,6 +188,13 @@ private final class LlamaEngine: @unchecked Sendable {
             position += 1
         }
         return result
+    }
+
+    private static func makeSampler() -> UnsafeMutablePointer<llama_sampler> {
+        let sampler = llama_sampler_chain_init(llama_sampler_chain_default_params())!
+        llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.6))
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist(UInt32.random(in: 0..<(UInt32.max - 1))))
+        return sampler
     }
 
     private func tokenize(_ text: String) -> [llama_token] {

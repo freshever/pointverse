@@ -3,11 +3,19 @@ import SwiftUI
 
 struct PointDetailView: View {
     @EnvironmentObject private var container: AppContainer
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var player = AudioPlayerViewModel()
     @State private var detail: PointDetail?
     @State private var editedTranscript = ""
     @State private var isEditing = false
     @State private var isSaving = false
+    @State private var isGeneratingTitle = false
+    @State private var titleGenerationMessage: String?
+    @State private var messages: [ConversationMessage] = []
+    @State private var messageText = ""
+    @State private var isReplying = false
+    @State private var conversationFailed = false
+    @State private var confirmingDelete = false
     @Environment(\.appLanguage) private var appLanguage
     let point: PointSummary
 
@@ -83,17 +91,80 @@ struct PointDetailView: View {
                 Section {
                     Button {
                         Task {
-                            await container.transcriptionService.deriveTitle(pointID: point.id)
+                            isGeneratingTitle = true
+                            titleGenerationMessage = nil
+                            let generatedTitle = await container.transcriptionService.deriveTitle(
+                                pointID: point.id,
+                                languageIdentifier: appLanguage
+                            )
                             await reload()
+                            isGeneratingTitle = false
+                            titleGenerationMessage = generatedTitle.map { "标题已重新生成：" + $0 }
+                                ?? "标题生成失败，请确认 Qwen 模型已安装"
                         }
                     } label: {
-                        AppText("使用 Qwen 生成标题")
+                        if isGeneratingTitle {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                AppText("正在使用 Qwen 生成标题")
+                            }
+                        } else {
+                            AppText("重新生成标题")
+                        }
+                    }
+                    .disabled(isGeneratingTitle)
+                    if let titleGenerationMessage {
+                        AppText(titleGenerationMessage)
+                            .font(.footnote)
+                            .foregroundStyle(titleGenerationMessage.hasPrefix("标题已重新生成：") ? .green : .red)
                     }
                 } header: { AppText("本地整理") }
             }
+
+            Section {
+                ForEach(messages) { message in
+                    HStack {
+                        if message.role == "user" { Spacer(minLength: 32) }
+                        Text(verbatim: message.text)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .background(message.role == "user" ? Color.indigo.opacity(0.14) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                        if message.role != "user" { Spacer(minLength: 32) }
+                    }
+                }
+                if isReplying {
+                    HStack { ProgressView(); AppText("Qwen 正在回复") }
+                }
+                HStack {
+                    TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText, axis: .vertical)
+                    Button {
+                        sendMessage()
+                    } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }
+                    .disabled(isReplying || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                if conversationFailed {
+                    AppText("回复失败，请确认 Qwen 模型已安装").font(.footnote).foregroundStyle(.red)
+                }
+            } header: { AppText("对话") }
         }
         .navigationTitle(currentTitle.isEmpty ? AppLocalization.string("语音想法", language: appLanguage) : currentTitle)
         .task { await reload() }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }
+            }
+        }
+        .confirmationDialog(AppLocalization.string("删除这条想法？", language: appLanguage), isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button(AppLocalization.string("删除", language: appLanguage), role: .destructive) {
+                Task {
+                    try? await container.deletePoint(point.id)
+                    dismiss()
+                }
+            }
+            Button(AppLocalization.string("取消", language: appLanguage), role: .cancel) {}
+        } message: {
+            AppText("原音、转写和对话都会被永久删除。")
+        }
     }
 
     private var currentTitle: String {
@@ -103,12 +174,37 @@ struct PointDetailView: View {
     private func reload() async {
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded
+        messages = (try? await container.database.conversationMessages(pointID: point.id)) ?? []
         if let url = try? await container.blobStore.url(for: loaded.audioRelativePath) {
             player.prepare(url: url)
         }
         if loaded.transcriptState == "queued" || loaded.transcriptState == "running" {
             try? await Task.sleep(for: .seconds(1))
             await reload()
+        }
+    }
+
+    private func sendMessage() {
+        let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        messageText = ""
+        isReplying = true
+        conversationFailed = false
+        Task {
+            let succeeded = await container.conversationService.send(
+                pointID: point.id,
+                text: text,
+                languageIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
+            )
+            if succeeded {
+                _ = await container.transcriptionService.deriveTitle(
+                    pointID: point.id,
+                    languageIdentifier: appLanguage
+                )
+            }
+            await reload()
+            isReplying = false
+            conversationFailed = !succeeded
         }
     }
 

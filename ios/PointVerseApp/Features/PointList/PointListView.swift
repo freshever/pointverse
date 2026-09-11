@@ -36,6 +36,16 @@ struct PointListView: View {
                             }
                         }
                     }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            Task {
+                                try? await container.deletePoint(point.id)
+                                await reload()
+                            }
+                        } label: {
+                            Label(AppLocalization.string("删除", language: appLanguage), systemImage: "trash")
+                        }
+                    }
                 }
             }
         }

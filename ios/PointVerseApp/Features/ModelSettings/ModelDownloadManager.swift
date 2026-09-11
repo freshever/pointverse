@@ -12,6 +12,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     private nonisolated let registry: ModelRegistry
     private var session: URLSession!
     private var task: URLSessionDownloadTask?
+    private var sourceIndex = 0
 
     init(registry: ModelRegistry, manifest: ModelManifest) {
         self.registry = registry
@@ -27,20 +28,45 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
     func download() {
         guard task == nil else { return }
+        sourceIndex = 0
         state = .downloading(0)
         Task {
             do {
                 _ = try await registry.prepareForDownload(manifest)
-                let task = session.downloadTask(with: manifest.downloadURL)
-                self.task = task
-                PointVerseLog.storage.info("Model download started")
-                task.resume()
+                startCurrentSource()
             } catch let error as PointVerseError {
                 state = .failed(error)
             } catch {
                 state = .failed(.modelNotInstalled)
             }
         }
+    }
+
+    private func startCurrentSource() {
+        let sources = manifest.downloadURLs
+        guard sourceIndex < sources.count else {
+            task = nil
+            state = .failed(.modelNotInstalled)
+            return
+        }
+        let url = sources[sourceIndex]
+        state = .downloading(0)
+        let nextTask = session.downloadTask(with: url)
+        task = nextTask
+        PointVerseLog.storage.info("Model download source started: \(url.host ?? "unknown", privacy: .public)")
+        nextTask.resume()
+    }
+
+    private func retryNextSource() {
+        task = nil
+        sourceIndex += 1
+        guard sourceIndex < manifest.downloadURLs.count else {
+            PointVerseLog.storage.error("All model download sources failed")
+            state = .failed(.modelNotInstalled)
+            return
+        }
+        PointVerseLog.storage.info("Trying next model download source")
+        startCurrentSource()
     }
 
     func cancel() {
@@ -51,6 +77,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     func remove() {
+        PointVerseLog.storage.info("Model removal confirmed: \(self.manifest.id, privacy: .public)")
         Task {
             do {
                 try await registry.remove(manifest)
@@ -70,6 +97,10 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
     }
 
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        if let response = downloadTask.response as? HTTPURLResponse, !(200...299).contains(response.statusCode) {
+            Task { @MainActor in self.retryNextSource() }
+            return
+        }
         let partial = registry.modelsDirectory.appending(path: manifest.filename + ".partial")
         do {
             try FileManager.default.createDirectory(at: registry.modelsDirectory, withIntermediateDirectories: true)
@@ -89,8 +120,11 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
                 task = nil
                 state = .installed
             } catch let error as PointVerseError {
-                task = nil
-                state = .failed(error)
+                if error == .modelChecksumMismatch { retryNextSource() }
+                else {
+                    task = nil
+                    state = .failed(error)
+                }
             } catch {
                 task = nil
                 state = .failed(.modelNotInstalled)
@@ -102,8 +136,7 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         guard error != nil else { return }
         Task { @MainActor in
             guard self.task != nil else { return }
-            self.task = nil
-            self.state = .failed(.modelNotInstalled)
+            self.retryNextSource()
         }
     }
 }

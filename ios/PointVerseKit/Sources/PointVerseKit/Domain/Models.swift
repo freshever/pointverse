@@ -128,6 +128,20 @@ public struct PointDetail: Equatable, Sendable {
     }
 }
 
+public struct ConversationMessage: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let role: String
+    public let text: String
+    public let createdAt: Date
+
+    public init(id: UUID, role: String, text: String, createdAt: Date) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.createdAt = createdAt
+    }
+}
+
 public struct PointDraft: Codable, Equatable, Sendable {
     public let title: String?
     public let summary: String
