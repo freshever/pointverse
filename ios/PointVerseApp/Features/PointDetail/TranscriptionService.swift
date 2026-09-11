@@ -1,0 +1,107 @@
+import Foundation
+import PointVerseKit
+import Speech
+
+actor TranscriptionService {
+    private let repository: any PointRepository
+    private let blobStore: any AudioBlobStoring
+    private let recognizer: OnDeviceSpeechRecognizer
+
+    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: OnDeviceSpeechRecognizer) {
+        self.repository = repository
+        self.blobStore = blobStore
+        self.recognizer = recognizer
+    }
+
+    func resumePending() async {
+        guard let pointIDs = try? await repository.queuedTranscriptionPointIDs() else { return }
+        for pointID in pointIDs { await transcribe(pointID: pointID) }
+    }
+
+    func transcribe(pointID: PointID) async {
+        do {
+            let detail = try await repository.pointDetail(id: pointID)
+            let audioURL = try await blobStore.url(for: detail.audioRelativePath)
+            try await repository.markTranscriptionRunning(pointID: pointID)
+            let text = try await recognizer.transcribe(
+                audioURL: audioURL,
+                localeIdentifier: detail.localeIdentifier
+            )
+            try await repository.saveTranscript(pointID: pointID, engineText: text)
+        } catch {
+            try? await repository.failTranscription(pointID: pointID, error: .transcriptionFailed)
+        }
+    }
+}
+
+final class OnDeviceSpeechRecognizer: @unchecked Sendable {
+    func transcribe(audioURL: URL, localeIdentifier: String) async throws -> String {
+        let authorization = await authorizationStatus()
+        guard authorization == .authorized else { throw PointVerseError.transcriptionFailed }
+
+        let locale = Self.supportedLocale(from: localeIdentifier)
+        guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable,
+              recognizer.supportsOnDeviceRecognition else {
+            throw PointVerseError.transcriptionFailed
+        }
+
+        let request = SFSpeechURLRecognitionRequest(url: audioURL)
+        request.requiresOnDeviceRecognition = true
+        request.shouldReportPartialResults = false
+        request.addsPunctuation = true
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let box = SpeechContinuation(continuation)
+            box.task = recognizer.recognitionTask(with: request) { result, error in
+                if let result, result.isFinal {
+                    let text = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if text.isEmpty {
+                        box.finish(.failure(PointVerseError.transcriptionFailed))
+                    } else {
+                        box.finish(.success(text))
+                    }
+                } else if error != nil {
+                    box.finish(.failure(PointVerseError.transcriptionFailed))
+                }
+            }
+        }
+    }
+
+    private func authorizationStatus() async -> SFSpeechRecognizerAuthorizationStatus {
+        if SFSpeechRecognizer.authorizationStatus() != .notDetermined {
+            return SFSpeechRecognizer.authorizationStatus()
+        }
+        return await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+        }
+    }
+
+    private static func supportedLocale(from identifier: String) -> Locale {
+        let normalized = identifier.replacingOccurrences(of: "_", with: "-").lowercased()
+        if normalized.hasPrefix("zh-hant") || normalized.hasPrefix("zh-tw") || normalized.hasPrefix("zh-hk") {
+            return Locale(identifier: "zh-TW")
+        }
+        if normalized.hasPrefix("zh") { return Locale(identifier: "zh-CN") }
+        if normalized.hasPrefix("ja") { return Locale(identifier: "ja-JP") }
+        return Locale(identifier: "en-US")
+    }
+}
+
+private final class SpeechContinuation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<String, any Error>?
+    var task: SFSpeechRecognitionTask?
+
+    init(_ continuation: CheckedContinuation<String, any Error>) {
+        self.continuation = continuation
+    }
+
+    func finish(_ result: Result<String, any Error>) {
+        lock.lock()
+        guard let continuation else { lock.unlock(); return }
+        self.continuation = nil
+        task = nil
+        lock.unlock()
+        continuation.resume(with: result)
+    }
+}

@@ -1,0 +1,35 @@
+name: PointVerse
+options:
+  bundleIdPrefix: com.pointverse
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  PointVerseKit:
+    path: PointVerseKit
+targets:
+  PointVerse:
+    type: application
+    platform: iOS
+    sources: [PointVerseApp]
+    dependencies:
+      - package: PointVerseKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pointverse.poc
+        PRODUCT_NAME: 点界
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 点界
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: 点界需要麦克风权限来保存你的语音想法。
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: 点界使用设备端语音识别将原音转成可搜索文字。
+        TARGETED_DEVICE_FAMILY: "1"
+schemes:
+  PointVerse:
+    build:
+      targets:
+        PointVerse: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true

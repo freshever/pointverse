@@ -3,6 +3,10 @@ node_modules/
 dist/
 .cache/
 *.log
-data/*.sqlite
-data/*.sqlite-shm
-data/*.sqlite-wal
+h5/data/*.sqlite
+h5/data/*.sqlite-shm
+h5/data/*.sqlite-wal
+ios/DerivedData/
+ios/**/.build/
+*.xcuserstate
+xcuserdata/
