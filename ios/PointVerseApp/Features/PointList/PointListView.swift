@@ -6,33 +6,45 @@ struct PointListView: View {
     @State private var query = ""
     @State private var points: [PointSummary] = []
     @State private var errorMessage: String?
+    @Environment(\.appLanguage) private var appLanguage
 
     var body: some View {
         Group {
             if points.isEmpty {
-                ContentUnavailableView("还没有想法", systemImage: "waveform", description: Text("保存第一条语音后会出现在这里"))
+                ContentUnavailableView {
+                    Label { AppText("还没有想法") } icon: { Image(systemName: "waveform") }
+                } description: {
+                    AppText("保存第一条语音后会出现在这里")
+                }
             } else {
                 List(points) { point in
                     NavigationLink {
                         PointDetailView(point: point)
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(point.title.isEmpty ? String(localized: "语音想法") : point.title).font(.headline)
+                            if point.title.isEmpty {
+                                AppText("语音想法").font(.headline)
+                            } else {
+                                Text(verbatim: point.title).font(.headline)
+                            }
                             Text(point.createdAt, format: .dateTime.month().day().hour().minute())
                                 .font(.caption).foregroundStyle(.secondary)
-                            Text(point.transcriptState == "failed" ? "转写失败，原音仍在" : "等待本地转写")
-                                .font(.caption).foregroundStyle(.secondary)
+                            if point.transcriptState == "failed" {
+                                AppText("转写失败，原音仍在").font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                AppText("等待本地转写").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
             }
         }
-        .navigationTitle("想法")
-        .searchable(text: $query, prompt: "搜索转写、标题或摘要")
+        .navigationTitle(AppLocalization.string("想法", language: appLanguage))
+        .searchable(text: $query, prompt: AppLocalization.string("搜索转写、标题或摘要", language: appLanguage))
         .task(id: query) { await reload() }
         .refreshable { await reload() }
-        .alert("无法读取本地资料", isPresented: .constant(errorMessage != nil)) {
-            Button("好") { errorMessage = nil }
+        .alert(AppLocalization.string("无法读取本地资料", language: appLanguage), isPresented: .constant(errorMessage != nil)) {
+            Button(AppLocalization.string("好", language: appLanguage)) { errorMessage = nil }
         }
     }
 

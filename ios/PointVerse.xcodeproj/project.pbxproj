@@ -13,20 +13,26 @@
 		5243C3E32851018575973FBB /* PointListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49D567E2157613FF575EBB9 /* PointListView.swift */; };
 		57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */ = {isa = PBXBuildFile; productRef = EF1601925276AADCFA77677C /* PointVerseKit */; };
 		68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC1CB606858B87E1316B5A6 /* CaptureView.swift */; };
+		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
+		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
+		8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E117BAE13164C24CE628D0 /* AppLocalization.swift */; };
 		B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */; };
 		D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7D3EA7AA748408B7A2F1DA5F /* InfoPlist.strings */; };
+		E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD50731098248359D1259BC /* ModelDownloadManager.swift */; };
 		F39E94764FB17533DF598918 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAEA797E538F30926794551 /* AppContainer.swift */; };
 		F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716533EFD2901EC614D27CC1 /* PointVerseApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1295EBA18DDFC6F925F284D4 /* PointVerse.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PointVerse.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1295EBA18DDFC6F925F284D4 /* 点界.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "点界.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		24E265A97970E7093BC60BA7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		26DFE56B963C328D0138CCA7 /* PointVerseKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PointVerseKit; path = PointVerseKit; sourceTree = SOURCE_ROOT; };
+		26DFE56B963C328D0138CCA7 /* PointVerseKit */ = {isa = PBXFileReference; lastKnownFileType = folder; path = PointVerseKit; sourceTree = SOURCE_ROOT; };
 		2B2085183CD43466B8E2F5B7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
+		57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		5B725E10B707CD2D76D20BE3 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		5E1E2217C4EB458898C792E5 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		66E117BAE13164C24CE628D0 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
 		716533EFD2901EC614D27CC1 /* PointVerseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseApp.swift; sourceTree = "<group>"; };
 		7BC1CB606858B87E1316B5A6 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
@@ -35,8 +41,10 @@
 		BB8FC5C9693E7897ADE1AD80 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C49D567E2157613FF575EBB9 /* PointListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointListView.swift; sourceTree = "<group>"; };
 		C90EF4F0CEE530E84E5262BB /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerViewModel.swift; sourceTree = "<group>"; };
 		D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
 		F6E23365C1D6C56005A335E5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FFD50731098248359D1259BC /* ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,7 +80,7 @@
 		2ACCE446338288A6F4B0FC9B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				1295EBA18DDFC6F925F284D4 /* PointVerse.app */,
+				1295EBA18DDFC6F925F284D4 /* 点界.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,7 +88,9 @@
 		2CC9756829FE102BD437FA02 /* PointDetail */ = {
 			isa = PBXGroup;
 			children = (
+				D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */,
 				A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */,
+				57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */,
 			);
 			path = PointDetail;
 			sourceTree = "<group>";
@@ -88,6 +98,7 @@
 		5900BEFDD6595398DEFECE2F /* ModelSettings */ = {
 			isa = PBXGroup;
 			children = (
+				FFD50731098248359D1259BC /* ModelDownloadManager.swift */,
 				69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */,
 			);
 			path = ModelSettings;
@@ -134,6 +145,7 @@
 			isa = PBXGroup;
 			children = (
 				4CAEA797E538F30926794551 /* AppContainer.swift */,
+				66E117BAE13164C24CE628D0 /* AppLocalization.swift */,
 				716533EFD2901EC614D27CC1 /* PointVerseApp.swift */,
 			);
 			path = App;
@@ -168,7 +180,7 @@
 				EF1601925276AADCFA77677C /* PointVerseKit */,
 			);
 			productName = PointVerse;
-			productReference = 1295EBA18DDFC6F925F284D4 /* PointVerse.app */;
+			productReference = 1295EBA18DDFC6F925F284D4 /* 点界.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -179,8 +191,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 9883EC62E6A1BF3C4E246766 /* Build configuration list for PBXProject "PointVerse" */;
 			developmentRegion = en;
@@ -225,12 +235,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				F39E94764FB17533DF598918 /* AppContainer.swift in Sources */,
+				8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */,
+				79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */,
 				68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */,
+				E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */,
 				47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */,
 				B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */,
 				5243C3E32851018575973FBB /* PointListView.swift in Sources */,
 				F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */,
 				4CFADA315C11FC4F77AB7B95 /* SystemAudioRecorder.swift in Sources */,
+				7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -267,9 +281,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "点界";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "点界需要麦克风权限来保存你的语音想法。";
+				DEVELOPMENT_TEAM = SS4H5JZU3H;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PointVerseApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -350,9 +364,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "点界";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "点界需要麦克风权限来保存你的语音想法。";
+				DEVELOPMENT_TEAM = SS4H5JZU3H;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PointVerseApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

@@ -20,6 +20,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             try Self.createV1(in: db)
         }
         try migrator.migrate(writer)
+        PointVerseLog.database.info("Database migrations completed")
     }
 
     public func commitVoiceCapture(_ command: VoiceCaptureCommand) async throws -> PointID {
@@ -29,6 +30,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 sql: "SELECT point_id FROM messages WHERE operation_id = ?",
                 arguments: [command.operationID.uuidString]
             ), let uuid = UUID(uuidString: existing) {
+                PointVerseLog.database.notice("Idempotent capture commit returned existing point")
                 return PointID(rawValue: uuid)
             }
 
@@ -54,6 +56,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 sql: "INSERT INTO durable_tasks (id, operation_id, kind, payload_json, state, next_run_at, created_at, updated_at) VALUES (?, ?, 'transcribe', ?, 'queued', ?, ?, ?)",
                 arguments: [UUID().uuidString, "transcribe:\(command.audio.assetID.uuidString)", payload, timestamp, timestamp, timestamp]
             )
+            PointVerseLog.database.info("Voice capture transaction committed")
             return command.pointID
         }
     }
@@ -101,7 +104,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT p.id, COALESCE(p.accepted_title, '') AS title,
                        a.relative_path, a.duration_ms, t.state AS transcript_state,
-                       t.engine_text, t.user_text, t.locale
+                       t.engine_text, t.user_text, t.locale, t.error_code
                 FROM points p
                 JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 JOIN audio_assets a ON a.message_id = m.id
@@ -116,6 +119,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 audioRelativePath: row["relative_path"],
                 durationMilliseconds: row["duration_ms"],
                 transcriptState: row["transcript_state"],
+                transcriptErrorCode: row["error_code"],
                 engineText: row["engine_text"],
                 userText: row["user_text"],
                 localeIdentifier: row["locale"]

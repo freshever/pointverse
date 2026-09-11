@@ -19,6 +19,7 @@ actor TranscriptionService {
     }
 
     func transcribe(pointID: PointID) async {
+        PointVerseLog.transcription.info("Transcription requested")
         do {
             let detail = try await repository.pointDetail(id: pointID)
             let audioURL = try await blobStore.url(for: detail.audioRelativePath)
@@ -28,7 +29,13 @@ actor TranscriptionService {
                 localeIdentifier: detail.localeIdentifier
             )
             try await repository.saveTranscript(pointID: pointID, engineText: text)
+            PointVerseLog.transcription.info("Transcription completed and persisted")
+        } catch let error as PointVerseError {
+            PointVerseLog.transcription.error("Transcription failed: \(error.rawValue, privacy: .public)")
+            try? await repository.failTranscription(pointID: pointID, error: error)
         } catch {
+            let nsError = error as NSError
+            PointVerseLog.transcription.error("Transcription failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
             try? await repository.failTranscription(pointID: pointID, error: .transcriptionFailed)
         }
     }
@@ -36,13 +43,16 @@ actor TranscriptionService {
 
 final class OnDeviceSpeechRecognizer: @unchecked Sendable {
     func transcribe(audioURL: URL, localeIdentifier: String) async throws -> String {
+#if targetEnvironment(simulator)
+        throw PointVerseError.onDeviceRecognitionUnavailable
+#else
         let authorization = await authorizationStatus()
         guard authorization == .authorized else { throw PointVerseError.transcriptionFailed }
 
         let locale = Self.supportedLocale(from: localeIdentifier)
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable,
               recognizer.supportsOnDeviceRecognition else {
-            throw PointVerseError.transcriptionFailed
+            throw PointVerseError.onDeviceRecognitionUnavailable
         }
 
         let request = SFSpeechURLRecognitionRequest(url: audioURL)
@@ -52,7 +62,7 @@ final class OnDeviceSpeechRecognizer: @unchecked Sendable {
 
         return try await withCheckedThrowingContinuation { continuation in
             let box = SpeechContinuation(continuation)
-            box.task = recognizer.recognitionTask(with: request) { result, error in
+            let task = recognizer.recognitionTask(with: request) { result, error in
                 if let result, result.isFinal {
                     let text = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
                     if text.isEmpty {
@@ -64,7 +74,9 @@ final class OnDeviceSpeechRecognizer: @unchecked Sendable {
                     box.finish(.failure(PointVerseError.transcriptionFailed))
                 }
             }
+            box.setTask(task)
         }
+#endif
     }
 
     private func authorizationStatus() async -> SFSpeechRecognizerAuthorizationStatus {
@@ -90,10 +102,21 @@ final class OnDeviceSpeechRecognizer: @unchecked Sendable {
 private final class SpeechContinuation: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<String, any Error>?
-    var task: SFSpeechRecognitionTask?
+    private var task: SFSpeechRecognitionTask?
 
     init(_ continuation: CheckedContinuation<String, any Error>) {
         self.continuation = continuation
+    }
+
+    func setTask(_ task: SFSpeechRecognitionTask) {
+        lock.lock()
+        if continuation == nil {
+            lock.unlock()
+            task.cancel()
+            return
+        }
+        self.task = task
+        lock.unlock()
     }
 
     func finish(_ result: Result<String, any Error>) {

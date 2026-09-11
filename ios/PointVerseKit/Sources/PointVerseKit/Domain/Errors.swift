@@ -12,6 +12,7 @@ public enum PointVerseError: String, Error, Codable, Sendable {
     case modelLoadFailed
     case audioDecodeFailed
     case transcriptionFailed
+    case onDeviceRecognitionUnavailable
     case generationFailed
     case invalidModelOutput
     case cancelled

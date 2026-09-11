@@ -7,6 +7,7 @@ final class AppContainer: ObservableObject {
     let blobStore: AudioBlobStore
     let captureUseCase: CaptureUseCase
     let transcriptionService: TranscriptionService
+    let modelDownloadManager: ModelDownloadManager
     @Published private(set) var startupError: String?
 
     init() {
@@ -15,6 +16,7 @@ final class AppContainer: ObservableObject {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let database = try PointDatabase(path: root.appending(path: "pointverse.sqlite").path)
             let blobStore = AudioBlobStore(rootURL: root)
+            let modelRegistry = ModelRegistry(rootURL: root)
             self.database = database
             self.blobStore = blobStore
             self.captureUseCase = CaptureUseCase(
@@ -27,6 +29,7 @@ final class AppContainer: ObservableObject {
                 blobStore: blobStore,
                 recognizer: OnDeviceSpeechRecognizer()
             )
+            self.modelDownloadManager = ModelDownloadManager(registry: modelRegistry)
         } catch {
             fatalError("PointVerse storage could not be initialized: \(error)")
         }

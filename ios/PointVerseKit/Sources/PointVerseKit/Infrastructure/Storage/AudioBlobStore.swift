@@ -23,12 +23,18 @@ public actor AudioBlobStore: AudioBlobStoring {
     public func stagingURL(operationID: UUID) throws -> URL {
         let directory = rootURL.appending(path: "staging", directoryHint: .isDirectory)
         try prepare(directory)
-        return directory.appending(path: "\(operationID.uuidString).m4a.tmp")
+        // Keep `.m4a` as the final extension: AVAudioRecorder uses it to select
+        // the MPEG-4 container on physical devices.
+        PointVerseLog.storage.info("Staging directory prepared")
+        return directory.appending(path: "\(operationID.uuidString).tmp.m4a")
     }
 
     public func commit(_ recording: RecordingResult, assetID: UUID) throws -> StoredAudio {
         let data = try Data(contentsOf: recording.temporaryURL, options: .mappedIfSafe)
-        guard !data.isEmpty else { throw PointVerseError.audioCommitFailed }
+        guard !data.isEmpty else {
+            PointVerseLog.storage.error("Audio commit rejected because staging file is empty")
+            throw PointVerseError.audioCommitFailed
+        }
 
         let relativePath = "blobs/audio/\(assetID.uuidString).m4a"
         let destination = rootURL.appending(path: relativePath)
@@ -44,8 +50,12 @@ public actor AudioBlobStore: AudioBlobStoring {
             var protectedURL = destination
             try protectedURL.setResourceValues(values)
         } catch {
+            let nsError = error as NSError
+            PointVerseLog.storage.error("Audio atomic move failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
             throw PointVerseError.audioCommitFailed
         }
+
+        PointVerseLog.storage.info("Audio committed: bytes=\(data.count, privacy: .public) durationMs=\(recording.durationMilliseconds, privacy: .public)")
 
         return StoredAudio(
             assetID: assetID,

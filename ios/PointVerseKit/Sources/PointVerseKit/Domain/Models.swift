@@ -93,6 +93,7 @@ public struct PointDetail: Equatable, Sendable {
     public let audioRelativePath: String
     public let durationMilliseconds: Int
     public let transcriptState: String
+    public let transcriptErrorCode: String?
     public let engineText: String?
     public let userText: String?
     public let localeIdentifier: String
@@ -110,6 +111,7 @@ public struct PointDetail: Equatable, Sendable {
         audioRelativePath: String,
         durationMilliseconds: Int,
         transcriptState: String,
+        transcriptErrorCode: String?,
         engineText: String?,
         userText: String?,
         localeIdentifier: String
@@ -119,6 +121,7 @@ public struct PointDetail: Equatable, Sendable {
         self.audioRelativePath = audioRelativePath
         self.durationMilliseconds = durationMilliseconds
         self.transcriptState = transcriptState
+        self.transcriptErrorCode = transcriptErrorCode
         self.engineText = engineText
         self.userText = userText
         self.localeIdentifier = localeIdentifier

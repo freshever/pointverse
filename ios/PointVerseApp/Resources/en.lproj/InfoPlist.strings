@@ -1,1 +1,2 @@
 "NSMicrophoneUsageDescription" = "PointVerse needs microphone access to save your voice thoughts.";
+"NSSpeechRecognitionUsageDescription" = "PointVerse uses on-device speech recognition to make original audio searchable.";

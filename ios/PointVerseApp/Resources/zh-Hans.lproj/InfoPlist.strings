@@ -1,1 +1,2 @@
 "NSMicrophoneUsageDescription" = "点界需要麦克风权限来保存你的语音想法。";
+"NSSpeechRecognitionUsageDescription" = "点界使用设备端语音识别将原音转成可搜索文字。";
