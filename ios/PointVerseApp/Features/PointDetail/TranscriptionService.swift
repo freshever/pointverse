@@ -5,9 +5,9 @@ import Speech
 actor TranscriptionService {
     private let repository: any PointRepository
     private let blobStore: any AudioBlobStoring
-    private let recognizer: OnDeviceSpeechRecognizer
+    private let recognizer: HybridSpeechRecognizer
 
-    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: OnDeviceSpeechRecognizer) {
+    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: HybridSpeechRecognizer) {
         self.repository = repository
         self.blobStore = blobStore
         self.recognizer = recognizer
@@ -24,11 +24,16 @@ actor TranscriptionService {
             let detail = try await repository.pointDetail(id: pointID)
             let audioURL = try await blobStore.url(for: detail.audioRelativePath)
             try await repository.markTranscriptionRunning(pointID: pointID)
-            let text = try await recognizer.transcribe(
+            let output = try await recognizer.transcribe(
                 audioURL: audioURL,
                 localeIdentifier: detail.localeIdentifier
             )
-            try await repository.saveTranscript(pointID: pointID, engineText: text)
+            try await repository.saveTranscript(
+                pointID: pointID,
+                engineText: output.text,
+                modelID: output.modelID,
+                modelSHA256: output.modelSHA256
+            )
             PointVerseLog.transcription.info("Transcription completed and persisted")
         } catch let error as PointVerseError {
             PointVerseLog.transcription.error("Transcription failed: \(error.rawValue, privacy: .public)")
@@ -38,6 +43,33 @@ actor TranscriptionService {
             PointVerseLog.transcription.error("Transcription failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
             try? await repository.failTranscription(pointID: pointID, error: .transcriptionFailed)
         }
+    }
+}
+
+struct TranscriptionOutput: Sendable {
+    let text: String
+    let modelID: String
+    let modelSHA256: String
+}
+
+actor HybridSpeechRecognizer {
+    private let registry: ModelRegistry
+    private let whisper: WhisperRecognizer
+    private let apple = OnDeviceSpeechRecognizer()
+
+    init(registry: ModelRegistry) {
+        self.registry = registry
+        whisper = WhisperRecognizer(registry: registry)
+    }
+
+    func transcribe(audioURL: URL, localeIdentifier: String) async throws -> TranscriptionOutput {
+        if await registry.isInstalled(.whisperBaseQ5) {
+            PointVerseLog.transcription.info("Using local Whisper model")
+            return try await whisper.transcribe(audioURL: audioURL, localeIdentifier: localeIdentifier)
+        }
+        PointVerseLog.transcription.info("Whisper model is not installed; using Apple Speech")
+        let text = try await apple.transcribe(audioURL: audioURL, localeIdentifier: localeIdentifier)
+        return TranscriptionOutput(text: text, modelID: "apple-speech-on-device", modelSHA256: "system")
     }
 }
 

@@ -6,6 +6,8 @@ options:
 packages:
   PointVerseKit:
     path: PointVerseKit
+  WhisperRuntime:
+    path: Vendor/WhisperRuntime
 targets:
   PointVerse:
     type: application
@@ -15,6 +17,8 @@ targets:
         excludes: [Info.plist]
     dependencies:
       - package: PointVerseKit
+      - package: WhisperRuntime
+        product: whisper
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pointverse.poc

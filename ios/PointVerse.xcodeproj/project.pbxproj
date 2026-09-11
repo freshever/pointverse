@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09AE63B68223FE04E8EE49A3 /* whisper in Frameworks */ = {isa = PBXBuildFile; productRef = 614AE52C568D178C7613D457 /* whisper */; };
+		42054C12A7842DA84BCDA7C9 /* WhisperRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7E1B00DBCA6497FE780965 /* WhisperRecognizer.swift */; };
 		42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A72376C331A5411479AD783 /* Localizable.strings */; };
 		47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */; };
 		4CFADA315C11FC4F77AB7B95 /* SystemAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */; };
@@ -28,6 +30,7 @@
 		24E265A97970E7093BC60BA7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		26DFE56B963C328D0138CCA7 /* PointVerseKit */ = {isa = PBXFileReference; lastKnownFileType = folder; path = PointVerseKit; sourceTree = SOURCE_ROOT; };
 		2B2085183CD43466B8E2F5B7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		4BBDC78A40E54C9A91860E9B /* WhisperRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WhisperRuntime; path = Vendor/WhisperRuntime; sourceTree = SOURCE_ROOT; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		5B725E10B707CD2D76D20BE3 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -44,6 +47,7 @@
 		D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerViewModel.swift; sourceTree = "<group>"; };
 		D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
 		F6E23365C1D6C56005A335E5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FA7E1B00DBCA6497FE780965 /* WhisperRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperRecognizer.swift; sourceTree = "<group>"; };
 		FFD50731098248359D1259BC /* ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -53,6 +57,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */,
+				09AE63B68223FE04E8EE49A3 /* whisper in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -91,6 +96,7 @@
 				D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */,
 				A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */,
 				57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */,
+				FA7E1B00DBCA6497FE780965 /* WhisperRecognizer.swift */,
 			);
 			path = PointDetail;
 			sourceTree = "<group>";
@@ -117,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				26DFE56B963C328D0138CCA7 /* PointVerseKit */,
+				4BBDC78A40E54C9A91860E9B /* WhisperRuntime */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -178,6 +185,7 @@
 			name = PointVerse;
 			packageProductDependencies = (
 				EF1601925276AADCFA77677C /* PointVerseKit */,
+				614AE52C568D178C7613D457 /* whisper */,
 			);
 			productName = PointVerse;
 			productReference = 1295EBA18DDFC6F925F284D4 /* 点界.app */;
@@ -206,6 +214,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AFD9463716429DBB81244AF7 /* XCLocalSwiftPackageReference "PointVerseKit" */,
+				34E4FD5120D2F6F67C43FB14 /* XCLocalSwiftPackageReference "Vendor/WhisperRuntime" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2ACCE446338288A6F4B0FC9B /* Products */;
@@ -245,6 +254,7 @@
 				F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */,
 				4CFADA315C11FC4F77AB7B95 /* SystemAudioRecorder.swift in Sources */,
 				7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */,
+				42054C12A7842DA84BCDA7C9 /* WhisperRecognizer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -459,6 +469,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		34E4FD5120D2F6F67C43FB14 /* XCLocalSwiftPackageReference "Vendor/WhisperRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/WhisperRuntime;
+		};
 		AFD9463716429DBB81244AF7 /* XCLocalSwiftPackageReference "PointVerseKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = PointVerseKit;
@@ -466,6 +480,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		614AE52C568D178C7613D457 /* whisper */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = whisper;
+		};
 		EF1601925276AADCFA77677C /* PointVerseKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PointVerseKit;

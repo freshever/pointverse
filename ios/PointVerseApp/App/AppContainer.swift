@@ -27,7 +27,7 @@ final class AppContainer: ObservableObject {
             self.transcriptionService = TranscriptionService(
                 repository: database,
                 blobStore: blobStore,
-                recognizer: OnDeviceSpeechRecognizer()
+                recognizer: HybridSpeechRecognizer(registry: modelRegistry)
             )
             self.modelDownloadManager = ModelDownloadManager(registry: modelRegistry)
         } catch {

@@ -28,11 +28,13 @@ import Testing
         VoiceCaptureCommand(operationID: UUID(), audio: audio, localeIdentifier: "en-US")
     )
     try await database.markTranscriptionRunning(pointID: pointID)
-    try await database.saveTranscript(pointID: pointID, engineText: "context is also a point")
+    try await database.saveTranscript(pointID: pointID, engineText: "context is also a point", modelID: "test", modelSHA256: "test-sha")
 
     let detail = try await database.pointDetail(id: pointID)
     #expect(detail.transcriptState == "succeeded")
     #expect(detail.transcriptErrorCode == nil)
     #expect(detail.effectiveTranscript == "context is also a point")
+    #expect(detail.title == "context is also a po…")
     #expect(try await database.listPoints(matching: "context").map(\.id) == [pointID])
+    #expect(try await database.listPoints(matching: "point").map(\.id) == [pointID])
 }

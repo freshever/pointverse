@@ -66,23 +66,25 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             let rows: [Row]
             if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 rows = try Row.fetchAll(db, sql: """
-                    SELECT p.id, COALESCE(p.accepted_title, '') AS title,
+                    SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
                            p.created_at, t.state AS transcript_state
                     FROM points p
                     LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
+                    LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC LIMIT 1)
                     ORDER BY p.created_at DESC
                     """)
             } else {
                 rows = try Row.fetchAll(db, sql: """
-                    SELECT p.id, COALESCE(p.accepted_title, '') AS title,
+                    SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
                            p.created_at, t.state AS transcript_state
                     FROM point_search s
                     JOIN points p ON p.id = s.point_id
                     LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
+                    LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC LIMIT 1)
                     WHERE point_search MATCH ?
                     ORDER BY rank
                     """, arguments: [query])
@@ -102,13 +104,14 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
     public func pointDetail(id: PointID) async throws -> PointDetail {
         try await writer.read { db in
             guard let row = try Row.fetchOne(db, sql: """
-                SELECT p.id, COALESCE(p.accepted_title, '') AS title,
+                SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
                        a.relative_path, a.duration_ms, t.state AS transcript_state,
                        t.engine_text, t.user_text, t.locale, t.error_code
                 FROM points p
                 JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 JOIN audio_assets a ON a.message_id = m.id
                 JOIN transcripts t ON t.asset_id = a.id
+                LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC LIMIT 1)
                 WHERE p.id = ?
                 """, arguments: [id.rawValue.uuidString]) else {
                 throw PointVerseError.databaseCommitFailed
@@ -147,13 +150,19 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             """, arguments: [Date().timeIntervalSince1970, pointID.rawValue.uuidString])
     }
 
-    public func saveTranscript(pointID: PointID, engineText: String) async throws {
+    public func saveTranscript(pointID: PointID, engineText: String, modelID: String, modelSHA256: String) async throws {
         try await writer.write { db in
             let timestamp = Date().timeIntervalSince1970
             try db.execute(sql: """
-                UPDATE transcripts SET engine_text = ?, state = 'succeeded', error_code = NULL, updated_at = ?
+                UPDATE transcripts SET engine_text = ?, model_id = ?, model_sha256 = ?, state = 'succeeded', error_code = NULL, updated_at = ?
                 WHERE asset_id = (SELECT a.id FROM audio_assets a JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1)
-                """, arguments: [engineText, timestamp, pointID.rawValue.uuidString])
+                """, arguments: [engineText, modelID, modelSHA256, timestamp, pointID.rawValue.uuidString])
+            let title = Self.fallbackTitle(from: engineText)
+            try db.execute(sql: "DELETE FROM derivations WHERE point_id = ? AND model_id = 'rule-title-v1'", arguments: [pointID.rawValue.uuidString])
+            try db.execute(sql: """
+                INSERT INTO derivations (id, point_id, input_revision, model_id, model_sha256, prompt_version, title, state, adoption, created_at)
+                VALUES (?, ?, 1, 'rule-title-v1', 'builtin', 'rule-title-v1', ?, 'succeeded', 'candidate', ?)
+                """, arguments: [UUID().uuidString, pointID.rawValue.uuidString, title, timestamp])
             try db.execute(sql: """
                 UPDATE durable_tasks SET state = 'succeeded', updated_at = ?
                 WHERE operation_id = 'transcribe:' || (
@@ -162,6 +171,14 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 """, arguments: [timestamp, pointID.rawValue.uuidString])
             try refreshSearch(pointID: pointID, db: db)
         }
+    }
+
+    private static func fallbackTitle(from text: String) -> String {
+        let cleaned = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstClause = cleaned.split(whereSeparator: { "。！？!?；;\n".contains($0) }).first.map(String.init) ?? cleaned
+        guard firstClause.count > 20 else { return firstClause }
+        return String(firstClause.prefix(20)) + "…"
     }
 
     public func saveUserTranscript(pointID: PointID, userText: String) async throws {
@@ -198,11 +215,16 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         try db.execute(sql: "DELETE FROM point_search WHERE point_id = ?", arguments: [pointID.rawValue.uuidString])
         try db.execute(sql: """
             INSERT INTO point_search (point_id, accepted_title, transcript_text, summary, tags)
-            SELECT p.id, COALESCE(p.accepted_title, ''), COALESCE(t.user_text, t.engine_text, ''), '', ''
+            SELECT p.id, COALESCE(p.accepted_title, d.title, ''), COALESCE(t.user_text, t.engine_text, ''),
+                   COALESCE(d.summary, ''), COALESCE(d.tags_json, '')
             FROM points p
             JOIN messages m ON m.point_id = p.id
             JOIN audio_assets a ON a.message_id = m.id
             JOIN transcripts t ON t.asset_id = a.id
+            LEFT JOIN derivations d ON d.id = (
+                SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded'
+                ORDER BY created_at DESC LIMIT 1
+            )
             WHERE p.id = ? LIMIT 1
             """, arguments: [pointID.rawValue.uuidString])
     }
