@@ -32,6 +32,17 @@ public struct ModelManifest: Codable, Equatable, Sendable {
         license: "MIT",
         minimumFreeDiskBytes: 150_000_000
     )
+
+    public static let qwen3_0_6BQ8 = ModelManifest(
+        id: "qwen3-0.6b-q8_0",
+        revision: "23749fefcc72300e3a2ad315e1317431b06b590a",
+        filename: "Qwen3-0.6B-Q8_0.gguf",
+        downloadURL: URL(string: "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf?download=true")!,
+        displayByteCount: 639_446_688,
+        sha256: "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+        license: "Apache-2.0",
+        minimumFreeDiskBytes: 1_500_000_000
+    )
 }
 
 public actor ModelRegistry {

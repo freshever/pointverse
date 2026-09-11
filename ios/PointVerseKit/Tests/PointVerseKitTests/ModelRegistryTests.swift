@@ -2,6 +2,14 @@ import Foundation
 import Testing
 @testable import PointVerseKit
 
+@Test func qwenManifestIsPinnedAndFitsModelDirectory() {
+    let manifest = ModelManifest.qwen3_0_6BQ8
+    #expect(manifest.id == "qwen3-0.6b-q8_0")
+    #expect(manifest.filename.hasSuffix(".gguf"))
+    #expect(manifest.sha256.count == 64)
+    #expect(manifest.minimumFreeDiskBytes > manifest.displayByteCount)
+}
+
 @Test func modelInstallsOnlyAfterChecksumVerification() async throws {
     let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
     defer { try? FileManager.default.removeItem(at: root) }

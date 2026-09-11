@@ -37,4 +37,7 @@ import Testing
     #expect(detail.title == "context is also a po…")
     #expect(try await database.listPoints(matching: "context").map(\.id) == [pointID])
     #expect(try await database.listPoints(matching: "point").map(\.id) == [pointID])
+
+    try await database.saveCandidateTitle(pointID: pointID, title: "Context Notes", modelID: "qwen-test", modelSHA256: "qwen-sha")
+    #expect(try await database.pointDetail(id: pointID).title == "Context Notes")
 }

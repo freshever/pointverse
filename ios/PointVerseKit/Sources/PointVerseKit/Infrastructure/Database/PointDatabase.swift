@@ -181,6 +181,18 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         return String(firstClause.prefix(20)) + "…"
     }
 
+    public func saveCandidateTitle(pointID: PointID, title: String, modelID: String, modelSHA256: String) async throws {
+        try await writer.write { db in
+            let timestamp = Date().timeIntervalSince1970
+            try db.execute(sql: "DELETE FROM derivations WHERE point_id = ? AND model_id = ?", arguments: [pointID.rawValue.uuidString, modelID])
+            try db.execute(sql: """
+                INSERT INTO derivations (id, point_id, input_revision, model_id, model_sha256, prompt_version, title, state, adoption, created_at)
+                VALUES (?, ?, 1, ?, ?, 'title-v1', ?, 'succeeded', 'candidate', ?)
+                """, arguments: [UUID().uuidString, pointID.rawValue.uuidString, modelID, modelSHA256, title, timestamp])
+            try refreshSearch(pointID: pointID, db: db)
+        }
+    }
+
     public func saveUserTranscript(pointID: PointID, userText: String) async throws {
         try await writer.write { db in
             try db.execute(sql: """

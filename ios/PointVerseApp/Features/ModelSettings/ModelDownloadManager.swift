@@ -8,13 +8,14 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     @Published private(set) var state: State = .checking
-    nonisolated let manifest = ModelManifest.whisperBaseQ5
+    nonisolated let manifest: ModelManifest
     private nonisolated let registry: ModelRegistry
     private var session: URLSession!
     private var task: URLSessionDownloadTask?
 
-    init(registry: ModelRegistry) {
+    init(registry: ModelRegistry, manifest: ModelManifest) {
         self.registry = registry
+        self.manifest = manifest
         super.init()
         session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         Task { await refresh() }

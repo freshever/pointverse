@@ -1,16 +1,20 @@
 import Foundation
 import PointVerseKit
+import QwenAdapter
 import Speech
+import WhisperAdapter
 
 actor TranscriptionService {
     private let repository: any PointRepository
     private let blobStore: any AudioBlobStoring
     private let recognizer: HybridSpeechRecognizer
+    private let titleGenerator: QwenTitleGenerator
 
-    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: HybridSpeechRecognizer) {
+    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: HybridSpeechRecognizer, titleGenerator: QwenTitleGenerator) {
         self.repository = repository
         self.blobStore = blobStore
         self.recognizer = recognizer
+        self.titleGenerator = titleGenerator
     }
 
     func resumePending() async {
@@ -34,6 +38,24 @@ actor TranscriptionService {
                 modelID: output.modelID,
                 modelSHA256: output.modelSHA256
             )
+            do {
+                let title = try await titleGenerator.generateTitle(
+                    transcript: output.text,
+                    localeIdentifier: detail.localeIdentifier
+                )
+                let manifest = ModelManifest.qwen3_0_6BQ8
+                try await repository.saveCandidateTitle(
+                    pointID: pointID,
+                    title: title,
+                    modelID: manifest.id,
+                    modelSHA256: manifest.sha256
+                )
+                PointVerseLog.transcription.info("Qwen title generated and persisted")
+            } catch PointVerseError.modelNotInstalled {
+                PointVerseLog.transcription.info("Qwen model is not installed; keeping rule title")
+            } catch {
+                PointVerseLog.transcription.error("Qwen title generation failed; keeping rule title")
+            }
             PointVerseLog.transcription.info("Transcription completed and persisted")
         } catch let error as PointVerseError {
             PointVerseLog.transcription.error("Transcription failed: \(error.rawValue, privacy: .public)")
@@ -44,12 +66,6 @@ actor TranscriptionService {
             try? await repository.failTranscription(pointID: pointID, error: .transcriptionFailed)
         }
     }
-}
-
-struct TranscriptionOutput: Sendable {
-    let text: String
-    let modelID: String
-    let modelSHA256: String
 }
 
 actor HybridSpeechRecognizer {

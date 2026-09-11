@@ -8,17 +8,34 @@ packages:
     path: PointVerseKit
   WhisperRuntime:
     path: Vendor/WhisperRuntime
+  LlamaRuntime:
+    path: Vendor/LlamaRuntime
 targets:
   PointVerse:
     type: application
     platform: iOS
     sources:
       - path: PointVerseApp
-        excludes: [Info.plist]
+        excludes:
+          - Info.plist
+          - Features/PointDetail/WhisperRecognizer.swift
+          - Features/PointDetail/QwenTitleGenerator.swift
     dependencies:
       - package: PointVerseKit
-      - package: WhisperRuntime
-        product: whisper
+      - target: WhisperAdapter
+      - target: QwenAdapter
+    postBuildScripts:
+      - name: Embed AI runtimes
+        script: |
+          set -e
+          destination="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          mkdir -p "${destination}"
+          ditto "${BUILT_PRODUCTS_DIR}/whisper.framework" "${destination}/whisper.framework"
+          ditto "${BUILT_PRODUCTS_DIR}/llama.framework" "${destination}/llama.framework"
+          if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier "${destination}/whisper.framework"
+            /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier "${destination}/llama.framework"
+          fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pointverse.poc
@@ -27,6 +44,34 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseApp/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
+  WhisperAdapter:
+    type: framework
+    platform: iOS
+    sources:
+      - path: PointVerseApp/Features/PointDetail/WhisperRecognizer.swift
+    dependencies:
+      - package: PointVerseKit
+      - package: WhisperRuntime
+        product: whisper
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pointverse.poc.whisper-adapter
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+  QwenAdapter:
+    type: framework
+    platform: iOS
+    sources:
+      - path: PointVerseApp/Features/PointDetail/QwenTitleGenerator.swift
+    dependencies:
+      - package: PointVerseKit
+      - package: LlamaRuntime
+        product: llama
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pointverse.poc.qwen-adapter
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   PointVerse:
     build:

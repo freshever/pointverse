@@ -3,16 +3,16 @@ import Foundation
 import PointVerseKit
 import whisper
 
-actor WhisperRecognizer {
+public actor WhisperRecognizer {
     private let registry: ModelRegistry
     private var contextHandle: WhisperContextHandle?
     private var loadedModelPath: String?
 
-    init(registry: ModelRegistry) {
+    public init(registry: ModelRegistry) {
         self.registry = registry
     }
 
-    func transcribe(audioURL: URL, localeIdentifier: String) async throws -> TranscriptionOutput {
+    public func transcribe(audioURL: URL, localeIdentifier: String) async throws -> TranscriptionOutput {
         let manifest = ModelManifest.whisperBaseQ5
         guard await registry.isInstalled(manifest) else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
@@ -102,6 +102,18 @@ actor WhisperRecognizer {
             throw PointVerseError.transcriptionFailed
         }
         return Array(UnsafeBufferPointer(start: channel, count: Int(output.frameLength)))
+    }
+}
+
+public struct TranscriptionOutput: Sendable {
+    public let text: String
+    public let modelID: String
+    public let modelSHA256: String
+
+    public init(text: String, modelID: String, modelSHA256: String) {
+        self.text = text
+        self.modelID = modelID
+        self.modelSHA256 = modelSHA256
     }
 }
 

@@ -1,5 +1,6 @@
 import Foundation
 import PointVerseKit
+import QwenAdapter
 
 @MainActor
 final class AppContainer: ObservableObject {
@@ -8,6 +9,7 @@ final class AppContainer: ObservableObject {
     let captureUseCase: CaptureUseCase
     let transcriptionService: TranscriptionService
     let modelDownloadManager: ModelDownloadManager
+    let qwenDownloadManager: ModelDownloadManager
     @Published private(set) var startupError: String?
 
     init() {
@@ -27,9 +29,11 @@ final class AppContainer: ObservableObject {
             self.transcriptionService = TranscriptionService(
                 repository: database,
                 blobStore: blobStore,
-                recognizer: HybridSpeechRecognizer(registry: modelRegistry)
+                recognizer: HybridSpeechRecognizer(registry: modelRegistry),
+                titleGenerator: QwenTitleGenerator(registry: modelRegistry)
             )
-            self.modelDownloadManager = ModelDownloadManager(registry: modelRegistry)
+            self.modelDownloadManager = ModelDownloadManager(registry: modelRegistry, manifest: .whisperBaseQ5)
+            self.qwenDownloadManager = ModelDownloadManager(registry: modelRegistry, manifest: .qwen3_0_6BQ8)
         } catch {
             fatalError("PointVerse storage could not be initialized: \(error)")
         }

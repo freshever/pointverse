@@ -20,16 +20,22 @@ struct ModelSettingsView: View {
                 AppText("界面语言")
             }
             Section {
-                WhisperModelRow(manager: container.modelDownloadManager)
+                ModelRow(
+                    manager: container.modelDownloadManager,
+                    name: "Whisper base Q5_1",
+                    metadata: "≈ 59.7 MB · MIT",
+                    explanation: "模型下载完成并通过 SHA-256 校验后才会启用。录音不会因为模型缺失而受影响。"
+                )
             } header: {
                 AppText("语音转写")
             }
             Section {
-                LabeledContent {
-                    AppText("未安装")
-                } label: {
-                    Text(verbatim: "Qwen3 0.6B")
-                }
+                ModelRow(
+                    manager: container.qwenDownloadManager,
+                    name: "Qwen3 0.6B Q8_0",
+                    metadata: "≈ 639 MB · Apache-2.0",
+                    explanation: "用于在设备端提炼标题、摘要和标签；不影响录音与语音转写。"
+                )
             } header: {
                 AppText("本地整理")
             }
@@ -38,15 +44,18 @@ struct ModelSettingsView: View {
     }
 }
 
-private struct WhisperModelRow: View {
+private struct ModelRow: View {
     @ObservedObject var manager: ModelDownloadManager
+    let name: String
+    let metadata: String
+    let explanation: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: "Whisper base Q5_1")
-                    Text(verbatim: "≈ 59.7 MB · MIT")
+                    Text(verbatim: name)
+                    Text(verbatim: metadata)
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -74,7 +83,7 @@ private struct WhisperModelRow: View {
                 Button { manager.download() } label: { AppText("下载模型") }
             }
 
-            AppText("模型下载完成并通过 SHA-256 校验后才会启用。录音不会因为模型缺失而受影响。")
+            AppText(explanation)
                 .font(.footnote).foregroundStyle(.secondary)
         }
     }
