@@ -20,6 +20,7 @@
 		5425BC42AA7F7A48C7FAFFB3 /* WhisperAdapter.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */ = {isa = PBXBuildFile; productRef = EF1601925276AADCFA77677C /* PointVerseKit */; };
 		5B60BCE45A0C1F03A5D05B72 /* ConversationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EA9DD5DE4312BC132DD0DB6 /* ConversationService.swift */; };
+		5E53701C9355270F9A084DCB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AEBFF404379E2101831D913A /* Assets.xcassets */; };
 		68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC1CB606858B87E1316B5A6 /* CaptureView.swift */; };
 		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
 		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
@@ -100,6 +101,7 @@
 		A8D65E3405B008E1C081E305 /* QwenAdapter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = QwenAdapter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointDetailView.swift; sourceTree = "<group>"; };
 		AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquarePhotoCropView.swift; sourceTree = "<group>"; };
+		AEBFF404379E2101831D913A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
 		BB8FC5C9693E7897ADE1AD80 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C49D567E2157613FF575EBB9 /* PointListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointListView.swift; sourceTree = "<group>"; };
@@ -148,6 +150,7 @@
 		013E34F74C8E7DA1188C20ED /* PointVerseApp */ = {
 			isa = PBXGroup;
 			children = (
+				AEBFF404379E2101831D913A /* Assets.xcassets */,
 				C6FED5CC5E5E53AE69FDD8AB /* App */,
 				BD3C738103908198E1B62E75 /* Features */,
 				81A3169B31AB258CEB9BFFB0 /* Resources */,
@@ -381,6 +384,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5E53701C9355270F9A084DCB /* Assets.xcassets in Resources */,
 				D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */,
 				42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */,
 			);
