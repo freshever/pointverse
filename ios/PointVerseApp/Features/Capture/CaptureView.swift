@@ -15,6 +15,7 @@ struct CaptureView: View {
     @StateObject private var camera = CameraFrameSampler()
     @State private var cameraEnabled = false
     @State private var frameReview: CapturedFrameReview?
+    @State private var completedPoint: PointSummary?
     @AppStorage("captureLanguage") private var captureLanguage = ""
     @Environment(\.appLanguage) private var appLanguage
 
@@ -66,7 +67,7 @@ struct CaptureView: View {
             ZStack {
                 Circle()
                     .fill(state == .recording ? Color.red : Color.indigo)
-                Image(systemName: state == .recording ? "stop.fill" : "mic.fill")
+                Image(systemName: state == .recording ? "stop.fill" : "viewfinder")
                     .font(.system(size: 42, weight: .semibold))
                     .foregroundStyle(.white)
             }
@@ -83,6 +84,10 @@ struct CaptureView: View {
             .accessibilityLabel(AppLocalization.string(state == .recording ? "完成录音" : "开始录音", language: appLanguage))
             .accessibilityHint(AppLocalization.string("按住录音，松开结束", language: appLanguage))
             .disabled(state == .saving)
+
+            AppText(state == .recording ? "松开即可结束" : "Capture")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(state == .recording ? .red : .secondary)
 
             if state == .recording {
                 Button(role: .cancel) {
@@ -116,11 +121,19 @@ struct CaptureView: View {
         .sheet(item: $frameReview) { review in
             FrameReviewView(review: review) { selected in
                 frameReview = nil
+                openDetail(for: review.pointID)
                 finishCaptureWithFrames(pointID: review.pointID, frames: selected, localeIdentifier: review.localeIdentifier)
             } onSkip: {
                 frameReview = nil
+                openDetail(for: review.pointID)
                 Task { await container.transcriptionService.transcribe(pointID: review.pointID) }
             }
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { completedPoint != nil },
+            set: { if !$0 { completedPoint = nil } }
+        )) {
+            if let completedPoint { PointDetailView(point: completedPoint) }
         }
     }
 
@@ -189,6 +202,7 @@ struct CaptureView: View {
                 activeLocaleIdentifier = nil
                 state = .saved
                 if frames.isEmpty {
+                    openDetail(for: pointID)
                     Task { await container.transcriptionService.transcribe(pointID: pointID) }
                 } else {
                     frameReview = CapturedFrameReview(pointID: pointID, localeIdentifier: localeIdentifier,
@@ -213,6 +227,15 @@ struct CaptureView: View {
         }
     }
 
+    private func openDetail(for pointID: PointID) {
+        completedPoint = PointSummary(
+            id: pointID,
+            title: "",
+            createdAt: Date(),
+            transcriptState: "queued"
+        )
+    }
+
     private func toggleCamera() {
         cameraEnabled.toggle()
         if cameraEnabled {
@@ -234,18 +257,33 @@ struct CaptureView: View {
                                                        sha256: stored.sha256, byteCount: stored.byteCount, recognizedText: nil)
                 assets.append((id, frame.data))
             }
+            notifyImagesChanged(pointID)
             await container.transcriptionService.transcribe(pointID: pointID)
             for (id, data) in assets {
-                guard let description = try? await container.visionGenerator.describe(
-                    imageData: data,
-                    localeIdentifier: localeIdentifier
-                ) else { continue }
-                try? await container.database.updateImageText(id: id, recognizedText: description)
+                do {
+                    let description = try await container.visionGenerator.describe(
+                        imageData: data,
+                        localeIdentifier: localeIdentifier
+                    )
+                    try await container.database.updateImageText(id: id, recognizedText: description)
+                    notifyImagesChanged(pointID)
+                    PointVerseLog.storage.info("Captured frame understood automatically")
+                } catch {
+                    let nsError = error as NSError
+                    PointVerseLog.storage.error("Automatic captured-frame analysis failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+                }
             }
             if !assets.isEmpty {
                 _ = await container.transcriptionService.deriveTitle(pointID: pointID, languageIdentifier: appLanguage)
             }
         }
+    }
+
+    private func notifyImagesChanged(_ pointID: PointID) {
+        NotificationCenter.default.post(
+            name: Notification.Name("PointVersePointImagesDidChange"),
+            object: pointID.rawValue.uuidString
+        )
     }
 
     private var resolvedCaptureLocaleIdentifier: String {

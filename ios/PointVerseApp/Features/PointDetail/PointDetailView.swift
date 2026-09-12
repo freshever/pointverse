@@ -6,6 +6,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 struct PointDetailView: View {
+    private enum InputField: Hashable { case transcript, message }
     @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
     @StateObject private var player = AudioPlayerViewModel()
@@ -32,8 +33,11 @@ struct PointDetailView: View {
     @State private var photoError = false
     @State private var isAnalyzingPhotos = false
     @State private var visionAvailable = false
+    @State private var visionAvailabilityChecked = false
     @State private var photoAnalysisKey: String?
+    @State private var showingManifestation = false
     @Environment(\.appLanguage) private var appLanguage
+    @FocusState private var focusedField: InputField?
     let point: PointSummary
 
     var body: some View {
@@ -42,12 +46,13 @@ struct PointDetailView: View {
             LazyVStack(alignment: .leading, spacing: 14) {
                 sourceMessage
 
-                ForEach(pointImages) { item in
-                    photoMessage(item)
-                }
-
-                ForEach(messages) { message in
-                    conversationMessage(message)
+                ForEach(timelineItems) { item in
+                    switch item {
+                    case .photo(let photo):
+                        photoMessage(photo)
+                    case .message(let message):
+                        conversationMessage(message)
+                    }
                 }
 
                 if isReplying {
@@ -64,11 +69,17 @@ struct PointDetailView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .onTapGesture { focusedField = nil }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(currentTitle.isEmpty ? AppLocalization.string("语音想法", language: appLanguage) : currentTitle)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) { composer(addPhotosTitle: addPhotosTitle) }
         .task { await reload() }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PointVersePointImagesDidChange"))) { notification in
+            guard notification.object as? String == point.id.rawValue.uuidString else { return }
+            Task { await reload() }
+        }
         .onChange(of: selectedPhotos) { _, items in prepareCrop(items.first) }
         .sheet(item: $cropSource) { source in
             SquarePhotoCropView(image: source.preview, onCancel: {
@@ -89,7 +100,20 @@ struct PointDetailView: View {
             }
             .ignoresSafeArea()
         }
+        .sheet(isPresented: $showingManifestation) {
+            PointManifestationView(pointID: point.id, sourceContext: manifestationContext) {
+                showingManifestation = false
+                Task { await reload() }
+            }
+            .environmentObject(container)
+        }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showingManifestation = true } label: {
+                    Label { AppText("显影") } icon: { Image(systemName: "wand.and.stars") }
+                }
+                .disabled(detail?.effectiveTranscript?.isEmpty != false && pointImages.isEmpty)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     if detail?.transcriptState == "succeeded" {
@@ -111,6 +135,10 @@ struct PointDetailView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button { focusedField = nil } label: { AppText("完成") }
             }
         }
         .confirmationDialog(AppLocalization.string("删除这条想法？", language: appLanguage), isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -158,6 +186,7 @@ struct PointDetailView: View {
             case "succeeded":
                 if isEditing {
                     TextEditor(text: $editedTranscript).frame(minHeight: 110)
+                        .focused($focusedField, equals: .transcript)
                     Button { saveCorrection() } label: { AppText("保存修正") }
                         .disabled(isSaving || editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 } else {
@@ -222,7 +251,7 @@ struct PointDetailView: View {
         if isAddingPhotos { HStack { ProgressView(); AppText("正在保存照片") } }
         if photoError { AppText("照片保存失败").foregroundStyle(.red) }
         if isAnalyzingPhotos { HStack { ProgressView(); AppText("正在理解照片") } }
-        if !pointImages.isEmpty && !visionAvailable {
+        if !pointImages.isEmpty && visionAvailabilityChecked && !visionAvailable {
             AppText("请先安装完整的 Qwen3-VL 和视觉投影模型").foregroundStyle(.orange)
         } else if let photoAnalysisKey {
             AppText(photoAnalysisKey).foregroundStyle(.secondary)
@@ -230,8 +259,6 @@ struct PointDetailView: View {
         if isGeneratingTitle { HStack { ProgressView(); AppText("正在使用 Qwen 生成标题") } }
         if let titleGenerationMessage { AppText(titleGenerationMessage).foregroundStyle(.secondary) }
         if conversationFailed { AppText("回复失败，请确认 Qwen 模型已安装").foregroundStyle(.red) }
-        if isRecordingVoiceInput { AppText("松开转为文字").foregroundStyle(.red) }
-        else if voiceInputFailed { AppText("语音输入识别失败").foregroundStyle(.red) }
     }
 
     private func composer(addPhotosTitle: String) -> some View {
@@ -246,24 +273,15 @@ struct PointDetailView: View {
                     Label { Text(verbatim: choosePhotosTitle) } icon: { Image(systemName: "photo.on.rectangle") }
                 }
             } label: {
-                Image(systemName: "photo.badge.plus").font(.title3)
+                Label { AppText("Capture") } icon: { Image(systemName: "viewfinder.circle") }
+                    .font(.subheadline.weight(.semibold))
             }
             .disabled(isAddingPhotos)
             .accessibilityLabel(addPhotosTitle)
 
             TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText, axis: .vertical)
                 .lineLimit(1...5)
-
-            ZStack {
-                Circle().fill(isRecordingVoiceInput ? Color.red : Color.secondary.opacity(0.14))
-                if isTranscribingVoiceInput { ProgressView().controlSize(.small) }
-                else { Image(systemName: "mic.fill").foregroundStyle(isRecordingVoiceInput ? .white : .primary) }
-            }
-            .frame(width: 36, height: 36).contentShape(Circle())
-            .scaleEffect(isPressingVoiceInput ? 1.08 : 1)
-            .onLongPressGesture(minimumDuration: 0.18, maximumDistance: 60, pressing: handleVoiceInputPressing, perform: startVoiceInput)
-            .accessibilityLabel(AppLocalization.string("按住语音输入", language: appLanguage))
-            .disabled(isReplying || isTranscribingVoiceInput)
+                .focused($focusedField, equals: .message)
 
             Button(action: sendMessage) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                 .disabled(isReplying || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -288,6 +306,24 @@ struct PointDetailView: View {
         detail?.title ?? point.title
     }
 
+    private var timelineItems: [DetailTimelineItem] {
+        let photos = pointImages.map(DetailTimelineItem.photo)
+        let conversation = messages.map(DetailTimelineItem.message)
+        return (photos + conversation).sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private var manifestationContext: String {
+        var parts: [String] = []
+        if let transcript = detail?.effectiveTranscript, !transcript.isEmpty {
+            parts.append("Voice note: " + String(transcript.prefix(700)))
+        }
+        let photos = pointImages.compactMap(\.asset.recognizedText).prefix(3).joined(separator: "\n")
+        if !photos.isEmpty { parts.append("Photo context:\n" + String(photos.prefix(600))) }
+        let discussion = messages.suffix(4).map { ($0.role == "user" ? "User: " : "Assistant: ") + String($0.text.prefix(180)) }.joined(separator: "\n")
+        if !discussion.isEmpty { parts.append("Discussion:\n" + discussion) }
+        return parts.joined(separator: "\n\n")
+    }
+
     private func reload() async {
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded
@@ -300,8 +336,10 @@ struct PointDetailView: View {
                   let image = Self.thumbnail(from: data, maxPixelSize: 600) else { continue }
             loadedImages.append(LoadedPointImage(asset: stored, image: image))
         }
+        let available = await container.visionGenerator.isAvailable()
+        visionAvailable = available
+        visionAvailabilityChecked = true
         pointImages = loadedImages
-        visionAvailable = await container.visionGenerator.isAvailable()
         if let url = try? await container.blobStore.url(for: loaded.audioRelativePath) {
             player.prepare(url: url)
         }
@@ -578,10 +616,123 @@ private struct CameraCaptureView: UIViewControllerRepresentable {
     }
 }
 
+private struct PointManifestationView: View {
+    @EnvironmentObject private var container: AppContainer
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appLanguage) private var appLanguage
+    let pointID: PointID
+    let sourceContext: String
+    let onSaved: () -> Void
+    @State private var generatedImage: UIImage?
+    @State private var generatedPrompt = ""
+    @State private var isGenerating = false
+    @State private var diffusionStarted = false
+    @State private var progress = 0.0
+    @State private var errorKey: String?
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                if let generatedImage {
+                    Image(uiImage: generatedImage).resizable().scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    Button(action: saveToTimeline) {
+                        Label { AppText("加入想法") } icon: { Image(systemName: "checkmark.circle.fill") }
+                    }.buttonStyle(.borderedProminent)
+                } else if isGenerating {
+                    Spacer()
+                    if diffusionStarted {
+                        ProgressView(value: progress)
+                        Text(verbatim: "\(Int(progress * 100))%").monospacedDigit().foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                        AppText("正在整理想法并加载图片模型").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                } else {
+                    Spacer()
+                    Image(systemName: "wand.and.stars").font(.system(size: 52)).foregroundStyle(.indigo)
+                    AppText("把这条想法显影成图片").font(.title3.weight(.semibold))
+                    AppText("将使用原音转写、照片和对话作为上下文").foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button(action: generate) { AppText("开始显影") }.buttonStyle(.borderedProminent)
+                    Spacer()
+                }
+                if let errorKey { AppText(errorKey).foregroundStyle(.red) }
+            }
+            .padding()
+            .navigationTitle(AppLocalization.string("显影", language: appLanguage))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { AppText("取消") } } }
+        }
+    }
+
+    private func generate() {
+        guard !sourceContext.isEmpty else { return }
+        isGenerating = true
+        diffusionStarted = false
+        progress = 0
+        errorKey = nil
+        Task {
+            do {
+                let locale = appLanguage == "system" ? Locale.current.identifier : appLanguage
+                generatedPrompt = try await container.promptTranslator.translateImagePromptToEnglish(
+                    "Create one coherent visual interpretation of this saved idea. " + sourceContext,
+                    localeIdentifier: locale
+                )
+                let url = try await container.imageGenerator.generate(prompt: generatedPrompt) { value in
+                    Task { @MainActor in diffusionStarted = true; progress = value }
+                }
+                generatedImage = UIImage(contentsOfFile: url.path)
+                progress = 1
+            } catch PointVerseError.modelNotInstalled {
+                errorKey = "请先安装语言模型和图片模型"
+            } catch {
+                errorKey = "显影失败"
+            }
+            isGenerating = false
+        }
+    }
+
+    private func saveToTimeline() {
+        guard let data = generatedImage?.jpegData(compressionQuality: 0.9) else { return }
+        Task {
+            do {
+                let id = UUID()
+                let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
+                try await container.database.addImage(pointID: pointID, id: id, relativePath: stored.relativePath,
+                                                      sha256: stored.sha256, byteCount: stored.byteCount,
+                                                      recognizedText: generatedPrompt)
+                NotificationCenter.default.post(name: Notification.Name("PointVersePointImagesDidChange"),
+                                                object: pointID.rawValue.uuidString)
+                onSaved()
+            } catch { errorKey = "显影图片保存失败" }
+        }
+    }
+}
+
 private struct LoadedPointImage: Identifiable {
     let asset: PointImage
     let image: UIImage
     var id: UUID { asset.id }
+}
+
+private enum DetailTimelineItem: Identifiable {
+    case photo(LoadedPointImage)
+    case message(ConversationMessage)
+
+    var id: String {
+        switch self {
+        case .photo(let photo): "photo-" + photo.id.uuidString
+        case .message(let message): "message-" + message.id.uuidString
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .photo(let photo): photo.asset.createdAt
+        case .message(let message): message.createdAt
+        }
+    }
 }
 
 private struct PhotoCropSource: Identifiable {

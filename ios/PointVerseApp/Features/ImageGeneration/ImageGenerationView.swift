@@ -5,6 +5,7 @@ import SwiftUI
 import UIKit
 
 struct ImageGenerationView: View {
+    private enum InputField: Hashable { case prompt, recognizedText }
     @EnvironmentObject private var container: AppContainer
     @Environment(\.appLanguage) private var appLanguage
     @State private var prompt = ""
@@ -20,6 +21,7 @@ struct ImageGenerationView: View {
     @State private var isRecognizing = false
     @State private var noticeKey: String?
     @State private var errorKey: String?
+    @FocusState private var focusedField: InputField?
 
     var body: some View {
         let chooseImageTitle = AppLocalization.string("选择图片", language: appLanguage)
@@ -27,6 +29,7 @@ struct ImageGenerationView: View {
             VStack(alignment: .leading, spacing: 18) {
                 TextField(AppLocalization.string("描述想生成的图片", language: appLanguage), text: $prompt, axis: .vertical)
                     .lineLimit(3...6).textFieldStyle(.roundedBorder)
+                    .focused($focusedField, equals: .prompt)
                 Button(action: generate) {
                     if isGenerating { HStack { ProgressView(); AppText("正在本地生成图片") } }
                     else { Label { AppText("生成图片") } icon: { Image(systemName: "sparkles") } }
@@ -78,6 +81,7 @@ struct ImageGenerationView: View {
                 if !recognizedText.isEmpty {
                     TextEditor(text: $recognizedText)
                         .frame(minHeight: 140)
+                        .focused($focusedField, equals: .recognizedText)
                         .padding(6)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(.secondary.opacity(0.3)))
                     ShareLink(item: recognizedText) {
@@ -89,6 +93,8 @@ struct ImageGenerationView: View {
             }
             .padding()
         }
+        .scrollDismissesKeyboard(.interactively)
+        .onTapGesture { focusedField = nil }
         .navigationTitle(AppLocalization.string("图片生成", language: appLanguage))
         .onChange(of: prompt) { _, _ in translatedPrompt = "" }
         .onChange(of: selectedPhoto) { _, item in loadAndRecognize(item) }
@@ -96,6 +102,12 @@ struct ImageGenerationView: View {
             get: { noticeKey != nil },
             set: { if !$0 { noticeKey = nil } }
         )) { Button(AppLocalization.string("好", language: appLanguage)) { noticeKey = nil } }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button { focusedField = nil } label: { AppText("完成") }
+            }
+        }
     }
 
     private func generate() {
