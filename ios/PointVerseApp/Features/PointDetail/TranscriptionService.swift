@@ -17,6 +17,10 @@ actor TranscriptionService {
         self.titleGenerator = titleGenerator
     }
 
+    func releaseLanguageModel() async {
+        await titleGenerator.releaseResources()
+    }
+
     func resumePending() async {
         guard let pointIDs = try? await repository.queuedTranscriptionPointIDs() else { return }
         for pointID in pointIDs { await transcribe(pointID: pointID) }
@@ -121,9 +125,9 @@ actor HybridSpeechRecognizer {
     private let whisper: WhisperRecognizer
     private let apple = OnDeviceSpeechRecognizer()
 
-    init(registry: ModelRegistry) {
+    init(registry: ModelRegistry, executionGate: ModelExecutionGate) {
         self.registry = registry
-        whisper = WhisperRecognizer(registry: registry)
+        whisper = WhisperRecognizer(registry: registry, executionGate: executionGate)
     }
 
     func transcribe(audioURL: URL, localeIdentifier: String) async throws -> TranscriptionOutput {

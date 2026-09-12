@@ -37,201 +37,36 @@ struct PointDetailView: View {
 
     var body: some View {
         let addPhotosTitle = AppLocalization.string("添加照片", language: appLanguage)
-        List {
-            Section {
-                if !pointImages.isEmpty {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 12) {
-                            ForEach(pointImages) { item in
-                                VStack(alignment: .leading, spacing: 7) {
-                                    ZStack(alignment: .topTrailing) {
-                                        Image(uiImage: item.image)
-                                            .resizable().scaledToFill()
-                                            .frame(width: 210, height: 160).clipped()
-                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        Button(role: .destructive) { removePhoto(item) } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .symbolRenderingMode(.palette)
-                                                .foregroundStyle(.white, .black.opacity(0.65))
-                                        }
-                                        .padding(6).buttonStyle(.plain)
-                                    }
-                                    Text(verbatim: item.asset.recognizedText ?? AppLocalization.string("尚未理解这张照片", language: appLanguage))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                        .lineLimit(5).frame(width: 210, alignment: .leading)
-                                }
-                            }
-                        }
-                    }
-                }
-                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 1, matching: .images) {
-                    Label(addPhotosTitle, systemImage: "photo.badge.plus")
-                }
-                .disabled(isAddingPhotos)
-                if isAddingPhotos { HStack { ProgressView(); AppText("正在保存照片") } }
-                if photoError { AppText("照片保存失败").font(.footnote).foregroundStyle(.red) }
-                if !pointImages.isEmpty {
-                    Button(action: analyzePhotos) {
-                        if isAnalyzingPhotos { HStack { ProgressView(); AppText("正在理解照片") } }
-                        else { Label { AppText("重新理解照片") } icon: { Image(systemName: "eye.circle") } }
-                    }
-                    .disabled(isAnalyzingPhotos || !visionAvailable)
-                    if !visionAvailable {
-                        AppText("请先安装完整的 Qwen3-VL 和视觉投影模型")
-                            .font(.footnote).foregroundStyle(.orange)
-                    } else if let photoAnalysisKey {
-                        AppText(photoAnalysisKey).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-            } header: { AppText("照片") }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                sourceMessage
 
-            Section {
-                HStack {
-                    Label { AppText("原音已保存") } icon: { Image(systemName: "checkmark.circle.fill") }
-                        .foregroundStyle(.green)
-                    Spacer()
-                    if let detail {
-                        Text(duration(detail.durationMilliseconds))
-                            .monospacedDigit().foregroundStyle(.secondary)
-                    }
+                ForEach(pointImages) { item in
+                    photoMessage(item)
                 }
-                Button {
-                    player.toggle()
-                } label: {
-                    if player.isPlaying {
-                        Label { AppText("暂停") } icon: { Image(systemName: "pause.fill") }
-                    } else {
-                        Label { AppText("播放原音") } icon: { Image(systemName: "play.fill") }
-                    }
-                }
-                .disabled(!player.isReady)
-            } header: {
-                AppText("原音")
-            }
 
-            Section {
-                if let detail {
-                    switch detail.transcriptState {
-                    case "succeeded":
-                        if isEditing {
-                            TextEditor(text: $editedTranscript).frame(minHeight: 120)
-                            Button { saveCorrection() } label: { AppText("保存修正") }
-                                .disabled(isSaving || editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        } else {
-                            if let transcript = detail.effectiveTranscript {
-                                Text(verbatim: transcript).textSelection(.enabled)
-                            } else {
-                                AppText("没有识别到文字")
-                            }
-                            Button {
-                                editedTranscript = detail.effectiveTranscript ?? ""
-                                isEditing = true
-                            } label: { AppText("修正文字") }
-                        }
-                    case "running":
-                        HStack { ProgressView(); AppText("正在设备端转写") }
-                    case "failed":
-                        if detail.transcriptErrorCode == PointVerseError.onDeviceRecognitionUnavailable.rawValue {
-                            AppText("模拟器不支持设备端转写，请使用真机测试。原音仍已保存。")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            AppText("转写失败，原音仍在").foregroundStyle(.secondary)
-                            Button { retryTranscription() } label: { AppText("重新转写") }
-                        }
-                    default:
-                        HStack { ProgressView(); AppText("等待本地转写") }
-                    }
-                } else {
-                    ProgressView()
-                }
-            } header: { AppText("转写文字") }
-
-            Section {
-                AppText("使用系统设备端语音识别，不上传录音。支持简体中文、繁体中文、英文和日文。")
-                    .font(.footnote).foregroundStyle(.secondary)
-            } header: { AppText("识别方式") }
-
-            if detail?.transcriptState == "succeeded" {
-                Section {
-                    Button {
-                        Task {
-                            isGeneratingTitle = true
-                            titleGenerationMessage = nil
-                            let generatedTitle = await container.transcriptionService.deriveTitle(
-                                pointID: point.id,
-                                languageIdentifier: appLanguage
-                            )
-                            await reload()
-                            isGeneratingTitle = false
-                            titleGenerationMessage = generatedTitle.map { "标题已重新生成：" + $0 }
-                                ?? "标题生成失败，请确认 Qwen 模型已安装"
-                        }
-                    } label: {
-                        if isGeneratingTitle {
-                            HStack {
-                                ProgressView().controlSize(.small)
-                                AppText("正在使用 Qwen 生成标题")
-                            }
-                        } else {
-                            AppText("重新生成标题")
-                        }
-                    }
-                    .disabled(isGeneratingTitle)
-                    if let titleGenerationMessage {
-                        AppText(titleGenerationMessage)
-                            .font(.footnote)
-                            .foregroundStyle(titleGenerationMessage.hasPrefix("标题已重新生成：") ? .green : .red)
-                    }
-                } header: { AppText("本地整理") }
-            }
-
-            Section {
                 ForEach(messages) { message in
-                    HStack {
-                        if message.role == "user" { Spacer(minLength: 32) }
-                        Text(verbatim: message.text)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                            .background(message.role == "user" ? Color.indigo.opacity(0.14) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                        if message.role != "user" { Spacer(minLength: 32) }
-                    }
+                    conversationMessage(message)
                 }
+
                 if isReplying {
-                    HStack { ProgressView(); AppText("Qwen 正在回复") }
-                }
-                HStack {
-                    TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText, axis: .vertical)
-                    ZStack {
-                        Circle().fill(isRecordingVoiceInput ? Color.red : Color.secondary.opacity(0.14))
-                        if isTranscribingVoiceInput {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "mic.fill")
-                                .foregroundStyle(isRecordingVoiceInput ? .white : .primary)
-                        }
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        AppText("Qwen 正在回复")
                     }
-                    .frame(width: 36, height: 36)
-                    .contentShape(Circle())
-                    .scaleEffect(isPressingVoiceInput ? 1.08 : 1)
-                    .onLongPressGesture(minimumDuration: 0.18, maximumDistance: 60, pressing: handleVoiceInputPressing, perform: startVoiceInput)
-                    .accessibilityLabel(AppLocalization.string("按住语音输入", language: appLanguage))
-                    .disabled(isReplying || isTranscribingVoiceInput)
-                    Button {
-                        sendMessage()
-                    } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }
-                    .disabled(isReplying || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
                 }
-                if conversationFailed {
-                    AppText("回复失败，请确认 Qwen 模型已安装").font(.footnote).foregroundStyle(.red)
-                }
-                if isRecordingVoiceInput {
-                    AppText("松开转为文字").font(.footnote).foregroundStyle(.red)
-                } else if voiceInputFailed {
-                    AppText("语音输入识别失败").font(.footnote).foregroundStyle(.red)
-                }
-            } header: { AppText("对话") }
+
+                operationStatus
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(currentTitle.isEmpty ? AppLocalization.string("语音想法", language: appLanguage) : currentTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) { composer(addPhotosTitle: addPhotosTitle) }
         .task { await reload() }
         .onChange(of: selectedPhotos) { _, items in prepareCrop(items.first) }
         .sheet(item: $cropSource) { source in
@@ -246,7 +81,26 @@ struct PointDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }
+                Menu {
+                    if detail?.transcriptState == "succeeded" {
+                        Button(action: regenerateTitle) {
+                            Label { AppText("重新生成标题") } icon: { Image(systemName: "sparkles") }
+                        }
+                        .disabled(isGeneratingTitle)
+                    }
+                    if !pointImages.isEmpty {
+                        Button(action: analyzePhotos) {
+                            Label { AppText("重新理解照片") } icon: { Image(systemName: "eye.circle") }
+                        }
+                        .disabled(isAnalyzingPhotos || !visionAvailable)
+                    }
+                    Divider()
+                    Button(role: .destructive) { confirmingDelete = true } label: {
+                        Label { AppText("删除") } icon: { Image(systemName: "trash") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
             }
         }
         .confirmationDialog(AppLocalization.string("删除这条想法？", language: appLanguage), isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -259,6 +113,155 @@ struct PointDetailView: View {
             Button(AppLocalization.string("取消", language: appLanguage), role: .cancel) {}
         } message: {
             AppText("原音、转写和对话都会被永久删除。")
+        }
+    }
+
+    private var sourceMessage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Button { player.toggle() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 36, height: 36)
+                        .background(Color.indigo, in: Circle())
+                        .foregroundStyle(.white)
+                }
+                .disabled(!player.isReady)
+                VStack(alignment: .leading, spacing: 2) {
+                    AppText("原音已保存").font(.subheadline.weight(.medium))
+                    if let detail {
+                        Text(duration(detail.durationMilliseconds)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+            }
+
+            Divider()
+            transcriptContent
+        }
+        .padding(14)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    @ViewBuilder private var transcriptContent: some View {
+        if let detail {
+            switch detail.transcriptState {
+            case "succeeded":
+                if isEditing {
+                    TextEditor(text: $editedTranscript).frame(minHeight: 110)
+                    Button { saveCorrection() } label: { AppText("保存修正") }
+                        .disabled(isSaving || editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else {
+                    Text(verbatim: detail.effectiveTranscript ?? AppLocalization.string("没有识别到文字", language: appLanguage))
+                        .textSelection(.enabled)
+                    Button {
+                        editedTranscript = detail.effectiveTranscript ?? ""
+                        isEditing = true
+                    } label: { AppText("修正文字") }
+                    .font(.footnote)
+                }
+            case "running":
+                HStack { ProgressView(); AppText("正在设备端转写") }
+            case "failed":
+                AppText(detail.transcriptErrorCode == PointVerseError.onDeviceRecognitionUnavailable.rawValue
+                        ? "模拟器不支持设备端转写，请使用真机测试。原音仍已保存。"
+                        : "转写失败，原音仍在")
+                    .foregroundStyle(.secondary)
+                if detail.transcriptErrorCode != PointVerseError.onDeviceRecognitionUnavailable.rawValue {
+                    Button { retryTranscription() } label: { AppText("重新转写") }
+                }
+            default:
+                HStack { ProgressView(); AppText("等待本地转写") }
+            }
+        } else {
+            ProgressView()
+        }
+    }
+
+    private func photoMessage(_ item: LoadedPointImage) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: item.image)
+                    .resizable().scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: 360)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                Button(role: .destructive) { removePhoto(item) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.65))
+                }
+                .padding(7).buttonStyle(.plain)
+            }
+            Text(verbatim: item.asset.recognizedText ?? AppLocalization.string("尚未理解这张照片", language: appLanguage))
+                .font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled)
+        }
+        .padding(10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func conversationMessage(_ message: ConversationMessage) -> some View {
+        HStack {
+            if message.role == "user" { Spacer(minLength: 42) }
+            Text(verbatim: message.text)
+                .padding(.horizontal, 13).padding(.vertical, 10)
+                .background(message.role == "user" ? Color.indigo.opacity(0.16) : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
+                .textSelection(.enabled)
+            if message.role != "user" { Spacer(minLength: 42) }
+        }
+    }
+
+    @ViewBuilder private var operationStatus: some View {
+        if isAddingPhotos { HStack { ProgressView(); AppText("正在保存照片") } }
+        if photoError { AppText("照片保存失败").foregroundStyle(.red) }
+        if isAnalyzingPhotos { HStack { ProgressView(); AppText("正在理解照片") } }
+        if !pointImages.isEmpty && !visionAvailable {
+            AppText("请先安装完整的 Qwen3-VL 和视觉投影模型").foregroundStyle(.orange)
+        } else if let photoAnalysisKey {
+            AppText(photoAnalysisKey).foregroundStyle(.secondary)
+        }
+        if isGeneratingTitle { HStack { ProgressView(); AppText("正在使用 Qwen 生成标题") } }
+        if let titleGenerationMessage { AppText(titleGenerationMessage).foregroundStyle(.secondary) }
+        if conversationFailed { AppText("回复失败，请确认 Qwen 模型已安装").foregroundStyle(.red) }
+        if isRecordingVoiceInput { AppText("松开转为文字").foregroundStyle(.red) }
+        else if voiceInputFailed { AppText("语音输入识别失败").foregroundStyle(.red) }
+    }
+
+    private func composer(addPhotosTitle: String) -> some View {
+        HStack(spacing: 9) {
+            PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 1, matching: .images) {
+                Image(systemName: "photo.badge.plus").font(.title3)
+            }
+            .disabled(isAddingPhotos)
+            .accessibilityLabel(addPhotosTitle)
+
+            TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText, axis: .vertical)
+                .lineLimit(1...5)
+
+            ZStack {
+                Circle().fill(isRecordingVoiceInput ? Color.red : Color.secondary.opacity(0.14))
+                if isTranscribingVoiceInput { ProgressView().controlSize(.small) }
+                else { Image(systemName: "mic.fill").foregroundStyle(isRecordingVoiceInput ? .white : .primary) }
+            }
+            .frame(width: 36, height: 36).contentShape(Circle())
+            .scaleEffect(isPressingVoiceInput ? 1.08 : 1)
+            .onLongPressGesture(minimumDuration: 0.18, maximumDistance: 60, pressing: handleVoiceInputPressing, perform: startVoiceInput)
+            .accessibilityLabel(AppLocalization.string("按住语音输入", language: appLanguage))
+            .disabled(isReplying || isTranscribingVoiceInput)
+
+            Button(action: sendMessage) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
+                .disabled(isReplying || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(.bar)
+    }
+
+    private func regenerateTitle() {
+        Task {
+            isGeneratingTitle = true
+            titleGenerationMessage = nil
+            let generatedTitle = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
+            await reload()
+            isGeneratingTitle = false
+            titleGenerationMessage = generatedTitle.map { "标题已重新生成：" + $0 }
+                ?? "标题生成失败，请确认 Qwen 模型已安装"
         }
     }
 
@@ -386,6 +389,9 @@ struct PointDetailView: View {
         photoError = false
         Task {
                 do {
+                    // The title/chat generator may still hold another GGUF model.
+                    // Never keep it resident while loading the vision pipeline.
+                    await container.transcriptionService.releaseLanguageModel()
                     guard let data = Self.compressedJPEG(from: source) else { throw PointVerseError.invalidModelOutput }
                     let id = UUID()
                     let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
@@ -433,6 +439,7 @@ struct PointDetailView: View {
         isAnalyzingPhotos = true
         photoAnalysisKey = nil
         Task {
+            await container.transcriptionService.releaseLanguageModel()
             var successCount = 0
             for item in pointImages {
                 do {
@@ -491,8 +498,8 @@ struct PointDetailView: View {
               let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 1_024,
-                kCGImageSourceShouldCacheImmediately: true
+                kCGImageSourceThumbnailMaxPixelSize: 512,
+                kCGImageSourceShouldCacheImmediately: false
               ] as CFDictionary) else { return nil }
         return autoreleasepool { UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.85) }
     }

@@ -4,14 +4,24 @@ import llama
 
 public actor QwenTitleGenerator {
     private let registry: ModelRegistry
+    private let executionGate: ModelExecutionGate
     private var engine: LlamaEngine?
     private var loadedModelPath: String?
 
-    public init(registry: ModelRegistry) {
+    public init(registry: ModelRegistry, executionGate: ModelExecutionGate) {
         self.registry = registry
+        self.executionGate = executionGate
+    }
+
+    public func releaseResources() {
+        engine = nil
+        loadedModelPath = nil
+        PointVerseLog.storage.info("Language model resources released")
     }
 
     public func generateTitle(transcript: String, conversation: [ConversationMessage], localeIdentifier: String) async throws -> String {
+        await executionGate.acquire()
+        defer { releaseAfterExecution() }
         guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
         try loadEngine(modelURL: modelURL)
@@ -42,6 +52,8 @@ public actor QwenTitleGenerator {
     }
 
     public func generateReply(context: String, conversation: [ConversationMessage], localeIdentifier: String) async throws -> String {
+        await executionGate.acquire()
+        defer { releaseAfterExecution() }
         guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
         try loadEngine(modelURL: modelURL)
@@ -73,6 +85,8 @@ public actor QwenTitleGenerator {
     }
 
     public func translateImagePromptToEnglish(_ source: String, localeIdentifier: String) async throws -> String {
+        await executionGate.acquire()
+        defer { releaseAfterExecution() }
         // Image generation has a much larger memory peak than text inference.
         // Drop any title/chat model cached by earlier operations before deciding
         // whether this prompt needs translation.
@@ -127,6 +141,12 @@ public actor QwenTitleGenerator {
         loadedModelPath = modelURL.path
     }
 
+    private func releaseAfterExecution() {
+        engine = nil
+        loadedModelPath = nil
+        Task { await executionGate.release() }
+    }
+
     private func resolveInstalledModel() async -> ModelManifest? {
         guard let preferred = ModelSelection.selectedLanguageModel() else { return nil }
         guard let resolved = await registry.resolveInstalledModel(preferred: preferred, candidates: ModelSelection.languageModels) else {
@@ -172,9 +192,13 @@ public actor QwenTitleGenerator {
 
 public actor QwenVisionGenerator {
     private let registry: ModelRegistry
+    private let executionGate: ModelExecutionGate
     private var engine: LlamaVisionEngine?
 
-    public init(registry: ModelRegistry) { self.registry = registry }
+    public init(registry: ModelRegistry, executionGate: ModelExecutionGate) {
+        self.registry = registry
+        self.executionGate = executionGate
+    }
 
     public func isAvailable() async -> Bool {
         let modelInstalled = await registry.isInstalled(.qwen3VL2BQ8)
@@ -183,6 +207,11 @@ public actor QwenVisionGenerator {
     }
 
     public func describe(imageData: Data, localeIdentifier: String) async throws -> String {
+        await executionGate.acquire()
+        defer {
+            engine = nil
+            Task { await executionGate.release() }
+        }
         let modelManifest = ModelManifest.qwen3VL2BQ8
         let projectorManifest = ModelManifest.qwen3VL2BProjectorQ8
         guard await registry.isInstalled(modelManifest), await registry.isInstalled(projectorManifest) else {
@@ -225,16 +254,20 @@ private final class LlamaVisionEngine: @unchecked Sendable {
 #endif
         guard let model = llama_model_load_from_file(modelURL.path, modelParameters) else { throw PointVerseError.modelNotInstalled }
         var contextParameters = llama_context_default_params()
-        contextParameters.n_ctx = 4_096
-        contextParameters.n_batch = 512
-        contextParameters.n_ubatch = 512
+        // Vision descriptions are deliberately short. A smaller KV cache and
+        // micro-batch materially reduce the peak alongside the 2B model and mmproj.
+        contextParameters.n_ctx = 1_024
+        contextParameters.n_batch = 128
+        contextParameters.n_ubatch = 128
         guard let context = llama_init_from_model(model, contextParameters) else {
             llama_model_free(model); throw PointVerseError.invalidModelOutput
         }
         var multimodalParameters = mtmd_context_params_default()
-        multimodalParameters.use_gpu = true
+        // Keeping the projector on CPU avoids a large transient Metal allocation
+        // that can make iOS terminate the process on memory-constrained devices.
+        multimodalParameters.use_gpu = false
         multimodalParameters.image_min_tokens = 64
-        multimodalParameters.image_max_tokens = 128
+        multimodalParameters.image_max_tokens = 64
         guard let multimodal = mtmd_init_from_file(projectorURL.path, model, multimodalParameters),
               mtmd_support_vision(multimodal) else {
             llama_free(context); llama_model_free(model); throw PointVerseError.invalidModelOutput
@@ -278,7 +311,7 @@ private final class LlamaVisionEngine: @unchecked Sendable {
         }
         guard tokenizeResult == 0 else { throw PointVerseError.invalidModelOutput }
         var position: llama_pos = 0
-        guard mtmd_helper_eval_chunks(multimodal, context, chunks, 0, 0, 512, true, &position) == 0 else {
+        guard mtmd_helper_eval_chunks(multimodal, context, chunks, 0, 0, 128, true, &position) == 0 else {
             throw PointVerseError.invalidModelOutput
         }
 
@@ -290,7 +323,7 @@ private final class LlamaVisionEngine: @unchecked Sendable {
         var batch = llama_batch_init(1, 0, 1)
         defer { llama_batch_free(batch) }
         var output = ""
-        for _ in 0..<192 {
+        for _ in 0..<96 {
             let token = llama_sampler_sample(sampler, context, -1)
             if llama_vocab_is_eog(vocabulary, token) { break }
             var buffer = [CChar](repeating: 0, count: 256)

@@ -30,6 +30,7 @@ final class AppContainer: ObservableObject {
             let database = try PointDatabase(path: root.appending(path: "pointverse.sqlite").path)
             let blobStore = AudioBlobStore(rootURL: root)
             let modelRegistry = ModelRegistry(rootURL: root)
+            let modelExecutionGate = ModelExecutionGate()
             self.database = database
             self.blobStore = blobStore
             self.imageBlobStore = ImageBlobStore(rootURL: root)
@@ -38,10 +39,10 @@ final class AppContainer: ObservableObject {
                 blobStore: blobStore,
                 repository: database
             )
-            let qwenGenerator = QwenTitleGenerator(registry: modelRegistry)
+            let qwenGenerator = QwenTitleGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
             self.promptTranslator = qwenGenerator
-            self.visionGenerator = QwenVisionGenerator(registry: modelRegistry)
-            let speechRecognizer = HybridSpeechRecognizer(registry: modelRegistry)
+            self.visionGenerator = QwenVisionGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
+            let speechRecognizer = HybridSpeechRecognizer(registry: modelRegistry, executionGate: modelExecutionGate)
             self.transcriptionService = TranscriptionService(
                 repository: database,
                 blobStore: blobStore,
@@ -54,7 +55,7 @@ final class AppContainer: ObservableObject {
                 blobStore: blobStore,
                 recognizer: speechRecognizer
             )
-            self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: root)
+            self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: root, executionGate: modelExecutionGate)
             let speechManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             let languageManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.speechModelManagers = speechManagers

@@ -8,13 +8,17 @@ import ZIPFoundation
 actor LocalImageGenerator {
     private let registry: ModelRegistry
     private let rootURL: URL
+    private let executionGate: ModelExecutionGate
 
-    init(registry: ModelRegistry, rootURL: URL) {
+    init(registry: ModelRegistry, rootURL: URL, executionGate: ModelExecutionGate) {
         self.registry = registry
         self.rootURL = rootURL
+        self.executionGate = executionGate
     }
 
     func generate(prompt: String) async throws -> URL {
+        await executionGate.acquire()
+        defer { Task { await executionGate.release() } }
         let safePrompt = Self.compactPrompt(prompt)
         let manifest = ModelSelection.selectedImageModel()
         guard await registry.isInstalled(manifest) else { throw PointVerseError.modelNotInstalled }

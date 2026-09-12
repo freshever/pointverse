@@ -1,6 +1,31 @@
 import CryptoKit
 import Foundation
 
+/// A process-wide permit that prevents two local ML runtimes from executing at
+/// the same time. Every llama, whisper and diffusion entry point shares it.
+public actor ModelExecutionGate {
+    private var occupied = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    public init() {}
+
+    public func acquire() async {
+        if !occupied {
+            occupied = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    public func release() {
+        if waiters.isEmpty {
+            occupied = false
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+}
+
 public struct ModelManifest: Codable, Equatable, Sendable {
     public let id: String
     public let revision: String
