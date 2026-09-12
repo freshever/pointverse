@@ -15,6 +15,7 @@ actor LocalImageGenerator {
     }
 
     func generate(prompt: String) async throws -> URL {
+        let safePrompt = Self.compactPrompt(prompt)
         let manifest = ModelSelection.selectedImageModel()
         guard await registry.isInstalled(manifest) else { throw PointVerseError.modelNotInstalled }
         let archiveURL = await registry.installedURL(for: manifest)
@@ -31,7 +32,7 @@ actor LocalImageGenerator {
         try pipeline.loadResources()
         defer { pipeline.unloadResources() }
 
-        var configuration = PipelineConfiguration(prompt: prompt)
+        var configuration = PipelineConfiguration(prompt: safePrompt)
         configuration.stepCount = 20
         configuration.imageCount = 1
         configuration.seed = UInt32.random(in: 0..<UInt32.max)
@@ -44,6 +45,14 @@ actor LocalImageGenerator {
         let outputURL = outputDirectory.appending(path: UUID().uuidString + ".png")
         try data.write(to: outputURL, options: Data.WritingOptions.atomic)
         return outputURL
+    }
+
+    private static func compactPrompt(_ value: String) -> String {
+        let oneLine = value
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = oneLine.split(separator: " ")
+        return words.count > 60 ? words.prefix(60).joined(separator: " ") : String(oneLine.prefix(360))
     }
 
     private func prepareResources(archiveURL: URL, manifest: ModelManifest) throws -> URL {

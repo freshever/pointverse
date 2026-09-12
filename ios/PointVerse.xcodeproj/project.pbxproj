@@ -24,6 +24,7 @@
 		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
 		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
 		8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E117BAE13164C24CE628D0 /* AppLocalization.swift */; };
+		8846D339929A6F0653028413 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */; };
 		8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */; };
 		8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
 		95954644EAA1D1837CD48006 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = B430E296F7E046097A251A8A /* llama */; };
@@ -89,6 +90,7 @@
 		66E117BAE13164C24CE628D0 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
 		716533EFD2901EC614D27CC1 /* PointVerseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseApp.swift; sourceTree = "<group>"; };
+		7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		7BC1CB606858B87E1316B5A6 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
 		952A2774D33165C315F2D5F3 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSessionEvents.swift; sourceTree = "<group>"; };
@@ -248,6 +250,7 @@
 				1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */,
 				B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */,
 				4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */,
+				7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */,
 			);
 			path = ImageGeneration;
 			sourceTree = "<group>";
@@ -423,6 +426,7 @@
 				8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */,
 				E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */,
 				47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */,
+				8846D339929A6F0653028413 /* PhotoLibrarySaver.swift in Sources */,
 				B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */,
 				5243C3E32851018575973FBB /* PointListView.swift in Sources */,
 				F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */,

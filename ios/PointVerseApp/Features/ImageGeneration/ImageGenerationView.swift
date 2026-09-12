@@ -9,6 +9,7 @@ struct ImageGenerationView: View {
     @Environment(\.appLanguage) private var appLanguage
     @State private var prompt = ""
     @State private var image: UIImage?
+    @State private var translatedPrompt = ""
     @State private var isGenerating = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var sourceImage: UIImage?
@@ -35,6 +36,12 @@ struct ImageGenerationView: View {
                         Label { AppText("保存到相册") } icon: { Image(systemName: "square.and.arrow.down") }
                     }
                     .buttonStyle(.bordered)
+                }
+                if !translatedPrompt.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        AppText("实际生图提示词").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(verbatim: translatedPrompt).font(.footnote).textSelection(.enabled)
+                    }
                 }
                 if let errorKey { AppText(errorKey).foregroundStyle(.red).font(.footnote) }
                 AppText("图片完全在设备端生成，首次运行可能需要较长时间。")
@@ -78,7 +85,20 @@ struct ImageGenerationView: View {
         errorKey = nil
         Task {
             do {
-                let url = try await container.imageGenerator.generate(prompt: value)
+                let localeIdentifier = appLanguage == "system" ? Locale.current.identifier : appLanguage
+                let englishPrompt: String
+                do {
+                    englishPrompt = try await container.promptTranslator.translateImagePromptToEnglish(
+                        value,
+                        localeIdentifier: localeIdentifier
+                    )
+                    PointVerseLog.storage.info("Image prompt translated locally before generation")
+                } catch {
+                    englishPrompt = value
+                    PointVerseLog.storage.notice("Image prompt translation unavailable; using original prompt")
+                }
+                translatedPrompt = englishPrompt == value ? "" : englishPrompt
+                let url = try await container.imageGenerator.generate(prompt: englishPrompt)
                 image = UIImage(contentsOfFile: url.path)
             } catch PointVerseError.modelNotInstalled { errorKey = "请先在模型页下载图片模型" }
             catch { errorKey = "图片生成失败" }
@@ -87,7 +107,10 @@ struct ImageGenerationView: View {
     }
 
     private func saveGeneratedImage() {
-        guard let image else { return }
+        guard let image, let pngData = image.pngData() else {
+            noticeKey = "保存图片失败"
+            return
+        }
         Task {
             let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
             guard status == .authorized || status == .limited else {
@@ -95,9 +118,7 @@ struct ImageGenerationView: View {
                 return
             }
             do {
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
-                }
+                try await PhotoLibrarySaver.savePNGData(pngData)
                 noticeKey = "图片已保存到相册"
             } catch {
                 noticeKey = "保存图片失败"

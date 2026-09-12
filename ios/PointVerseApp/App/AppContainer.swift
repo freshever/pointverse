@@ -20,6 +20,7 @@ final class AppContainer: ObservableObject {
     let imageGenerator: LocalImageGenerator
     let imageTextRecognizer = ImageTextRecognizer()
     let visionGenerator: QwenVisionGenerator
+    let promptTranslator: QwenTitleGenerator
     @Published private(set) var startupError: String?
 
     init() {
@@ -38,6 +39,7 @@ final class AppContainer: ObservableObject {
                 repository: database
             )
             let qwenGenerator = QwenTitleGenerator(registry: modelRegistry)
+            self.promptTranslator = qwenGenerator
             self.visionGenerator = QwenVisionGenerator(registry: modelRegistry)
             let speechRecognizer = HybridSpeechRecognizer(registry: modelRegistry)
             self.transcriptionService = TranscriptionService(

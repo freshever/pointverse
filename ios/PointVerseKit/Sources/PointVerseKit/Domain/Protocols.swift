@@ -26,6 +26,7 @@ public protocol PointRepository: Sendable {
     func conversationMessages(pointID: PointID) async throws -> [ConversationMessage]
     func appendConversationMessage(pointID: PointID, role: String, text: String) async throws
     func images(pointID: PointID) async throws -> [PointImage]
+    func updateImageText(id: UUID, recognizedText: String?) async throws
     func deletePoint(id: PointID) async throws -> String
     func saveUserTranscript(pointID: PointID, userText: String) async throws
     func failTranscription(pointID: PointID, error: PointVerseError) async throws

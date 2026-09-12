@@ -72,6 +72,55 @@ public actor QwenTitleGenerator {
         return reply.components(separatedBy: "<|im_end|>").first ?? reply
     }
 
+    public func translateImagePromptToEnglish(_ source: String, localeIdentifier: String) async throws -> String {
+        // Image generation has a much larger memory peak than text inference.
+        // Drop any title/chat model cached by earlier operations before deciding
+        // whether this prompt needs translation.
+        engine = nil
+        loadedModelPath = nil
+        let compactSource = Self.compactImagePrompt(source)
+        let normalizedLocale = localeIdentifier.lowercased()
+        if normalizedLocale.hasPrefix("en"), compactSource.unicodeScalars.allSatisfy({ $0.isASCII }) { return compactSource }
+        guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
+        let modelURL = await registry.installedURL(for: manifest)
+        try loadEngine(modelURL: modelURL)
+        defer {
+            engine = nil
+            loadedModelPath = nil
+            PointVerseLog.storage.info("Language model released before image pipeline load")
+        }
+        let safeSource = compactSource
+            .replacingOccurrences(of: "<|im_start|>", with: "")
+            .replacingOccurrences(of: "<|im_end|>", with: "")
+        let prompt = """
+        <|im_start|>system
+        Rewrite the user's image request as a vivid, concise English Stable Diffusion prompt. Preserve every subject, action, composition, style, color, lighting, mood, and text requirement. Do not add explanations, quotation marks, labels, or negative prompts. Output English only on one line.<|im_end|>
+        <|im_start|>user
+        \(safeSource)<|im_end|>
+        <|im_start|>assistant
+        <think>
+
+        </think>
+
+        """
+        guard let raw = try engine?.complete(prompt: prompt, maximumTokens: 96) else {
+            throw PointVerseError.invalidModelOutput
+        }
+        let translated = (raw.components(separatedBy: "<|im_end|>").first ?? raw)
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'“”‘’")))
+        guard !translated.isEmpty else { throw PointVerseError.invalidModelOutput }
+        return Self.compactImagePrompt(translated)
+    }
+
+    private static func compactImagePrompt(_ value: String) -> String {
+        let oneLine = value
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = oneLine.split(separator: " ")
+        if words.count > 60 { return words.prefix(60).joined(separator: " ") }
+        return String(oneLine.prefix(360))
+    }
+
     private func loadEngine(modelURL: URL) throws {
         guard loadedModelPath != modelURL.path || engine == nil else { return }
         engine = try LlamaEngine(modelURL: modelURL)
@@ -123,20 +172,35 @@ public actor QwenTitleGenerator {
 
 public actor QwenVisionGenerator {
     private let registry: ModelRegistry
+    private var engine: LlamaVisionEngine?
 
     public init(registry: ModelRegistry) { self.registry = registry }
 
-    public func describe(imageURL: URL, localeIdentifier: String) async throws -> String {
+    public func isAvailable() async -> Bool {
+        let modelInstalled = await registry.isInstalled(.qwen3VL2BQ8)
+        let projectorInstalled = await registry.isInstalled(.qwen3VL2BProjectorQ8)
+        return modelInstalled && projectorInstalled
+    }
+
+    public func describe(imageData: Data, localeIdentifier: String) async throws -> String {
         let modelManifest = ModelManifest.qwen3VL2BQ8
         let projectorManifest = ModelManifest.qwen3VL2BProjectorQ8
         guard await registry.isInstalled(modelManifest), await registry.isInstalled(projectorManifest) else {
             throw PointVerseError.modelNotInstalled
         }
-        let engine = try LlamaVisionEngine(
-            modelURL: await registry.installedURL(for: modelManifest),
-            projectorURL: await registry.installedURL(for: projectorManifest)
-        )
-        return try engine.describe(imageURL: imageURL, language: Self.languageName(for: localeIdentifier))
+        if engine == nil {
+            engine = try LlamaVisionEngine(
+                modelURL: await registry.installedURL(for: modelManifest),
+                projectorURL: await registry.installedURL(for: projectorManifest)
+            )
+        }
+        guard let engine else { throw PointVerseError.invalidModelOutput }
+        return try engine.describe(imageData: imageData, language: Self.languageName(for: localeIdentifier))
+    }
+
+    public func releaseResources() {
+        engine = nil
+        PointVerseLog.storage.info("Vision model resources released")
     }
 
     private static func languageName(for identifier: String) -> String {
@@ -161,15 +225,16 @@ private final class LlamaVisionEngine: @unchecked Sendable {
 #endif
         guard let model = llama_model_load_from_file(modelURL.path, modelParameters) else { throw PointVerseError.modelNotInstalled }
         var contextParameters = llama_context_default_params()
-        contextParameters.n_ctx = 8_192
-        contextParameters.n_batch = 1_024
-        contextParameters.n_ubatch = 1_024
+        contextParameters.n_ctx = 4_096
+        contextParameters.n_batch = 512
+        contextParameters.n_ubatch = 512
         guard let context = llama_init_from_model(model, contextParameters) else {
             llama_model_free(model); throw PointVerseError.invalidModelOutput
         }
         var multimodalParameters = mtmd_context_params_default()
         multimodalParameters.use_gpu = true
-        multimodalParameters.image_max_tokens = 256
+        multimodalParameters.image_min_tokens = 64
+        multimodalParameters.image_max_tokens = 128
         guard let multimodal = mtmd_init_from_file(projectorURL.path, model, multimodalParameters),
               mtmd_support_vision(multimodal) else {
             llama_free(context); llama_model_free(model); throw PointVerseError.invalidModelOutput
@@ -185,8 +250,19 @@ private final class LlamaVisionEngine: @unchecked Sendable {
         llama_model_free(model)
     }
 
-    func describe(imageURL: URL, language: String) throws -> String {
-        let wrapper = mtmd_helper_bitmap_init_from_file(multimodal, imageURL.path, false, mtmd_helper_init_opt_default())
+    func describe(imageData: Data, language: String) throws -> String {
+        // The engine is reused across attached photos to avoid reloading 2+ GB
+        // of weights. Each photo must still start with a clean KV cache.
+        llama_memory_clear(llama_get_memory(context), true)
+        let wrapper = imageData.withUnsafeBytes { bytes in
+            mtmd_helper_bitmap_init_from_buf(
+                multimodal,
+                bytes.bindMemory(to: UInt8.self).baseAddress,
+                imageData.count,
+                false,
+                mtmd_helper_init_opt_default()
+            )
+        }
         guard let bitmap = wrapper.bitmap else { throw PointVerseError.invalidModelOutput }
         defer { mtmd_bitmap_free(bitmap) }
         guard let chunks = mtmd_input_chunks_init() else { throw PointVerseError.invalidModelOutput }
@@ -202,7 +278,7 @@ private final class LlamaVisionEngine: @unchecked Sendable {
         }
         guard tokenizeResult == 0 else { throw PointVerseError.invalidModelOutput }
         var position: llama_pos = 0
-        guard mtmd_helper_eval_chunks(multimodal, context, chunks, 0, 0, 1_024, true, &position) == 0 else {
+        guard mtmd_helper_eval_chunks(multimodal, context, chunks, 0, 0, 512, true, &position) == 0 else {
             throw PointVerseError.invalidModelOutput
         }
 

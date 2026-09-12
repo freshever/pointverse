@@ -293,6 +293,13 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
+    public func updateImageText(id: UUID, recognizedText: String?) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "UPDATE point_images SET recognized_text = ? WHERE id = ?",
+                           arguments: [recognizedText, id.uuidString])
+        }
+    }
+
     public func deletePoint(id: PointID) async throws -> String {
         try await writer.write { db in
             guard let path = try String.fetchOne(db, sql: """

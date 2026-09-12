@@ -2,6 +2,8 @@ import PointVerseKit
 import PhotosUI
 import SwiftUI
 import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 
 struct PointDetailView: View {
     @EnvironmentObject private var container: AppContainer
@@ -26,6 +28,9 @@ struct PointDetailView: View {
     @State private var pointImages: [LoadedPointImage] = []
     @State private var isAddingPhotos = false
     @State private var photoError = false
+    @State private var isAnalyzingPhotos = false
+    @State private var visionAvailable = false
+    @State private var photoAnalysisKey: String?
     @Environment(\.appLanguage) private var appLanguage
     let point: PointSummary
 
@@ -37,17 +42,22 @@ struct PointDetailView: View {
                     ScrollView(.horizontal) {
                         HStack(spacing: 12) {
                             ForEach(pointImages) { item in
-                                ZStack(alignment: .topTrailing) {
-                                    Image(uiImage: item.image)
-                                        .resizable().scaledToFill()
-                                        .frame(width: 150, height: 150).clipped()
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    Button(role: .destructive) { removePhoto(item) } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .symbolRenderingMode(.palette)
-                                            .foregroundStyle(.white, .black.opacity(0.65))
+                                VStack(alignment: .leading, spacing: 7) {
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(uiImage: item.image)
+                                            .resizable().scaledToFill()
+                                            .frame(width: 210, height: 160).clipped()
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        Button(role: .destructive) { removePhoto(item) } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .symbolRenderingMode(.palette)
+                                                .foregroundStyle(.white, .black.opacity(0.65))
+                                        }
+                                        .padding(6).buttonStyle(.plain)
                                     }
-                                    .padding(6).buttonStyle(.plain)
+                                    Text(verbatim: item.asset.recognizedText ?? AppLocalization.string("尚未理解这张照片", language: appLanguage))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                        .lineLimit(5).frame(width: 210, alignment: .leading)
                                 }
                             }
                         }
@@ -59,6 +69,19 @@ struct PointDetailView: View {
                 .disabled(isAddingPhotos)
                 if isAddingPhotos { HStack { ProgressView(); AppText("正在保存照片") } }
                 if photoError { AppText("照片保存失败").font(.footnote).foregroundStyle(.red) }
+                if !pointImages.isEmpty {
+                    Button(action: analyzePhotos) {
+                        if isAnalyzingPhotos { HStack { ProgressView(); AppText("正在理解照片") } }
+                        else { Label { AppText("重新理解照片") } icon: { Image(systemName: "eye.circle") } }
+                    }
+                    .disabled(isAnalyzingPhotos || !visionAvailable)
+                    if !visionAvailable {
+                        AppText("请先安装完整的 Qwen3-VL 和视觉投影模型")
+                            .font(.footnote).foregroundStyle(.orange)
+                    } else if let photoAnalysisKey {
+                        AppText(photoAnalysisKey).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
             } header: { AppText("照片") }
 
             Section {
@@ -240,10 +263,12 @@ struct PointDetailView: View {
         var loadedImages: [LoadedPointImage] = []
         for stored in storedImages {
             guard let url = try? await container.imageBlobStore.url(for: stored.relativePath),
-                  let image = UIImage(contentsOfFile: url.path) else { continue }
+                  let data = try? Data(contentsOf: url),
+                  let image = Self.thumbnail(from: data, maxPixelSize: 600) else { continue }
             loadedImages.append(LoadedPointImage(asset: stored, image: image))
         }
         pointImages = loadedImages
+        visionAvailable = await container.visionGenerator.isAvailable()
         if let url = try? await container.blobStore.url(for: loaded.audioRelativePath) {
             player.prepare(url: url)
         }
@@ -340,16 +365,23 @@ struct PointDetailView: View {
             for item in items {
                 do {
                     guard let source = try await item.loadTransferable(type: Data.self),
-                          let uiImage = UIImage(data: source),
-                          let data = uiImage.jpegData(compressionQuality: 0.9) else { throw PointVerseError.invalidModelOutput }
+                          let data = Self.compressedJPEG(from: source),
+                          let analysisData = Self.analysisJPEG(from: source) else { throw PointVerseError.invalidModelOutput }
                     let id = UUID()
                     let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
                     let recognized = try? await container.imageTextRecognizer.recognize(data: data, language: appLanguage)
-                    let storedURL = try await container.imageBlobStore.url(for: stored.relativePath)
-                    let visualDescription = try? await container.visionGenerator.describe(
-                        imageURL: storedURL,
-                        localeIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
-                    )
+                    let visualDescription: String?
+                    do {
+                        visualDescription = try await container.visionGenerator.describe(
+                            imageData: analysisData,
+                            localeIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
+                        )
+                        PointVerseLog.storage.info("Attached photo understood by vision model")
+                    } catch {
+                        visualDescription = nil
+                        let nsError = error as NSError
+                        PointVerseLog.storage.error("Attached photo vision analysis failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+                    }
                     let imageContext = [visualDescription, recognized]
                         .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                         .filter { !$0.isEmpty }.joined(separator: "\n")
@@ -363,6 +395,7 @@ struct PointDetailView: View {
                     }
                 } catch { photoError = true }
             }
+            await container.visionGenerator.releaseResources()
             selectedPhotos = []
             isAddingPhotos = false
             await reload()
@@ -377,9 +410,84 @@ struct PointDetailView: View {
         }
     }
 
+    private func analyzePhotos() {
+        guard visionAvailable, !pointImages.isEmpty else { return }
+        isAnalyzingPhotos = true
+        photoAnalysisKey = nil
+        Task {
+            var successCount = 0
+            for item in pointImages {
+                do {
+                    let url = try await container.imageBlobStore.url(for: item.asset.relativePath)
+                    let data = try Data(contentsOf: url)
+                    guard let analysisData = Self.analysisJPEG(from: data) else { continue }
+                    let description = try await container.visionGenerator.describe(
+                        imageData: analysisData,
+                        localeIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
+                    )
+                    let ocr = try? await container.imageTextRecognizer.recognize(data: data, language: appLanguage)
+                    let context = [description, ocr].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }.joined(separator: "\n")
+                    try await container.database.updateImageText(id: item.id, recognizedText: context)
+                    successCount += 1
+                } catch {
+                    let nsError = error as NSError
+                    PointVerseLog.storage.error("Photo re-analysis failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+                }
+            }
+            await container.visionGenerator.releaseResources()
+            if successCount > 0 {
+                _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
+                photoAnalysisKey = "照片理解完成，已更新点子上下文"
+            } else {
+                photoAnalysisKey = "照片理解失败"
+            }
+            isAnalyzingPhotos = false
+            await reload()
+        }
+    }
+
     private func duration(_ milliseconds: Int) -> String {
         let seconds = milliseconds / 1_000
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private static func compressedJPEG(from data: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        ) else { return nil }
+        CGImageDestinationAddImageFromSource(destination, source, 0, [
+            kCGImageDestinationLossyCompressionQuality: 0.85
+        ] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
+    }
+
+    private static func analysisJPEG(from data: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 1_024,
+                kCGImageSourceShouldCacheImmediately: true
+              ] as CFDictionary) else { return nil }
+        return autoreleasepool { UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.85) }
+    }
+
+    private static func thumbnail(from data: Data, maxPixelSize: Int) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                kCGImageSourceShouldCacheImmediately: true
+              ] as CFDictionary) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
 

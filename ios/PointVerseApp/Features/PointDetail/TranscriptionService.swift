@@ -36,12 +36,14 @@ actor TranscriptionService {
         do {
             let detail = try await repository.pointDetail(id: pointID)
             guard let transcript = detail.effectiveTranscript, !transcript.isEmpty else { return nil }
-            let imageText = try await repository.images(pointID: pointID)
-                .compactMap(\.recognizedText).filter { !$0.isEmpty }.joined(separator: "\n")
+            let imageText = try await repository.images(pointID: pointID).enumerated().compactMap { index, image in
+                guard let text = image.recognizedText, !text.isEmpty else { return nil }
+                return "Photo \(index + 1): " + String(text.prefix(300))
+            }.joined(separator: "\n")
             let conversation = try await repository.conversationMessages(pointID: pointID)
             let language = Self.titleLanguage(languageIdentifier)
             let title = try await titleGenerator.generateTitle(
-                transcript: imageText.isEmpty ? transcript : transcript + "\n\nText found in attached photos:\n" + imageText,
+                transcript: imageText.isEmpty ? transcript : "Attached photos:\n" + imageText + "\n\nVoice-note transcript:\n" + String(transcript.prefix(700)),
                 conversation: conversation,
                 localeIdentifier: language
             )
