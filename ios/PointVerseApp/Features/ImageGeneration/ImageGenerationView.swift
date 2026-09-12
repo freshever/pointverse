@@ -11,6 +11,9 @@ struct ImageGenerationView: View {
     @State private var image: UIImage?
     @State private var translatedPrompt = ""
     @State private var isGenerating = false
+    @State private var generationProgress = 0.0
+    @State private var diffusionStarted = false
+    @State private var isTranslatingPrompt = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var sourceImage: UIImage?
     @State private var recognizedText = ""
@@ -30,18 +33,33 @@ struct ImageGenerationView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(isGenerating || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if isGenerating {
+                    VStack(alignment: .leading, spacing: 5) {
+                        if isTranslatingPrompt {
+                            ProgressView()
+                            AppText("正在生成英文提示词").font(.caption).foregroundStyle(.secondary)
+                        } else if diffusionStarted {
+                            ProgressView(value: generationProgress, total: 1)
+                            Text(verbatim: "\(Int(generationProgress * 100))%")
+                                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        } else {
+                            ProgressView()
+                            AppText("正在加载图片模型").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if !translatedPrompt.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        AppText("实际生图提示词").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(verbatim: translatedPrompt).font(.footnote).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                }
                 if let image {
                     Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 16))
                     Button(action: saveGeneratedImage) {
                         Label { AppText("保存到相册") } icon: { Image(systemName: "square.and.arrow.down") }
                     }
                     .buttonStyle(.bordered)
-                }
-                if !translatedPrompt.isEmpty {
-                    VStack(alignment: .leading, spacing: 5) {
-                        AppText("实际生图提示词").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        Text(verbatim: translatedPrompt).font(.footnote).textSelection(.enabled)
-                    }
                 }
                 if let errorKey { AppText(errorKey).foregroundStyle(.red).font(.footnote) }
                 AppText("图片完全在设备端生成，首次运行可能需要较长时间。")
@@ -72,6 +90,7 @@ struct ImageGenerationView: View {
             .padding()
         }
         .navigationTitle(AppLocalization.string("图片生成", language: appLanguage))
+        .onChange(of: prompt) { _, _ in translatedPrompt = "" }
         .onChange(of: selectedPhoto) { _, item in loadAndRecognize(item) }
         .alert(AppLocalization.string(noticeKey ?? "好", language: appLanguage), isPresented: Binding(
             get: { noticeKey != nil },
@@ -82,26 +101,37 @@ struct ImageGenerationView: View {
     private func generate() {
         let value = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         isGenerating = true
+        generationProgress = 0
+        diffusionStarted = false
+        isTranslatingPrompt = true
         errorKey = nil
         Task {
             do {
                 let localeIdentifier = appLanguage == "system" ? Locale.current.identifier : appLanguage
-                let englishPrompt: String
+                let generationPrompt: String
                 do {
-                    englishPrompt = try await container.promptTranslator.translateImagePromptToEnglish(
+                    generationPrompt = try await container.promptTranslator.translateImagePromptToEnglish(
                         value,
                         localeIdentifier: localeIdentifier
                     )
-                    PointVerseLog.storage.info("Image prompt translated locally before generation")
+                    translatedPrompt = generationPrompt == value ? "" : generationPrompt
                 } catch {
-                    englishPrompt = value
+                    generationPrompt = value
+                    translatedPrompt = ""
                     PointVerseLog.storage.notice("Image prompt translation unavailable; using original prompt")
                 }
-                translatedPrompt = englishPrompt == value ? "" : englishPrompt
-                let url = try await container.imageGenerator.generate(prompt: englishPrompt)
+                isTranslatingPrompt = false
+                let url = try await container.imageGenerator.generate(prompt: generationPrompt) { progress in
+                    Task { @MainActor in
+                        diffusionStarted = true
+                        generationProgress = progress
+                    }
+                }
                 image = UIImage(contentsOfFile: url.path)
+                generationProgress = 1
             } catch PointVerseError.modelNotInstalled { errorKey = "请先在模型页下载图片模型" }
             catch { errorKey = "图片生成失败" }
+            isTranslatingPrompt = false
             isGenerating = false
         }
     }

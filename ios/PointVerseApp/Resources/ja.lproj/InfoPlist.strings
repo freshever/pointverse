@@ -1,2 +1,3 @@
 "NSMicrophoneUsageDescription" = "PointVerseは音声アイデアを保存するためにマイクへのアクセスが必要です。";
 "NSSpeechRecognitionUsageDescription" = "PointVerseは端末上の音声認識を使って元の音声を検索可能な文字に変換します。";
+"NSCameraUsageDescription" = "PointVerseはアイデアの写真を撮影して記録するためにカメラへのアクセスが必要です。";

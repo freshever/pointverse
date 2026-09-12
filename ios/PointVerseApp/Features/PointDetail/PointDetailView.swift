@@ -25,6 +25,7 @@ struct PointDetailView: View {
     @State private var voiceInputFailed = false
     @State private var confirmingDelete = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var showingCamera = false
     @State private var cropSource: PhotoCropSource?
     @State private var pointImages: [LoadedPointImage] = []
     @State private var isAddingPhotos = false
@@ -78,6 +79,15 @@ struct PointDetailView: View {
                 selectedPhotos = []
                 addPhoto(sourceData: source.originalData, analysisData: analysisData)
             })
+        }
+        .fullScreenCover(isPresented: $showingCamera) {
+            CameraCaptureView { image in
+                showingCamera = false
+                prepareCapturedPhoto(image)
+            } onCancel: {
+                showingCamera = false
+            }
+            .ignoresSafeArea()
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -225,8 +235,17 @@ struct PointDetailView: View {
     }
 
     private func composer(addPhotosTitle: String) -> some View {
-        HStack(spacing: 9) {
-            PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 1, matching: .images) {
+        let choosePhotosTitle = AppLocalization.string("从相册选择", language: appLanguage)
+        return HStack(spacing: 9) {
+            Menu {
+                Button { showingCamera = true } label: {
+                    Label { AppText("拍照") } icon: { Image(systemName: "camera") }
+                }
+                .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 1, matching: .images) {
+                    Label { Text(verbatim: choosePhotosTitle) } icon: { Image(systemName: "photo.on.rectangle") }
+                }
+            } label: {
                 Image(systemName: "photo.badge.plus").font(.title3)
             }
             .disabled(isAddingPhotos)
@@ -384,6 +403,15 @@ struct PointDetailView: View {
         }
     }
 
+    private func prepareCapturedPhoto(_ image: UIImage) {
+        guard let data = image.jpegData(compressionQuality: 0.95),
+              let preview = Self.thumbnail(from: data, maxPixelSize: 2_048) else {
+            photoError = true
+            return
+        }
+        cropSource = PhotoCropSource(originalData: data, preview: preview)
+    }
+
     private func addPhoto(sourceData source: Data, analysisData: Data) {
         isAddingPhotos = true
         photoError = false
@@ -513,6 +541,40 @@ struct PointDetailView: View {
                 kCGImageSourceShouldCacheImmediately: true
               ] as CFDictionary) else { return nil }
         return UIImage(cgImage: cgImage)
+    }
+}
+
+private struct CameraCaptureView: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraCaptureView
+        init(parent: CameraCaptureView) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            guard let image = info[.originalImage] as? UIImage else {
+                parent.onCancel()
+                return
+            }
+            parent.onCapture(image)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.onCancel()
+        }
     }
 }
 

@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>点界需要麦克风权限来保存你的语音想法。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>点界需要相机权限来拍摄并记录想法照片。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>点界需要相册权限来保存你生成的图片。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

@@ -108,7 +108,7 @@ public actor QwenTitleGenerator {
             .replacingOccurrences(of: "<|im_end|>", with: "")
         let prompt = """
         <|im_start|>system
-        Rewrite the user's image request as a vivid, concise English Stable Diffusion prompt. Preserve every subject, action, composition, style, color, lighting, mood, and text requirement. Do not add explanations, quotation marks, labels, or negative prompts. Output English only on one line.<|im_end|>
+        Rewrite the user's image request as a concise English Stable Diffusion prompt of at most 40 words. State the main subject first, then a clear camera angle, framing, subject placement, environment, style, lighting, and color. For people or animals, describe a natural pose and visible body parts unambiguously. Avoid conflicting styles and repeated quality adjectives. Do not add explanations, quotation marks, labels, or negative prompts. Output English only on one line.<|im_end|>
         <|im_start|>user
         \(safeSource)<|im_end|>
         <|im_start|>assistant
@@ -117,7 +117,7 @@ public actor QwenTitleGenerator {
         </think>
 
         """
-        guard let raw = try engine?.complete(prompt: prompt, maximumTokens: 96) else {
+        guard let raw = try engine?.complete(prompt: prompt, maximumTokens: 64) else {
             throw PointVerseError.invalidModelOutput
         }
         let translated = (raw.components(separatedBy: "<|im_end|>").first ?? raw)
@@ -131,8 +131,8 @@ public actor QwenTitleGenerator {
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let words = oneLine.split(separator: " ")
-        if words.count > 60 { return words.prefix(60).joined(separator: " ") }
-        return String(oneLine.prefix(360))
+        if words.count > 40 { return words.prefix(40).joined(separator: " ") }
+        return String(oneLine.prefix(280))
     }
 
     private func loadEngine(modelURL: URL) throws {

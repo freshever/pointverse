@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import SwiftUI
 import UIKit
 import PointVerseKit
@@ -11,12 +12,27 @@ struct CaptureView: View {
     @State private var isPressingRecord = false
     @State private var recordingStartTask: Task<Void, Never>?
     @State private var activeLocaleIdentifier: String?
+    @StateObject private var camera = CameraFrameSampler()
+    @State private var cameraEnabled = false
+    @State private var frameReview: CapturedFrameReview?
     @AppStorage("captureLanguage") private var captureLanguage = ""
     @Environment(\.appLanguage) private var appLanguage
 
     var body: some View {
         VStack(spacing: 28) {
             Spacer()
+            if cameraEnabled {
+                CameraPreview(session: camera.session)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(3 / 4, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
+                    .overlay(alignment: .topTrailing) {
+                        Button { toggleCamera() } label: {
+                            Image(systemName: "xmark.circle.fill").font(.title2)
+                                .symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
+                        }.padding(10)
+                    }
+            }
             AppText(state.title)
                 .font(.title2.weight(.semibold))
             if state == .recording {
@@ -39,6 +55,13 @@ struct CaptureView: View {
             }
             .pickerStyle(.menu)
             .disabled(state == .recording || state == .saving)
+
+            if !cameraEnabled {
+                Button { toggleCamera() } label: {
+                    Label { AppText("同时拍摄") } icon: { Image(systemName: "camera") }
+                }
+                .disabled(state == .recording || state == .saving)
+            }
 
             ZStack {
                 Circle()
@@ -64,6 +87,7 @@ struct CaptureView: View {
             if state == .recording {
                 Button(role: .cancel) {
                     Task {
+                        camera.cancelCollecting()
                         await container.captureUseCase.cancel()
                         activeLocaleIdentifier = nil
                         state = .idle
@@ -89,6 +113,15 @@ struct CaptureView: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+        .sheet(item: $frameReview) { review in
+            FrameReviewView(review: review) { selected in
+                frameReview = nil
+                finishCaptureWithFrames(pointID: review.pointID, frames: selected, localeIdentifier: review.localeIdentifier)
+            } onSkip: {
+                frameReview = nil
+                Task { await container.transcriptionService.transcribe(pointID: review.pointID) }
+            }
+        }
     }
 
     private func handlePressing(_ pressing: Bool) {
@@ -106,6 +139,7 @@ struct CaptureView: View {
         recordingStartTask = Task {
             do {
                 elapsed = 0
+                if cameraEnabled { camera.beginCollecting() }
                 try await container.captureUseCase.start()
                 startedAt = Date()
                 state = .recording
@@ -113,10 +147,12 @@ struct CaptureView: View {
                     finishRecording()
                 }
             } catch PointVerseError.microphonePermissionDenied {
+                camera.cancelCollecting()
                 startedAt = nil
                 activeLocaleIdentifier = nil
                 state = .permissionDenied
             } catch let error as PointVerseError {
+                camera.cancelCollecting()
                 startedAt = nil
                 activeLocaleIdentifier = nil
                 failureKey = switch error {
@@ -128,6 +164,7 @@ struct CaptureView: View {
                 }
                 state = .failed
             } catch {
+                camera.cancelCollecting()
                 startedAt = nil
                 activeLocaleIdentifier = nil
                 failureKey = "录音启动失败"
@@ -143,10 +180,20 @@ struct CaptureView: View {
             do {
                 let localeIdentifier = activeLocaleIdentifier ?? resolvedCaptureLocaleIdentifier
                 let pointID = try await container.captureUseCase.finish(localeIdentifier: localeIdentifier)
+                let frames = cameraEnabled ? camera.endCollecting(maximumCount: 5) : []
+                if cameraEnabled {
+                    camera.stopPreview()
+                    cameraEnabled = false
+                }
                 startedAt = nil
                 activeLocaleIdentifier = nil
                 state = .saved
-                Task { await container.transcriptionService.transcribe(pointID: pointID) }
+                if frames.isEmpty {
+                    Task { await container.transcriptionService.transcribe(pointID: pointID) }
+                } else {
+                    frameReview = CapturedFrameReview(pointID: pointID, localeIdentifier: localeIdentifier,
+                                                      frames: frames.map { CapturedFrame(data: $0) })
+                }
             } catch let error as PointVerseError {
                 startedAt = nil
                 activeLocaleIdentifier = nil
@@ -162,6 +209,41 @@ struct CaptureView: View {
                 activeLocaleIdentifier = nil
                 failureKey = "录音启动失败"
                 state = .failed
+            }
+        }
+    }
+
+    private func toggleCamera() {
+        cameraEnabled.toggle()
+        if cameraEnabled {
+            Task {
+                if !(await camera.startPreview()) { cameraEnabled = false }
+            }
+        } else {
+            camera.stopPreview()
+        }
+    }
+
+    private func finishCaptureWithFrames(pointID: PointID, frames: [CapturedFrame], localeIdentifier: String) {
+        Task {
+            var assets: [(UUID, Data)] = []
+            for frame in frames {
+                let id = UUID()
+                guard let stored = try? await container.imageBlobStore.saveJPEG(frame.data, assetID: id) else { continue }
+                try? await container.database.addImage(pointID: pointID, id: id, relativePath: stored.relativePath,
+                                                       sha256: stored.sha256, byteCount: stored.byteCount, recognizedText: nil)
+                assets.append((id, frame.data))
+            }
+            await container.transcriptionService.transcribe(pointID: pointID)
+            for (id, data) in assets {
+                guard let description = try? await container.visionGenerator.describe(
+                    imageData: data,
+                    localeIdentifier: localeIdentifier
+                ) else { continue }
+                try? await container.database.updateImageText(id: id, recognizedText: description)
+            }
+            if !assets.isEmpty {
+                _ = await container.transcriptionService.deriveTitle(pointID: pointID, languageIdentifier: appLanguage)
             }
         }
     }
@@ -178,6 +260,158 @@ struct CaptureView: View {
             }
         }
         return Locale.current.identifier
+    }
+}
+
+private struct CapturedFrame: Identifiable {
+    let id = UUID()
+    let data: Data
+    var image: UIImage? { UIImage(data: data) }
+}
+
+private struct CapturedFrameReview: Identifiable {
+    let id = UUID()
+    let pointID: PointID
+    let localeIdentifier: String
+    let frames: [CapturedFrame]
+}
+
+private struct FrameReviewView: View {
+    @Environment(\.appLanguage) private var appLanguage
+    let review: CapturedFrameReview
+    let onConfirm: ([CapturedFrame]) -> Void
+    let onSkip: () -> Void
+    @State private var selected: Set<UUID>
+
+    init(review: CapturedFrameReview, onConfirm: @escaping ([CapturedFrame]) -> Void, onSkip: @escaping () -> Void) {
+        self.review = review
+        self.onConfirm = onConfirm
+        self.onSkip = onSkip
+        _selected = State(initialValue: Set(review.frames.map(\.id)))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    ForEach(review.frames) { frame in
+                        if let image = frame.image {
+                            Image(uiImage: image).resizable().scaledToFill()
+                                .frame(height: 190).clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .overlay(alignment: .topTrailing) {
+                                    Image(systemName: selected.contains(frame.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.title2).foregroundStyle(selected.contains(frame.id) ? .blue : .white)
+                                        .padding(8)
+                                }
+                                .opacity(selected.contains(frame.id) ? 1 : 0.45)
+                                .onTapGesture {
+                                    if selected.contains(frame.id) { selected.remove(frame.id) } else { selected.insert(frame.id) }
+                                }
+                        }
+                    }
+                }.padding()
+            }
+            .navigationTitle(AppLocalization.string("选择有价值的画面", language: appLanguage))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(action: onSkip) { AppText("不保留照片") } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { onConfirm(review.frames.filter { selected.contains($0.id) }) } label: { AppText("保留所选") }
+                }
+            }
+        }
+        .interactiveDismissDisabled()
+    }
+}
+
+private struct CameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+    func makeUIView(context: Context) -> PreviewView { let view = PreviewView(); view.layerView.session = session; return view }
+    func updateUIView(_ uiView: PreviewView, context: Context) {}
+
+    final class PreviewView: UIView {
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var layerView: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+        override init(frame: CGRect) { super.init(frame: frame); layerView.videoGravity = .resizeAspectFill }
+        required init?(coder: NSCoder) { fatalError() }
+    }
+}
+
+private final class CameraFrameSampler: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+    let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "pointverse.camera.session")
+    private let outputQueue = DispatchQueue(label: "pointverse.camera.frames")
+    private let lock = NSLock()
+    private var configured = false
+    private var collecting = false
+    private var lastFrameTime: CFTimeInterval = 0
+    private var frames: [Data] = []
+    private let context = CIContext(options: [.cacheIntermediates: false])
+
+    func startPreview() async -> Bool {
+        let granted: Bool
+        if AVCaptureDevice.authorizationStatus(for: .video) == .authorized {
+            granted = true
+        } else {
+            granted = await AVCaptureDevice.requestAccess(for: .video)
+        }
+        guard granted else { return false }
+        return await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    if !self.configured { try self.configure() }
+                    if !self.session.isRunning { self.session.startRunning() }
+                    continuation.resume(returning: true)
+                } catch { continuation.resume(returning: false) }
+            }
+        }
+    }
+
+    func stopPreview() { sessionQueue.async { if self.session.isRunning { self.session.stopRunning() } } }
+    func beginCollecting() { lock.withLock { frames.removeAll(keepingCapacity: true); collecting = true; lastFrameTime = 0 } }
+    func cancelCollecting() { lock.withLock { collecting = false; frames.removeAll() } }
+
+    func endCollecting(maximumCount: Int) -> [Data] {
+        lock.withLock {
+            collecting = false
+            guard frames.count > maximumCount else { return frames }
+            return (0..<maximumCount).map { frames[$0 * (frames.count - 1) / max(1, maximumCount - 1)] }
+        }
+    }
+
+    private func configure() throws {
+        session.beginConfiguration(); defer { session.commitConfiguration() }
+        session.sessionPreset = .hd1280x720
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else { throw PointVerseError.invalidModelOutput }
+        let input = try AVCaptureDeviceInput(device: device)
+        guard session.canAddInput(input) else { throw PointVerseError.invalidModelOutput }
+        session.addInput(input)
+        let output = AVCaptureVideoDataOutput()
+        output.alwaysDiscardsLateVideoFrames = true
+        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        output.setSampleBufferDelegate(self, queue: outputQueue)
+        guard session.canAddOutput(output) else { throw PointVerseError.invalidModelOutput }
+        session.addOutput(output)
+        configured = true
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        let now = CACurrentMediaTime()
+        let shouldCapture = lock.withLock { () -> Bool in
+            guard collecting, frames.count < 12, now - lastFrameTime >= 1.2 else { return false }
+            lastFrameTime = now
+            return true
+        }
+        guard shouldCapture, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        autoreleasepool {
+            let source = CIImage(cvPixelBuffer: buffer).oriented(.right)
+            let scale = min(1, 512 / max(source.extent.width, source.extent.height))
+            let resized = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            guard let cgImage = context.createCGImage(resized, from: resized.extent),
+                  let data = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.85) else { return }
+            lock.withLock { if collecting { frames.append(data) } }
+        }
     }
 }
 

@@ -1,2 +1,3 @@
 "NSMicrophoneUsageDescription" = "點界需要麥克風權限來儲存你的語音想法。";
 "NSSpeechRecognitionUsageDescription" = "點界使用裝置端語音辨識將原音轉成可搜尋文字。";
+"NSCameraUsageDescription" = "點界需要相機權限來拍攝並記錄想法照片。";
