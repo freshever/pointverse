@@ -25,6 +25,7 @@ struct PointDetailView: View {
     @State private var voiceInputFailed = false
     @State private var confirmingDelete = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var cropSource: PhotoCropSource?
     @State private var pointImages: [LoadedPointImage] = []
     @State private var isAddingPhotos = false
     @State private var photoError = false
@@ -63,7 +64,7 @@ struct PointDetailView: View {
                         }
                     }
                 }
-                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 10, matching: .images) {
+                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 1, matching: .images) {
                     Label(addPhotosTitle, systemImage: "photo.badge.plus")
                 }
                 .disabled(isAddingPhotos)
@@ -232,7 +233,17 @@ struct PointDetailView: View {
         }
         .navigationTitle(currentTitle.isEmpty ? AppLocalization.string("语音想法", language: appLanguage) : currentTitle)
         .task { await reload() }
-        .onChange(of: selectedPhotos) { _, items in addPhotos(items) }
+        .onChange(of: selectedPhotos) { _, items in prepareCrop(items.first) }
+        .sheet(item: $cropSource) { source in
+            SquarePhotoCropView(image: source.preview, onCancel: {
+                cropSource = nil
+                selectedPhotos = []
+            }, onConfirm: { analysisData in
+                cropSource = nil
+                selectedPhotos = []
+                addPhoto(sourceData: source.originalData, analysisData: analysisData)
+            })
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }
@@ -357,16 +368,25 @@ struct PointDetailView: View {
         }
     }
 
-    private func addPhotos(_ items: [PhotosPickerItem]) {
-        guard !items.isEmpty else { return }
+    private func prepareCrop(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let preview = Self.thumbnail(from: data, maxPixelSize: 2_048) else {
+                photoError = true
+                selectedPhotos = []
+                return
+            }
+            cropSource = PhotoCropSource(originalData: data, preview: preview)
+        }
+    }
+
+    private func addPhoto(sourceData source: Data, analysisData: Data) {
         isAddingPhotos = true
         photoError = false
         Task {
-            for item in items {
                 do {
-                    guard let source = try await item.loadTransferable(type: Data.self),
-                          let data = Self.compressedJPEG(from: source),
-                          let analysisData = Self.analysisJPEG(from: source) else { throw PointVerseError.invalidModelOutput }
+                    guard let data = Self.compressedJPEG(from: source) else { throw PointVerseError.invalidModelOutput }
                     let id = UUID()
                     let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
                     let recognized = try? await container.imageTextRecognizer.recognize(data: data, language: appLanguage)
@@ -394,9 +414,7 @@ struct PointDetailView: View {
                         throw error
                     }
                 } catch { photoError = true }
-            }
             await container.visionGenerator.releaseResources()
-            selectedPhotos = []
             isAddingPhotos = false
             await reload()
         }
@@ -495,4 +513,10 @@ private struct LoadedPointImage: Identifiable {
     let asset: PointImage
     let image: UIImage
     var id: UUID { asset.id }
+}
+
+private struct PhotoCropSource: Identifiable {
+    let id = UUID()
+    let originalData: Data
+    let preview: UIImage
 }

@@ -27,6 +27,7 @@
 		8846D339929A6F0653028413 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */; };
 		8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */; };
 		8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
+		94435D8810214C8FC7F63198 /* SquarePhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */; };
 		95954644EAA1D1837CD48006 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = B430E296F7E046097A251A8A /* llama */; };
 		A9698B83131CD1FF7285C3B0 /* WhisperAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */; };
 		B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */; };
@@ -98,6 +99,7 @@
 		9EA9DD5DE4312BC132DD0DB6 /* ConversationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationService.swift; sourceTree = "<group>"; };
 		A8D65E3405B008E1C081E305 /* QwenAdapter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = QwenAdapter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointDetailView.swift; sourceTree = "<group>"; };
+		AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquarePhotoCropView.swift; sourceTree = "<group>"; };
 		B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
 		BB8FC5C9693E7897ADE1AD80 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C49D567E2157613FF575EBB9 /* PointListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointListView.swift; sourceTree = "<group>"; };
@@ -178,6 +180,7 @@
 				9EA9DD5DE4312BC132DD0DB6 /* ConversationService.swift */,
 				A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */,
 				420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */,
+				AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */,
 				57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */,
 				FA7E1B00DBCA6497FE780965 /* WhisperRecognizer.swift */,
 			);
@@ -430,6 +433,7 @@
 				B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */,
 				5243C3E32851018575973FBB /* PointListView.swift in Sources */,
 				F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */,
+				94435D8810214C8FC7F63198 /* SquarePhotoCropView.swift in Sources */,
 				4CFADA315C11FC4F77AB7B95 /* SystemAudioRecorder.swift in Sources */,
 				7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */,
 			);
