@@ -154,7 +154,7 @@ public enum ModelSelection {
     public static let imageDefaultsKey = "selectedImageModelID"
     public static let disabledLanguageModelID = "disabled"
     public static let speechModels: [ModelManifest] = [.whisperTinyQ5, .whisperBaseQ5, .whisperSmallQ5]
-    public static let languageModels: [ModelManifest] = [.qwen3_0_6BQ8, .qwen3_1_7BQ8]
+    public static let languageModels: [ModelManifest] = [.qwen3_0_6BQ8, .qwen3_1_7BQ8, .qwen3VL2BQ8]
     public static let imageModels: [ModelManifest] = [.stableDiffusion21Base6Bit]
     public static let visionModels: [ModelManifest] = [.qwen3VL2BQ8, .qwen3VL2BProjectorQ8]
 

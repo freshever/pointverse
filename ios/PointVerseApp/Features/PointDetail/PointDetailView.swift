@@ -26,6 +26,7 @@ struct PointDetailView: View {
     @State private var voiceInputFailed = false
     @State private var confirmingDelete = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var showingPhotoPicker = false
     @State private var showingCamera = false
     @State private var cropSource: PhotoCropSource?
     @State private var pointImages: [LoadedPointImage] = []
@@ -81,6 +82,12 @@ struct PointDetailView: View {
             Task { await reload() }
         }
         .onChange(of: selectedPhotos) { _, items in prepareCrop(items.first) }
+        .photosPicker(
+            isPresented: $showingPhotoPicker,
+            selection: $selectedPhotos,
+            maxSelectionCount: 1,
+            matching: .images
+        )
         .sheet(item: $cropSource) { source in
             SquarePhotoCropView(image: source.preview, onCancel: {
                 cropSource = nil
@@ -229,8 +236,19 @@ struct PointDetailView: View {
                 }
                 .padding(7).buttonStyle(.plain)
             }
-            Text(verbatim: item.asset.recognizedText ?? AppLocalization.string("尚未理解这张照片", language: appLanguage))
-                .font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled)
+            if let recognizedText = item.asset.recognizedText, !recognizedText.isEmpty {
+                Text(verbatim: recognizedText)
+                    .font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled)
+            } else if visionAvailable || isAnalyzingPhotos {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small)
+                    AppText("正在理解这张照片")
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                AppText("尚未理解这张照片")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
         }
         .padding(10)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -269,7 +287,7 @@ struct PointDetailView: View {
                     Label { AppText("拍照") } icon: { Image(systemName: "camera") }
                 }
                 .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
-                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 1, matching: .images) {
+                Button { showingPhotoPicker = true } label: {
                     Label { Text(verbatim: choosePhotosTitle) } icon: { Image(systemName: "photo.on.rectangle") }
                 }
             } label: {

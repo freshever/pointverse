@@ -93,13 +93,22 @@ struct ModelSettingsView: View {
     }
 
     private func languageName(_ manifest: ModelManifest) -> String {
-        manifest.id == ModelManifest.qwen3_1_7BQ8.id ? "Qwen3 1.7B Q8_0" : "Qwen3 0.6B Q8_0"
+        switch manifest.id {
+        case ModelManifest.qwen3_1_7BQ8.id: return "Qwen3 1.7B Q8_0"
+        case ModelManifest.qwen3VL2BQ8.id: return "Qwen3-VL 2B Q8_0"
+        default: return "Qwen3 0.6B Q8_0"
+        }
     }
 
     private func languageExplanation(_ manifest: ModelManifest) -> String {
-        manifest.id == ModelManifest.qwen3_1_7BQ8.id
-            ? "标题和对话质量更高，需要较新的设备并占用更多内存。"
-            : "体积较小、速度较快，适合日常标题和简短对话。"
+        switch manifest.id {
+        case ModelManifest.qwen3_1_7BQ8.id:
+            return "标题和对话质量更高，需要较新的设备并占用更多内存。"
+        case ModelManifest.qwen3VL2BQ8.id:
+            return "同时用于图片理解和本地整理；整理纯文本时不加载视觉投影文件。"
+        default:
+            return "体积较小、速度较快，适合日常标题和简短对话。"
+        }
     }
 
     private func metadata(_ manifest: ModelManifest) -> String {

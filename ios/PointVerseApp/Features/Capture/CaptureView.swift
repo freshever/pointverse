@@ -13,27 +13,41 @@ struct CaptureView: View {
     @State private var recordingStartTask: Task<Void, Never>?
     @State private var activeLocaleIdentifier: String?
     @StateObject private var camera = CameraFrameSampler()
-    @State private var cameraEnabled = false
+    @AppStorage("captureCameraEnabled") private var cameraEnabled = true
     @State private var frameReview: CapturedFrameReview?
     @State private var completedPoint: PointSummary?
     @AppStorage("captureLanguage") private var captureLanguage = ""
     @Environment(\.appLanguage) private var appLanguage
 
     var body: some View {
-        VStack(spacing: 28) {
-            Spacer()
+        ZStack {
             if cameraEnabled {
                 CameraPreview(session: camera.session)
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(3 / 4, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 22))
-                    .overlay(alignment: .topTrailing) {
-                        Button { toggleCamera() } label: {
-                            Image(systemName: "xmark.circle.fill").font(.title2)
-                                .symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
-                        }.padding(10)
-                    }
+                    .ignoresSafeArea()
+                LinearGradient(
+                    colors: [.black.opacity(0.5), .black.opacity(0.12), .black.opacity(0.48)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            } else {
+                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             }
+
+            VStack(spacing: 28) {
+            TimelineView(.periodic(from: .now, by: 60)) { timeline in
+                VStack(spacing: 3) {
+                    Text(timeline.date.formatted(date: .long, time: .omitted))
+                        .font(.headline)
+                    Text(timeline.date.formatted(date: .omitted, time: .shortened))
+                        .font(.title3.monospacedDigit().weight(.medium))
+                }
+                .foregroundStyle(.secondary)
+                .environment(\.locale, captureDisplayLocale)
+                .accessibilityElement(children: .combine)
+            }
+
+            Spacer()
             AppText(state.title)
                 .font(.title2.weight(.semibold))
             if state == .recording {
@@ -57,11 +71,18 @@ struct CaptureView: View {
             .pickerStyle(.menu)
             .disabled(state == .recording || state == .saving)
 
-            if !cameraEnabled {
-                Button { toggleCamera() } label: {
-                    Label { AppText("同时拍摄") } icon: { Image(systemName: "camera") }
+            Toggle(isOn: $cameraEnabled) {
+                Label { AppText("同时拍摄") } icon: { Image(systemName: "camera") }
+            }
+            .tint(.indigo)
+            .disabled(state == .recording || state == .saving)
+            .onChange(of: cameraEnabled) { _, enabled in
+                if enabled {
+                    startCameraPreview()
+                } else {
+                    camera.stopPreview()
+                    camera.cancelCollecting()
                 }
-                .disabled(state == .recording || state == .saving)
             }
 
             ZStack {
@@ -108,9 +129,17 @@ struct CaptureView: View {
                 }
             }
             Spacer()
+            }
+            .padding(24)
         }
-        .padding(24)
+        .preferredColorScheme(cameraEnabled ? .dark : nil)
         .navigationTitle(AppLocalization.string("点界", language: appLanguage))
+        .onAppear {
+            if cameraEnabled { startCameraPreview() }
+        }
+        .onDisappear {
+            camera.stopPreview()
+        }
         .task(id: startedAt) {
             guard let startedAt else { return }
             while !Task.isCancelled {
@@ -196,7 +225,6 @@ struct CaptureView: View {
                 let frames = cameraEnabled ? camera.endCollecting(maximumCount: 5) : []
                 if cameraEnabled {
                     camera.stopPreview()
-                    cameraEnabled = false
                 }
                 startedAt = nil
                 activeLocaleIdentifier = nil
@@ -236,14 +264,9 @@ struct CaptureView: View {
         )
     }
 
-    private func toggleCamera() {
-        cameraEnabled.toggle()
-        if cameraEnabled {
-            Task {
-                if !(await camera.startPreview()) { cameraEnabled = false }
-            }
-        } else {
-            camera.stopPreview()
+    private func startCameraPreview() {
+        Task {
+            if !(await camera.startPreview()) { cameraEnabled = false }
         }
     }
 
@@ -298,6 +321,11 @@ struct CaptureView: View {
             }
         }
         return Locale.current.identifier
+    }
+
+    private var captureDisplayLocale: Locale {
+        guard appLanguage != "system", !appLanguage.isEmpty else { return .current }
+        return Locale(identifier: appLanguage)
     }
 }
 

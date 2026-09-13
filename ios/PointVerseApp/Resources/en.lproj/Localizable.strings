@@ -143,6 +143,7 @@
 "请先安装语言模型以生成英文提示词" = "Install a language model to prepare the English prompt";
 "英文提示词生成失败" = "Could not prepare the English prompt";
 "尚未理解这张照片" = "This photo has not been analyzed yet";
+"正在理解这张照片" = "Analyzing this photo";
 "正在理解照片" = "Analyzing photos";
 "重新理解照片" = "Analyze photos again";
 "请先安装完整的 Qwen3-VL 和视觉投影模型" = "Install both Qwen3-VL and its vision projector first";
