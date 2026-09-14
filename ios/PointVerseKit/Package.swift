@@ -8,7 +8,7 @@ let package = Package(
         .library(name: "PointVerseKit", targets: ["PointVerseKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.10.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.8.0")
     ],
     targets: [
         .target(

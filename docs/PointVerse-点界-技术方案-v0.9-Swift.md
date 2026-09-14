@@ -195,6 +195,158 @@ transferring → retryScheduled | rejected
 - 回执丢失：Watch 可以重传；iPhone 幂等返回既有导入结果。
 - 位置拒绝：`location` 为空并记录 `permissionDenied` 采集状态，不阻塞音频。
 
+### 6.3 Watch 首版范围与职责边界
+
+Apple Watch 首版只承担**主动、短时、可靠的语音捕获**，不在手表执行 Whisper、Qwen、视觉理解或图片生成。所有转写、标题生成、搜索索引与后续对话仍由 iPhone 完成，以控制手表的包体、内存、耗电和发热。
+
+首版必须支持：
+
+- 与 iPhone 首页一致的 `Capture／记录` 心智：按住开始录音，松开结束并保存。
+- 单段录音建议限制为 5–60 秒；取消不产生 Capture。
+- 手机离线、未启动或暂时不可达时，原音仍先保存在 Watch。
+- 最近记录显示 `已保存到手表／等待同步／传输中／已到达 iPhone／同步失败` 等事实状态。
+- 保存成功给予触觉反馈，但只有文件和 manifest 均落盘后才能反馈成功。
+- 可选择录音语言；位置作为后续可选上下文，不进入首版阻断范围。
+
+首版不做：
+
+- Watch 端转写、标题生成、聊天、图片或显影。
+- 后台持续监听或自动开始录音。
+- 依赖即时可达性的远程录音控制。
+- complication、Widget、Siri／快捷指令和 Action Button；这些在可靠传输通过后单独立项。
+
+### 6.4 Watch 本地记录与共享协议
+
+每次录音生成稳定的 `captureId`，并在 Watch 沙盒中形成音频与 manifest 两个原件：
+
+```text
+Application Support/PointVerseWatch/Captures/{captureId}/
+├── audio.m4a
+└── manifest.json
+```
+
+共享协议放在 `PointVerseKit` 的轻量模块中，只包含 `Codable + Sendable` 值类型，不依赖 GRDB、SwiftUI 或任何模型运行时：
+
+```swift
+public struct WatchCaptureManifest: Codable, Sendable {
+    public let schemaVersion: Int
+    public let captureID: UUID
+    public let capturedAt: Date
+    public let localeIdentifier: String
+    public let durationMilliseconds: Int
+    public let byteCount: Int64
+    public let sha256: String
+}
+
+public enum WatchImportResult: String, Codable, Sendable {
+    case imported
+    case duplicate
+    case rejected
+}
+
+public struct WatchImportReceipt: Codable, Sendable {
+    public let captureID: UUID
+    public let result: WatchImportResult
+    public let importedAt: Date
+    public let rejectionCode: String?
+}
+```
+
+Watch 保存状态：
+
+```text
+recording → committing → savedOnWatch → queued → transferring
+                                     ↘ waitingForConnection
+
+transferring → importedOnPhone → acknowledged → eligibleForCleanup
+transferring → queued | rejected
+```
+
+`captureId` 在整个生命周期保持不变。传输重试不得重新生成 ID；Watch 在收到 `imported` 或 `duplicate` 业务回执之前保留原音。
+
+### 6.5 iPhone 幂等导入
+
+Watch 使用 `WCSession.transferFile(_:metadata:)` 发送音频与 manifest 元数据。`sendMessage` 只可用于双方在线时的即时状态提示，不能承担音频的可靠交付。
+
+iPhone 在 `WCSessionDelegate` 收到文件后必须：
+
+1. 立即将系统提供的临时文件复制到 App 自己的 staging 目录，不能在 delegate 返回后继续依赖临时 URL。
+2. 校验 `schemaVersion`、必填字段、文件长度与 SHA-256。
+3. 使用 `captureId` 作为现有 `VoiceCaptureCommand.operationID`，复用 `messages.operation_id UNIQUE` 约束完成幂等事务导入。
+4. 首次成功返回 `imported`；相同 `captureId + sha256` 再次到达返回 `duplicate`；相同 `captureId` 但哈希不同则拒绝并隔离审查。
+5. 数据库提交成功后才启动现有 Whisper 转写和 Qwen 标题链路。
+6. 通过 `transferUserInfo` 向 Watch 发送可靠业务回执；回执丢失时允许 Watch 重传，iPhone 必须再次返回既有结果。
+
+建议增加迁移表，记录来源、冲突与回执事实：
+
+```sql
+CREATE TABLE watch_imports (
+    capture_id TEXT PRIMARY KEY NOT NULL,
+    point_id TEXT REFERENCES points(id) ON DELETE CASCADE,
+    source_device_id TEXT,
+    audio_sha256 TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('importing', 'imported', 'rejected')),
+    rejection_code TEXT,
+    captured_at REAL NOT NULL,
+    imported_at REAL
+);
+```
+
+`VoiceCaptureCommand` 同时增加 `sourceDevice` 与明确的 `capturedAt`。列表时间使用实际捕获时间，不使用手机收到文件的时间。
+
+### 6.6 工程结构与依赖约束
+
+在现有 `ios/` 工程中新增 Watch target，建议结构如下：
+
+```text
+ios/
+├── PointVerseWatchApp
+│   ├── App
+│   ├── Capture
+│   ├── History
+│   ├── Storage
+│   └── Connectivity
+├── PointVerseApp
+│   └── WatchImport
+└── PointVerseKit
+    └── WatchTransfer
+```
+
+- `PointVerseWatchApp` 只依赖共享协议、AVFAudio、WatchConnectivity 和轻量文件存储。
+- Watch target 不得链接 GRDB、whisper.cpp、llama.cpp、Stable Diffusion 或视觉投影框架。
+- iPhone 的 `WatchImportCoordinator` 负责回调桥接、校验、文件提交和派生调度；WatchConnectivity delegate 不直接操作 SwiftUI 状态。
+- 两端均在启动时激活 `WCSession`，并将系统回调转入各自 actor 后再改变持久化状态。
+- Bundle ID、`WKCompanionAppBundleIdentifier`、签名团队与部署版本必须在真机联调前冻结。
+
+### 6.7 后台边界与资源策略
+
+- 普通 Watch App 在用户降腕后可能被挂起，录音应由用户在前台主动开始，并尽快在结束时完成本地提交。
+- 文件保存成功后交给 WatchConnectivity 的系统队列机会式传输，不自行维持网络连接或轮询 iPhone。
+- 首版 60 秒内的主动捕获不默认引入 `WKExtendedRuntimeSession`。只有真实测试证明降腕会中断有效录音时，才评估合法适用的后台模式；不能仅为了延长运行时间而错误声明 mindfulness、workout 等用途。
+- Watch 只计算文件 SHA-256 和必要元数据，不做转写、摘要或压缩重编码。
+- 同时限制本地待同步数量与可用磁盘下限；空间不足时停止新录音并明确提示，不自动删除未回执原音。
+- WatchConnectivity 的后台行为必须使用真实配对的 iPhone 与 Apple Watch 测试；模拟器结果不作为可靠性证据。
+
+### 6.8 实施批次与验收
+
+| 批次 | 实现内容 | 退出条件 |
+| --- | --- | --- |
+| W0 工程探测 | 新建 watchOS target；签名、权限、AVAudioRecorder、WCSession 真机连通 | 真机可启动并录制一段 60 秒以内音频 |
+| W1 本地可靠捕获 | staging、原子提交、manifest、重启恢复、最近记录状态 | iPhone 关机时 Watch 仍可保存、重启后可播放或重传 |
+| W2 后台文件同步 | `transferFile`、iPhone staging 接收、SHA-256 校验 | 两端不同时前台也能最终完成一次传输 |
+| W3 幂等导入与回执 | `captureId` 导入、`watch_imports`、`transferUserInfo` 回执 | 重复传输只生成一个 Point；回执丢失后可收敛 |
+| W4 派生与体验 | 接入 iPhone Whisper/Qwen；Watch 状态与触觉；错误恢复 | Watch 原音进入现有列表并完成异步转写，派生失败不影响原音 |
+| W5 扩展入口 | complication、Widget、快捷指令或 Action Button 单项实验 | 只有可靠闭环通过且入口价值有证据时启动 |
+
+首版阻断验收：
+
+- Watch 已显示“已保存”的原音在重启、断连和手机关机后不得丢失。
+- 相同 `captureId` 任意次数重传只生成一个 Point。
+- 相同 `captureId` 出现不同哈希时不得静默覆盖。
+- iPhone 收到文件但转写或模型失败时，原音仍可播放和再次处理。
+- Watch 未收到业务回执前不得清理本地原音。
+- 覆盖断连、乱序、重复传输、回执丢失、两端杀进程、磁盘不足和多 Watch 切换测试。
+
 ## 7 本地语音与模型能力
 
 ### 7.1 能力路由

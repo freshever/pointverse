@@ -33,7 +33,9 @@ actor SystemAudioRecorder: AudioRecording {
             try session.setCategory(
                 .playAndRecord,
                 mode: .default,
-                options: [.allowBluetoothHFP, .defaultToSpeaker]
+                // Xcode 16.2 names the hands-free Bluetooth recording option
+                // `.allowBluetooth`; newer SDKs expose `.allowBluetoothHFP`.
+                options: [.allowBluetooth, .defaultToSpeaker]
             )
             PointVerseLog.capture.info("Audio session category configured")
             try session.setActive(true)

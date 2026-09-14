@@ -8,7 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		059B1ACD5CA8EC65D212AE49 /* QwenTitleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */; };
+		096226125B5039423956E298 /* WatchCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */; };
 		09AE63B68223FE04E8EE49A3 /* StableDiffusion in Frameworks */ = {isa = PBXBuildFile; productRef = 5AE96570FF89D79748742B6A /* StableDiffusion */; };
+		0C5AF72B3024224085F88957 /* 点界 Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 63BD3FCB4B14F9E1B147974B /* 点界 Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		11466DB45DA594D12B07E742 /* PointVerseWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */; };
 		40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */; };
 		42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A72376C331A5411479AD783 /* Localizable.strings */; };
 		47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */; };
@@ -25,14 +28,18 @@
 		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
 		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
 		8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E117BAE13164C24CE628D0 /* AppLocalization.swift */; };
+		86ECCF7F5A5CC64FC721261A /* WatchCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */; };
 		8846D339929A6F0653028413 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */; };
 		8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */; };
 		8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
 		94435D8810214C8FC7F63198 /* SquarePhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */; };
 		95954644EAA1D1837CD48006 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = B430E296F7E046097A251A8A /* llama */; };
+		9D2EFB42E44719C20B7D5284 /* WatchTransferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6240E07F2C5E5DC0695CF722 /* WatchTransferManager.swift */; };
+		9F15B672E502D84FC0C9732D /* WatchCaptureViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C9277D58D6C430182370E5 /* WatchCaptureViewModel.swift */; };
 		A9698B83131CD1FF7285C3B0 /* WhisperAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */; };
 		B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */; };
 		B605428A4B68511E9FED8AC7 /* QwenAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A8D65E3405B008E1C081E305 /* QwenAdapter.framework */; };
+		BB6EDB66E2C349D069AE0854 /* WatchAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */; };
 		D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7D3EA7AA748408B7A2F1DA5F /* InfoPlist.strings */; };
 		DD25805861582A2E0CD38F34 /* PointVerseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6F5166BFEC828BA1323CFA2B /* PointVerseKit */; };
 		DEB22754FC8E1E6C3011AF91 /* ImageGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */; };
@@ -58,9 +65,27 @@
 			remoteGlobalIDString = 429F8476F7B36AD371AD6306;
 			remoteInfo = QwenAdapter;
 		};
+		A9579808E61BDF68AE3B2EE7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CC1D0EBFA164DD5440BFF8C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 31ED093F9AE5C346B3D48763;
+			remoteInfo = PointVerseWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		12D266E0B763D1108FC5A681 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				0C5AF72B3024224085F88957 /* 点界 Watch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C642D0CB72B3A9E241C8D104 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -76,7 +101,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		1295EBA18DDFC6F925F284D4 /* 点界.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "点界.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		1295EBA18DDFC6F925F284D4 /* PointVerse.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; name = PointVerse.app; path = "点界.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = WhisperAdapter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		24E265A97970E7093BC60BA7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -86,9 +111,12 @@
 		4BBDC78A40E54C9A91860E9B /* WhisperRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WhisperRuntime; path = Vendor/WhisperRuntime; sourceTree = SOURCE_ROOT; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalImageGenerator.swift; sourceTree = "<group>"; };
+		52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureView.swift; sourceTree = "<group>"; };
 		57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		5B725E10B707CD2D76D20BE3 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		5E1E2217C4EB458898C792E5 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		6240E07F2C5E5DC0695CF722 /* WatchTransferManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferManager.swift; sourceTree = "<group>"; };
+		63BD3FCB4B14F9E1B147974B /* 点界 Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "点界 Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		66E117BAE13164C24CE628D0 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
 		716533EFD2901EC614D27CC1 /* PointVerseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseApp.swift; sourceTree = "<group>"; };
@@ -103,11 +131,15 @@
 		AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquarePhotoCropView.swift; sourceTree = "<group>"; };
 		AEBFF404379E2101831D913A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
+		B9C9277D58D6C430182370E5 /* WatchCaptureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureViewModel.swift; sourceTree = "<group>"; };
 		BB8FC5C9693E7897ADE1AD80 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C49D567E2157613FF575EBB9 /* PointListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointListView.swift; sourceTree = "<group>"; };
+		C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureStore.swift; sourceTree = "<group>"; };
 		C90EF4F0CEE530E84E5262BB /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerViewModel.swift; sourceTree = "<group>"; };
 		D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
+		DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioRecorder.swift; sourceTree = "<group>"; };
+		F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseWatchApp.swift; sourceTree = "<group>"; };
 		F6E23365C1D6C56005A335E5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		FA7E1B00DBCA6497FE780965 /* WhisperRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperRecognizer.swift; sourceTree = "<group>"; };
 		FFD50731098248359D1259BC /* ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadManager.swift; sourceTree = "<group>"; };
@@ -158,6 +190,24 @@
 			path = PointVerseApp;
 			sourceTree = "<group>";
 		};
+		047550F118237DA88CBD168F /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */,
+				52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */,
+				B9C9277D58D6C430182370E5 /* WatchCaptureViewModel.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		116999ADD5EFBB4D7DD15D57 /* Connectivity */ = {
+			isa = PBXGroup;
+			children = (
+				6240E07F2C5E5DC0695CF722 /* WatchTransferManager.swift */,
+			);
+			path = Connectivity;
+			sourceTree = "<group>";
+		};
 		23947489219C6D320A1E0E29 /* PointList */ = {
 			isa = PBXGroup;
 			children = (
@@ -169,7 +219,8 @@
 		2ACCE446338288A6F4B0FC9B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				1295EBA18DDFC6F925F284D4 /* 点界.app */,
+				1295EBA18DDFC6F925F284D4 /* PointVerse.app */,
+				63BD3FCB4B14F9E1B147974B /* 点界 Watch.app */,
 				A8D65E3405B008E1C081E305 /* QwenAdapter.framework */,
 				13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */,
 			);
@@ -188,6 +239,25 @@
 				FA7E1B00DBCA6497FE780965 /* WhisperRecognizer.swift */,
 			);
 			path = PointDetail;
+			sourceTree = "<group>";
+		};
+		47D89E5B19BBD80C35145E80 /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */,
+			);
+			path = Storage;
+			sourceTree = "<group>";
+		};
+		56FC1279A39BD5B102A7C913 /* PointVerseWatchApp */ = {
+			isa = PBXGroup;
+			children = (
+				8E66921770A54A54330EA946 /* App */,
+				047550F118237DA88CBD168F /* Capture */,
+				116999ADD5EFBB4D7DD15D57 /* Connectivity */,
+				47D89E5B19BBD80C35145E80 /* Storage */,
+			);
+			path = PointVerseWatchApp;
 			sourceTree = "<group>";
 		};
 		5900BEFDD6595398DEFECE2F /* ModelSettings */ = {
@@ -218,11 +288,20 @@
 			name = Packages;
 			sourceTree = "<group>";
 		};
+		8E66921770A54A54330EA946 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
 		A994A31E2C289E4E910AB9C5 = {
 			isa = PBXGroup;
 			children = (
 				8BB94F2A41814A28CC6F5E7C /* Packages */,
 				013E34F74C8E7DA1188C20ED /* PointVerseApp */,
+				56FC1279A39BD5B102A7C913 /* PointVerseWatchApp */,
 				2ACCE446338288A6F4B0FC9B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -293,6 +372,23 @@
 			productReference = 13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */;
 			productType = "com.apple.product-type.framework";
 		};
+		31ED093F9AE5C346B3D48763 /* PointVerseWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AFD12AFDEBD37F2384F1A52F /* Build configuration list for PBXNativeTarget "PointVerseWatch" */;
+			buildPhases = (
+				46129456DF8E2B04FDFC1CBF /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PointVerseWatch;
+			packageProductDependencies = (
+			);
+			productName = PointVerseWatch;
+			productReference = 63BD3FCB4B14F9E1B147974B /* 点界 Watch.app */;
+			productType = "com.apple.product-type.application";
+		};
 		429F8476F7B36AD371AD6306 /* QwenAdapter */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E499E7617D5D3517645084AC /* Build configuration list for PBXNativeTarget "QwenAdapter" */;
@@ -321,11 +417,13 @@
 				201FE5C1FC09851568E2E7B8 /* Resources */,
 				AE1916440F5CF4FABF12F535 /* Frameworks */,
 				C642D0CB72B3A9E241C8D104 /* Embed Frameworks */,
+				12D266E0B763D1108FC5A681 /* Embed Watch Content */,
 				004AEA3A7BAE88F989B8C953 /* Embed AI runtimes */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				06E436A6742F5873673E6EAF /* PBXTargetDependency */,
 				0CDC453DE8A421ED05CAB7C9 /* PBXTargetDependency */,
 				BAFD32D66E44B47563E454A4 /* PBXTargetDependency */,
 			);
@@ -336,7 +434,7 @@
 				6011DC563607EA13BFF8E848 /* ZIPFoundation */,
 			);
 			productName = PointVerse;
-			productReference = 1295EBA18DDFC6F925F284D4 /* 点界.app */;
+			productReference = 1295EBA18DDFC6F925F284D4 /* PointVerse.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -372,6 +470,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				31ED093F9AE5C346B3D48763 /* PointVerseWatch */,
 				50C14C1ABB1B86D1C9E99CBB /* PointVerse */,
 				1048953655C6C48147D2F34B /* WhisperAdapter */,
 				429F8476F7B36AD371AD6306 /* QwenAdapter */,
@@ -418,6 +517,19 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		46129456DF8E2B04FDFC1CBF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				11466DB45DA594D12B07E742 /* PointVerseWatchApp.swift in Sources */,
+				BB6EDB66E2C349D069AE0854 /* WatchAudioRecorder.swift in Sources */,
+				096226125B5039423956E298 /* WatchCaptureStore.swift in Sources */,
+				86ECCF7F5A5CC64FC721261A /* WatchCaptureView.swift in Sources */,
+				9F15B672E502D84FC0C9732D /* WatchCaptureViewModel.swift in Sources */,
+				9D2EFB42E44719C20B7D5284 /* WatchTransferManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		86425D7D40EEBC226046D492 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -462,6 +574,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		06E436A6742F5873673E6EAF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 31ED093F9AE5C346B3D48763 /* PointVerseWatch */;
+			targetProxy = A9579808E61BDF68AE3B2EE7 /* PBXContainerItemProxy */;
+		};
 		0CDC453DE8A421ED05CAB7C9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 1048953655C6C48147D2F34B /* WhisperAdapter */;
@@ -505,22 +622,35 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pointverse.poc;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
+		};
+		320CE3058678F1AA36320306 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = SS4H5JZU3H;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pointverse.poc.watchkitapp;
+				PRODUCT_NAME = "点界 Watch";
+				SDKROOT = watchos;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
 		};
 		36A9AF7526901C7CCB467C6B /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -578,10 +708,10 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Debug;
 		};
@@ -590,16 +720,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pointverse.poc;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
@@ -622,7 +749,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.pointverse.poc.qwen-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -647,13 +773,28 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.pointverse.poc.whisper-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		C59B447D4178CE5CC9C9A270 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = SS4H5JZU3H;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pointverse.poc.watchkitapp;
+				PRODUCT_NAME = "点界 Watch";
+				SDKROOT = watchos;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
 			};
 			name = Debug;
 		};
@@ -706,10 +847,10 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Release;
 		};
@@ -728,7 +869,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.pointverse.poc.qwen-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -753,7 +893,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.pointverse.poc.whisper-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -780,6 +919,15 @@
 			buildConfigurations = (
 				36A9AF7526901C7CCB467C6B /* Debug */,
 				CC73091FC1C33BABC11487B7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AFD12AFDEBD37F2384F1A52F /* Build configuration list for PBXNativeTarget "PointVerseWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C59B447D4178CE5CC9C9A270 /* Debug */,
+				320CE3058678F1AA36320306 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -832,8 +980,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/ml-stable-diffusion.git";
 			requirement = {
-				kind = revision;
-				revision = e12202c1f6405b83918b58a5d097cd61e3e1f702;
+				kind = exactVersion;
+				version = 1.1.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
