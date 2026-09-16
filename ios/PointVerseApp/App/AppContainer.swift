@@ -1,6 +1,5 @@
 import Foundation
 import PointVerseKit
-import QwenAdapter
 
 @MainActor
 final class AppContainer: ObservableObject {
@@ -9,18 +8,7 @@ final class AppContainer: ObservableObject {
     let imageBlobStore: ImageBlobStore
     let captureUseCase: CaptureUseCase
     let transcriptionService: TranscriptionService
-    let modelDownloadManager: ModelDownloadManager
-    let qwenDownloadManager: ModelDownloadManager
-    let speechModelManagers: [ModelDownloadManager]
-    let languageModelManagers: [ModelDownloadManager]
-    let imageModelManagers: [ModelDownloadManager]
-    let visionModelManagers: [ModelDownloadManager]
-    let conversationService: ConversationService
-    let conversationVoiceInputService: ConversationVoiceInputService
-    let imageGenerator: LocalImageGenerator
     let imageTextRecognizer = ImageTextRecognizer()
-    let visionGenerator: QwenVisionGenerator
-    let promptTranslator: QwenTitleGenerator
     @Published private(set) var startupError: String?
 
     init() {
@@ -29,8 +17,6 @@ final class AppContainer: ObservableObject {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let database = try PointDatabase(path: root.appending(path: "pointverse.sqlite").path)
             let blobStore = AudioBlobStore(rootURL: root)
-            let modelRegistry = ModelRegistry(rootURL: root)
-            let modelExecutionGate = ModelExecutionGate()
             self.database = database
             self.blobStore = blobStore
             self.imageBlobStore = ImageBlobStore(rootURL: root)
@@ -39,31 +25,11 @@ final class AppContainer: ObservableObject {
                 blobStore: blobStore,
                 repository: database
             )
-            let qwenGenerator = QwenTitleGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
-            self.promptTranslator = qwenGenerator
-            self.visionGenerator = QwenVisionGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
-            let speechRecognizer = HybridSpeechRecognizer(registry: modelRegistry, executionGate: modelExecutionGate)
             self.transcriptionService = TranscriptionService(
                 repository: database,
                 blobStore: blobStore,
-                recognizer: speechRecognizer,
-                titleGenerator: qwenGenerator
+                recognizer: OnDeviceSpeechRecognizer()
             )
-            self.conversationService = ConversationService(repository: database, generator: qwenGenerator)
-            self.conversationVoiceInputService = ConversationVoiceInputService(
-                recorder: SystemAudioRecorder(),
-                blobStore: blobStore,
-                recognizer: speechRecognizer
-            )
-            self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: root, executionGate: modelExecutionGate)
-            let speechManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
-            let languageManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
-            self.speechModelManagers = speechManagers
-            self.languageModelManagers = languageManagers
-            self.imageModelManagers = ModelSelection.imageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
-            self.visionModelManagers = ModelSelection.visionModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
-            self.modelDownloadManager = speechManagers.first(where: { $0.manifest == .whisperBaseQ5 })!
-            self.qwenDownloadManager = languageManagers[0]
         } catch {
             fatalError("PointVerse storage could not be initialized: \(error)")
         }
@@ -72,7 +38,7 @@ final class AppContainer: ObservableObject {
     func deletePoint(_ id: PointID) async throws {
         let imagePaths = try await database.images(pointID: id).map(\.relativePath)
         let path = try await database.deletePoint(id: id)
-        try await blobStore.delete(relativePath: path)
+        if let path { try await blobStore.delete(relativePath: path) }
         for imagePath in imagePaths { try? await imageBlobStore.delete(relativePath: imagePath) }
     }
 
@@ -80,7 +46,6 @@ final class AppContainer: ObservableObject {
         do {
             try await database.migrate()
             await transcriptionService.resumePending()
-            await transcriptionService.deriveMissingTitles()
         } catch {
             startupError = "本地资料库初始化失败"
         }

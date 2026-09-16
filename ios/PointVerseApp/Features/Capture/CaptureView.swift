@@ -9,7 +9,6 @@ struct CaptureView: View {
     @State private var startedAt: Date?
     @State private var elapsed = 0
     @State private var failureKey = "录音启动失败"
-    @State private var isPressingRecord = false
     @State private var recordingStartTask: Task<Void, Never>?
     @State private var activeLocaleIdentifier: String?
     @StateObject private var camera = CameraFrameSampler()
@@ -17,9 +16,38 @@ struct CaptureView: View {
     @State private var frameReview: CapturedFrameReview?
     @State private var completedPoint: PointSummary?
     @AppStorage("captureLanguage") private var captureLanguage = ""
+    @AppStorage("captureInputMode") private var inputMode = "voice"
+    @State private var textInput = ""
+    @State private var isSavingText = false
     @Environment(\.appLanguage) private var appLanguage
 
     var body: some View {
+        VStack(spacing: 0) {
+            Picker("输入方式", selection: $inputMode) {
+                Label("语音", systemImage: "waveform").tag("voice")
+                Label("文本", systemImage: "keyboard").tag("text")
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 20).padding(.vertical, 10)
+
+            if inputMode == "text" { textCaptureContent } else { voiceCaptureContent }
+        }
+        .navigationTitle(AppLocalization.string("点界", language: appLanguage))
+        .navigationDestination(isPresented: Binding(
+            get: { completedPoint != nil },
+            set: { if !$0 { completedPoint = nil } }
+        )) {
+            if let completedPoint { PointDetailView(point: completedPoint) }
+        }
+        .onAppear {
+            if ProcessInfo.processInfo.isiOSAppOnMac, inputMode == "voice" {
+                inputMode = "text"
+                cameraEnabled = false
+            }
+        }
+    }
+
+    private var voiceCaptureContent: some View {
         ZStack {
             if cameraEnabled {
                 CameraPreview(session: camera.session)
@@ -93,20 +121,18 @@ struct CaptureView: View {
                     .foregroundStyle(.white)
             }
             .frame(width: 112, height: 112)
-            .scaleEffect(isPressingRecord ? 1.08 : 1)
-            .animation(.easeOut(duration: 0.12), value: isPressingRecord)
+            .scaleEffect(state == .recording ? 1.08 : 1)
+            .animation(.easeOut(duration: 0.12), value: state)
             .contentShape(Circle())
-            .onLongPressGesture(
-                minimumDuration: 0.22,
-                maximumDistance: 80,
-                pressing: handlePressing,
-                perform: beginRecording
-            )
+            .onTapGesture {
+                if state == .recording { finishRecording() }
+                else { beginRecording() }
+            }
             .accessibilityLabel(AppLocalization.string(state == .recording ? "完成录音" : "开始录音", language: appLanguage))
-            .accessibilityHint(AppLocalization.string("按住录音，松开结束", language: appLanguage))
+            .accessibilityHint(AppLocalization.string(state == .recording ? "轻点结束录音" : "轻点开始录音", language: appLanguage))
             .disabled(state == .saving)
 
-            AppText(state == .recording ? "松开即可结束" : "Capture")
+            AppText(state == .recording ? "再次轻点结束" : "轻点开始")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(state == .recording ? .red : .secondary)
 
@@ -133,7 +159,6 @@ struct CaptureView: View {
             .padding(24)
         }
         .preferredColorScheme(cameraEnabled ? .dark : nil)
-        .navigationTitle(AppLocalization.string("点界", language: appLanguage))
         .onAppear {
             if cameraEnabled { startCameraPreview() }
         }
@@ -158,18 +183,57 @@ struct CaptureView: View {
                 Task { await container.transcriptionService.transcribe(pointID: review.pointID) }
             }
         }
-        .navigationDestination(isPresented: Binding(
-            get: { completedPoint != nil },
-            set: { if !$0 { completedPoint = nil } }
-        )) {
-            if let completedPoint { PointDetailView(point: completedPoint) }
-        }
     }
 
-    private func handlePressing(_ pressing: Bool) {
-        isPressingRecord = pressing
-        if !pressing, state == .recording {
-            finishRecording()
+    private var textCaptureContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("此刻，想到什么？").font(.title2.bold())
+                Text("文本会直接保存为一颗星，不需要模型处理。")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            TextEditor(text: $textInput)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+                .frame(minHeight: 220)
+                .overlay(alignment: .topLeading) {
+                    if textInput.isEmpty {
+                        Text("写下一句话、一个问题，或还没成形的念头……")
+                            .foregroundStyle(.tertiary).padding(.horizontal, 18).padding(.vertical, 20)
+                            .allowsHitTesting(false)
+                    }
+                }
+            Button {
+                saveTextPoint()
+            } label: {
+                if isSavingText { ProgressView().frame(maxWidth: .infinity) }
+                else { Label("保存为 Point", systemImage: "sparkles").frame(maxWidth: .infinity) }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isSavingText || textInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Spacer()
+        }
+        .padding(20)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    private func saveTextPoint() {
+        let text = textInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        isSavingText = true
+        Task {
+            do {
+                let id = try await container.database.commitTextPoint(text: text, createdAt: Date())
+                let title = text.count > 20 ? String(text.prefix(20)) + "…" : text
+                textInput = ""
+                completedPoint = PointSummary(id: id, title: title, createdAt: Date(), transcriptState: "text")
+            } catch {
+                failureKey = "无法保存文本"
+            }
+            isSavingText = false
         }
     }
 
@@ -185,9 +249,6 @@ struct CaptureView: View {
                 try await container.captureUseCase.start()
                 startedAt = Date()
                 state = .recording
-                if !isPressingRecord {
-                    finishRecording()
-                }
             } catch PointVerseError.microphonePermissionDenied {
                 camera.cancelCollecting()
                 startedAt = nil
@@ -284,20 +345,17 @@ struct CaptureView: View {
             await container.transcriptionService.transcribe(pointID: pointID)
             for (id, data) in assets {
                 do {
-                    let description = try await container.visionGenerator.describe(
-                        imageData: data,
-                        localeIdentifier: localeIdentifier
+                    let text = try await container.imageTextRecognizer.recognize(
+                        data: data,
+                        language: localeIdentifier
                     )
-                    try await container.database.updateImageText(id: id, recognizedText: description)
+                    try await container.database.updateImageText(id: id, recognizedText: text.isEmpty ? nil : text)
                     notifyImagesChanged(pointID)
-                    PointVerseLog.storage.info("Captured frame understood automatically")
+                    PointVerseLog.storage.info("Captured frame OCR completed")
                 } catch {
                     let nsError = error as NSError
                     PointVerseLog.storage.error("Automatic captured-frame analysis failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
                 }
-            }
-            if !assets.isEmpty {
-                _ = await container.transcriptionService.deriveTitle(pointID: pointID, languageIdentifier: appLanguage)
             }
         }
     }
@@ -497,8 +555,8 @@ private enum CaptureState: Equatable {
 
     var detail: String {
         switch self {
-        case .idle: "按住录音，松开结束"
-        case .recording: "松开即可结束"
+        case .idle: "轻点开始，再次轻点结束"
+        case .recording: "再次轻点即可结束"
         case .saving: "正在写入原音和本地资料库…"
         case .saved: "现在可以退出 App，原音仍会保留"
         case .failed: "录音启动失败"

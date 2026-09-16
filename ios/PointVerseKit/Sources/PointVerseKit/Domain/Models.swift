@@ -101,11 +101,26 @@ public struct PointSummary: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct PointMapEntry: Identifiable, Equatable, Sendable {
+    public var id: PointID { point.id }
+    public let point: PointSummary
+    public let content: String
+    public let localeIdentifier: String
+
+    public init(point: PointSummary, content: String, localeIdentifier: String) {
+        self.point = point
+        self.content = content
+        self.localeIdentifier = localeIdentifier
+    }
+}
+
 public struct PointDetail: Equatable, Sendable {
     public let id: PointID
     public let title: String
-    public let audioRelativePath: String
-    public let durationMilliseconds: Int
+    public let modality: String
+    public let sourceText: String?
+    public let audioRelativePath: String?
+    public let durationMilliseconds: Int?
     public let transcriptState: String
     public let transcriptErrorCode: String?
     public let engineText: String?
@@ -122,8 +137,10 @@ public struct PointDetail: Equatable, Sendable {
     public init(
         id: PointID,
         title: String,
-        audioRelativePath: String,
-        durationMilliseconds: Int,
+        modality: String = "voice",
+        sourceText: String? = nil,
+        audioRelativePath: String?,
+        durationMilliseconds: Int?,
         transcriptState: String,
         transcriptErrorCode: String?,
         engineText: String?,
@@ -132,6 +149,8 @@ public struct PointDetail: Equatable, Sendable {
     ) {
         self.id = id
         self.title = title
+        self.modality = modality
+        self.sourceText = sourceText
         self.audioRelativePath = audioRelativePath
         self.durationMilliseconds = durationMilliseconds
         self.transcriptState = transcriptState

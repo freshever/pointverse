@@ -14,6 +14,31 @@ import Testing
     #expect(try await database.listPoints(matching: "").count == 1)
 }
 
+@Test func textPointPersistsWithoutAudioAndIsSearchable() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let pointID = try await database.commitTextPoint(text: "模拟器上的第一颗文本星星", createdAt: Date())
+    let detail = try await database.pointDetail(id: pointID)
+    #expect(detail.modality == "text")
+    #expect(detail.sourceText == "模拟器上的第一颗文本星星")
+    #expect(detail.audioRelativePath == nil)
+    #expect(try await database.listPoints(matching: "文本星星").map(\.id) == [pointID])
+    #expect(try await database.deletePoint(id: pointID) == nil)
+}
+
+@Test func starMapContentCombinesPointTextAndOCR() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let pointID = try await database.commitTextPoint(text: "设计一个私人知识星图", createdAt: Date())
+    try await database.addImage(
+        pointID: pointID, id: UUID(), relativePath: "blobs/images/map.jpg",
+        sha256: "abc", byteCount: 3, recognizedText: "相似想法彼此靠近"
+    )
+    let entry = try #require(try await database.pointMapEntries().first)
+    #expect(entry.content.contains("私人知识星图"))
+    #expect(entry.content.contains("相似想法彼此靠近"))
+}
+
 @Test func searchSupportsChineseSubstringsAndLiteralWildcards() async throws {
     let database = try PointDatabase(inMemory: true)
     try await database.migrate()

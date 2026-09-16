@@ -22,10 +22,14 @@ actor ImageTextRecognizer {
     }
 
     private func recognitionLanguages(for language: String) -> [String] {
-        switch language {
-        case "zh-Hant": ["zh-Hant", "en-US"]
-        case "en": ["en-US", "zh-Hans"]
-        case "ja": ["ja-JP", "en-US"]
+        let normalized = language.replacingOccurrences(of: "_", with: "-").lowercased()
+        return switch normalized {
+        case let value where value.hasPrefix("zh-hant") || value.hasPrefix("zh-tw") || value.hasPrefix("zh-hk"):
+            ["zh-Hant", "en-US"]
+        case let value where value.hasPrefix("en"):
+            ["en-US", "zh-Hans"]
+        case let value where value.hasPrefix("ja"):
+            ["ja-JP", "en-US"]
         default: ["zh-Hans", "en-US"]
         }
     }

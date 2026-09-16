@@ -75,13 +75,36 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
+    public func commitTextPoint(text: String, createdAt: Date = Date()) async throws -> PointID {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { throw PointVerseError.databaseCommitFailed }
+        return try await writer.write { db in
+            let pointID = PointID()
+            let messageID = UUID()
+            let timestamp = createdAt.timeIntervalSince1970
+            try db.execute(sql: "INSERT INTO points (id, created_at, updated_at) VALUES (?, ?, ?)",
+                           arguments: [pointID.rawValue.uuidString, timestamp, timestamp])
+            try db.execute(sql: """
+                INSERT INTO messages (id, operation_id, point_id, sequence, role, modality, user_text, created_at)
+                VALUES (?, ?, ?, 1, 'user', 'text', ?, ?)
+                """, arguments: [messageID.uuidString, "text:" + messageID.uuidString, pointID.rawValue.uuidString, cleaned, timestamp])
+            let title = Self.fallbackTitle(from: cleaned)
+            try db.execute(sql: """
+                INSERT INTO derivations (id, point_id, input_revision, model_id, model_sha256, prompt_version, title, state, adoption, created_at)
+                VALUES (?, ?, 1, 'rule-title-v1', 'builtin', 'rule-title-v1', ?, 'succeeded', 'candidate', ?)
+                """, arguments: [UUID().uuidString, pointID.rawValue.uuidString, title, timestamp])
+            try refreshSearch(pointID: pointID, db: db)
+            return pointID
+        }
+    }
+
     public func listPoints(matching query: String) async throws -> [PointSummary] {
         try await writer.read { db in
             let rows: [Row]
             if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 rows = try Row.fetchAll(db, sql: """
                     SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
-                           p.created_at, t.state AS transcript_state
+                           p.created_at, CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state
                     FROM points p
                     LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                     LEFT JOIN audio_assets a ON a.message_id = m.id
@@ -93,19 +116,20 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 let pattern = "%" + Self.escapeLikePattern(query.trimmingCharacters(in: .whitespacesAndNewlines)) + "%"
                 rows = try Row.fetchAll(db, sql: """
                     SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
-                           p.created_at, t.state AS transcript_state
+                           p.created_at, CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state
                     FROM points p
                     LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
                     LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
                     WHERE COALESCE(p.accepted_title, d.title, '') LIKE ? ESCAPE '\\'
+                       OR COALESCE(m.user_text, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(t.user_text, t.engine_text, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(d.summary, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(d.tags_json, '') LIKE ? ESCAPE '\\'
                        OR EXISTS (SELECT 1 FROM point_images pi WHERE pi.point_id = p.id AND COALESCE(pi.recognized_text, '') LIKE ? ESCAPE '\\')
                     ORDER BY p.created_at DESC
-                    """, arguments: [pattern, pattern, pattern, pattern, pattern])
+                    """, arguments: [pattern, pattern, pattern, pattern, pattern, pattern])
             }
             return rows.compactMap { row in
                 guard let uuid = UUID(uuidString: row["id"]) else { return nil }
@@ -116,6 +140,38 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     transcriptState: row["transcript_state"]
                 )
             }
+        }
+    }
+
+    public func pointMapEntries() async throws -> [PointMapEntry] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title, p.created_at,
+                       CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state,
+                       TRIM(
+                           COALESCE(m.user_text, t.user_text, t.engine_text, '') || ' ' ||
+                           COALESCE((SELECT GROUP_CONCAT(recognized_text, ' ') FROM point_images
+                                     WHERE point_id = p.id AND recognized_text IS NOT NULL), '')
+                       ) AS map_content,
+                       COALESCE(t.locale, '') AS locale
+                FROM points p
+                LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
+                LEFT JOIN audio_assets a ON a.message_id = m.id
+                LEFT JOIN transcripts t ON t.asset_id = a.id
+                LEFT JOIN derivations d ON d.id = (
+                    SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded'
+                    ORDER BY created_at DESC, rowid DESC LIMIT 1
+                )
+                ORDER BY p.created_at DESC
+                """).compactMap { row in
+                    guard let uuid = UUID(uuidString: row["id"]) else { return nil }
+                    let point = PointSummary(
+                        id: PointID(rawValue: uuid), title: row["title"],
+                        createdAt: Date(timeIntervalSince1970: row["created_at"]),
+                        transcriptState: row["transcript_state"]
+                    )
+                    return PointMapEntry(point: point, content: row["map_content"], localeIdentifier: row["locale"])
+                }
         }
     }
 
@@ -130,12 +186,14 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         try await writer.read { db in
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
-                       a.relative_path, a.duration_ms, t.state AS transcript_state,
-                       t.engine_text, t.user_text, t.locale, t.error_code
+                       m.modality, m.user_text AS source_text,
+                       a.relative_path, a.duration_ms,
+                       CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state,
+                       t.engine_text, t.user_text, COALESCE(t.locale, '') AS locale, t.error_code
                 FROM points p
                 JOIN messages m ON m.point_id = p.id AND m.sequence = 1
-                JOIN audio_assets a ON a.message_id = m.id
-                JOIN transcripts t ON t.asset_id = a.id
+                LEFT JOIN audio_assets a ON a.message_id = m.id
+                LEFT JOIN transcripts t ON t.asset_id = a.id
                 LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
                 WHERE p.id = ?
                 """, arguments: [id.rawValue.uuidString]) else {
@@ -144,6 +202,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             return PointDetail(
                 id: id,
                 title: row["title"],
+                modality: row["modality"],
+                sourceText: row["source_text"],
                 audioRelativePath: row["relative_path"],
                 durationMilliseconds: row["duration_ms"],
                 transcriptState: row["transcript_state"],
@@ -300,12 +360,12 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
-    public func deletePoint(id: PointID) async throws -> String {
+    public func deletePoint(id: PointID) async throws -> String? {
         try await writer.write { db in
-            guard let path = try String.fetchOne(db, sql: """
+            let path = try String.fetchOne(db, sql: """
                 SELECT a.relative_path FROM audio_assets a
                 JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1
-                """, arguments: [id.rawValue.uuidString]) else { throw PointVerseError.databaseCommitFailed }
+                """, arguments: [id.rawValue.uuidString])
             try db.execute(sql: "DELETE FROM point_search WHERE point_id = ?", arguments: [id.rawValue.uuidString])
             try db.execute(sql: "DELETE FROM points WHERE id = ?", arguments: [id.rawValue.uuidString])
             return path
@@ -346,12 +406,12 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         try db.execute(sql: "DELETE FROM point_search WHERE point_id = ?", arguments: [pointID.rawValue.uuidString])
         try db.execute(sql: """
             INSERT INTO point_search (point_id, accepted_title, transcript_text, summary, tags)
-            SELECT p.id, COALESCE(p.accepted_title, d.title, ''), COALESCE(t.user_text, t.engine_text, ''),
+            SELECT p.id, COALESCE(p.accepted_title, d.title, ''), COALESCE(m.user_text, t.user_text, t.engine_text, ''),
                    COALESCE(d.summary, ''), COALESCE(d.tags_json, '')
             FROM points p
             JOIN messages m ON m.point_id = p.id
-            JOIN audio_assets a ON a.message_id = m.id
-            JOIN transcripts t ON t.asset_id = a.id
+            LEFT JOIN audio_assets a ON a.message_id = m.id
+            LEFT JOIN transcripts t ON t.asset_id = a.id
             LEFT JOIN derivations d ON d.id = (
                 SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded'
                 ORDER BY created_at DESC, rowid DESC LIMIT 1

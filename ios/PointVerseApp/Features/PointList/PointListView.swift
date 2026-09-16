@@ -29,7 +29,9 @@ struct PointListView: View {
                             }
                             Text(point.createdAt, format: .dateTime.month().day().hour().minute())
                                 .font(.caption).foregroundStyle(.secondary)
-                            if point.transcriptState == "failed" {
+                            if point.transcriptState == "text" {
+                                AppText("文本 Point").font(.caption).foregroundStyle(.secondary)
+                            } else if point.transcriptState == "failed" {
                                 AppText("转写失败，原音仍在").font(.caption).foregroundStyle(.secondary)
                             } else {
                                 AppText("等待本地转写").font(.caption).foregroundStyle(.secondary)

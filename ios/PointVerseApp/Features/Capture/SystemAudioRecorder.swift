@@ -30,13 +30,19 @@ actor SystemAudioRecorder: AudioRecording {
             // `.spokenAudio` is a playback-oriented mode and returns paramErr (-50)
             // with a record session on some physical devices. This combination
             // supports both capture and the original-audio player.
-            try session.setCategory(
-                .playAndRecord,
-                mode: .default,
-                // Xcode 16.2 names the hands-free Bluetooth recording option
-                // `.allowBluetooth`; newer SDKs expose `.allowBluetoothHFP`.
-                options: [.allowBluetooth, .defaultToSpeaker]
-            )
+            if ProcessInfo.processInfo.isiOSAppOnMac {
+                // The iOS compatibility runtime on macOS rejects some speaker and
+                // Bluetooth route options that are valid on an iPhone.
+                try session.setCategory(.record, mode: .default, options: [])
+            } else {
+                try session.setCategory(
+                    .playAndRecord,
+                    mode: .default,
+                    // Xcode 16.2 names the hands-free Bluetooth recording option
+                    // `.allowBluetooth`; newer SDKs expose `.allowBluetoothHFP`.
+                    options: [.allowBluetooth, .defaultToSpeaker]
+                )
+            }
             PointVerseLog.capture.info("Audio session category configured")
             try session.setActive(true)
             PointVerseLog.capture.info("Audio session activated")
