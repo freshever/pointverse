@@ -4,7 +4,7 @@ import SwiftUI
 
 struct StarMapView: View {
     @EnvironmentObject private var container: AppContainer
-    @State private var layout = StarLayout(nodes: [], links: [])
+    @State private var layout = StarLayout(nodes: [], links: [], embeddingCount: 0)
     @State private var selected: PointSummary?
     @State private var loadFailed = false
 
@@ -76,7 +76,12 @@ private struct Pseudo3DStarMap: View {
                         var path = Path()
                         path.move(to: projected[link.a].point)
                         path.addLine(to: projected[link.b].point)
-                        context.stroke(path, with: .color(.white.opacity(Double(0.08 + link.strength * 0.28))), lineWidth: 1)
+                        let emphasis = max(0, min(1, (link.strength - 0.45) / 0.4))
+                        context.stroke(
+                            path,
+                            with: .color(Color.cyan.opacity(Double(0.16 + emphasis * 0.58))),
+                            lineWidth: 1 + emphasis * 2
+                        )
                     }
 
                     for node in projected.sorted(by: { $0.depth < $1.depth }) {
@@ -92,6 +97,13 @@ private struct Pseudo3DStarMap: View {
                         )
                         context.fill(Path(ellipseIn: rect), with: .color(color))
                         context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)), with: .color(color.opacity(0.25)), lineWidth: 2)
+                        if layout.nodes[node.index].isEmbedded {
+                            context.stroke(
+                                Path(ellipseIn: rect.insetBy(dx: -6, dy: -6)),
+                                with: .color(.mint.opacity(0.72)),
+                                lineWidth: 1.5
+                            )
+                        }
 
                         if !point.title.isEmpty {
                             let label = Text(String(point.title.prefix(12)))
@@ -110,26 +122,73 @@ private struct Pseudo3DStarMap: View {
                 )
 
                 VStack {
-                    HStack {
-                        Label("\(layout.nodes.count) 个想法", systemImage: "circle.hexagongrid.fill")
-                        Spacer()
-                        Text("拖动旋转 · 双指缩放")
+                    VStack(spacing: 8) {
+                        HStack {
+                            Label("\(layout.nodes.count) 个想法", systemImage: "circle.hexagongrid.fill")
+                            Spacer()
+                            Text("拖动旋转 · 双指缩放")
+                        }
+                        semanticStatus
                     }
                     .font(.caption).foregroundStyle(.white.opacity(0.7)).padding()
                     Spacer()
-                    HStack(spacing: 10) {
-                        Text("视角").font(.caption).foregroundStyle(.white.opacity(0.65))
-                        axisButton("X", color: .red, yaw: -.pi / 2, pitch: 0)
-                        axisButton("Y", color: .green, yaw: 0, pitch: .pi / 2)
-                        axisButton("Z", color: .blue, yaw: 0, pitch: 0)
+                    VStack(spacing: 10) {
+                        if let strongest = layout.strongestLink {
+                            strongestRelation(strongest)
+                        }
+                        HStack(spacing: 10) {
+                            Text("视角").font(.caption).foregroundStyle(.white.opacity(0.65))
+                            axisButton("X", color: .red, yaw: -.pi / 2, pitch: 0)
+                            axisButton("Y", color: .green, yaw: 0, pitch: .pi / 2)
+                            axisButton("Z", color: .blue, yaw: 0, pitch: 0)
+                        }
+                        .padding(10)
+                        .background(.black.opacity(0.7), in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(0.25)))
                     }
-                    .padding(10)
-                    .background(.black.opacity(0.7), in: Capsule())
-                    .overlay(Capsule().stroke(.white.opacity(0.25)))
                     .padding(.bottom, 18)
                 }
             }
         }
+    }
+
+    private var semanticStatus: some View {
+        HStack(spacing: 7) {
+            Image(systemName: layout.usesBGE ? "sparkles" : "bolt.trianglebadge.exclamationmark")
+            Text(layout.usesBGE ? "BGE 本地语义分析" : "系统语义分析")
+                .fontWeight(.semibold)
+            Spacer()
+            Text(layout.usesBGE ? "\(layout.embeddingCount)/\(layout.nodes.count) 已完成" : "BGE 未启用")
+        }
+        .foregroundStyle(layout.usesBGE ? Color.mint : Color.orange)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke((layout.usesBGE ? Color.mint : Color.orange).opacity(0.35)))
+    }
+
+    private func strongestRelation(_ link: StarLayout.Link) -> some View {
+        let first = layout.nodes[link.a].point.title
+        let second = layout.nodes[link.b].point.title
+        return Button { onSelect(layout.nodes[link.a].point) } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("发现最强语义关联 · 相似度 \(link.strength, format: .number.precision(.fractionLength(2)))")
+                        .font(.caption.bold()).foregroundStyle(.white)
+                    Text("\(first)  ↔  \(second)")
+                        .font(.caption2).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.white.opacity(0.5))
+            }
+            .padding(12)
+            .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(.cyan.opacity(0.32)))
+            .padding(.horizontal)
+        }
+        .buttonStyle(.plain)
     }
 
     private var rotationGesture: some Gesture {
@@ -210,14 +269,17 @@ private struct Point3D {
 private struct StarLayout {
     let nodes: [Node]
     let links: [Link]
-    struct Node { let point: PointSummary; let position: Point3D }
+    let embeddingCount: Int
+    var usesBGE: Bool { embeddingCount > 0 }
+    var strongestLink: Link? { links.max { $0.strength < $1.strength } }
+    struct Node { let point: PointSummary; let position: Point3D; let isEmbedded: Bool }
     struct Link { let a: Int; let b: Int; let strength: CGFloat }
 }
 
 @MainActor
 private enum StarLayoutEngine {
     static func make(entries: [PointMapEntry], embeddings: [PointEmbeddingRecord]) -> StarLayout {
-        guard !entries.isEmpty else { return .init(nodes: [], links: []) }
+        guard !entries.isEmpty else { return .init(nodes: [], links: [], embeddingCount: 0) }
         let stored = Dictionary(uniqueKeysWithValues: embeddings.map { ($0.pointID, $0.vector.map(Double.init)) })
         let vectors = entries.map { stored[$0.id] ?? semanticVector(text: $0.content, locale: $0.localeIdentifier) }
         var similarities = Array(repeating: Array(repeating: CGFloat(0), count: entries.count), count: entries.count)
@@ -257,14 +319,21 @@ private enum StarLayoutEngine {
         }
 
         var links: [StarLayout.Link] = [], used = Set<String>()
+        let linkThreshold: CGFloat = stored.count == entries.count ? 0.55 : 0.28
         for i in entries.indices {
             let candidates = entries.indices.filter { $0 != i }.sorted { similarities[i][$0] > similarities[i][$1] }
-            for j in candidates.prefix(2) where similarities[i][j] >= 0.28 {
+            for j in candidates.prefix(2) where similarities[i][j] >= linkThreshold {
                 let a = min(i, j), b = max(i, j)
                 if used.insert("\(a):\(b)").inserted { links.append(.init(a: a, b: b, strength: similarities[i][j])) }
             }
         }
-        return .init(nodes: zip(entries, positions).map { .init(point: $0.0.point, position: $0.1) }, links: links)
+        return .init(
+            nodes: zip(entries, positions).map {
+                .init(point: $0.0.point, position: $0.1, isEmbedded: stored[$0.0.id] != nil)
+            },
+            links: links,
+            embeddingCount: stored.count
+        )
     }
 
     private static func semanticVector(text: String, locale: String) -> [Double]? {
