@@ -33,6 +33,9 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 CREATE INDEX point_images_point_id ON point_images(point_id, created_at);
                 """)
         }
+        migrator.registerMigration("v3-embeddings") { db in
+            try db.execute(sql: Schema.v3Embeddings)
+        }
         try migrator.migrate(writer)
         PointVerseLog.database.info("Database migrations completed")
     }
@@ -94,6 +97,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 VALUES (?, ?, 1, 'rule-title-v1', 'builtin', 'rule-title-v1', ?, 'succeeded', 'candidate', ?)
                 """, arguments: [UUID().uuidString, pointID.rawValue.uuidString, title, timestamp])
             try refreshSearch(pointID: pointID, db: db)
+            try enqueueEmbedding(pointID: pointID, revision: 1, db: db, timestamp: timestamp)
             return pointID
         }
     }
@@ -274,6 +278,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 )
                 """, arguments: [timestamp, pointID.rawValue.uuidString])
             try refreshSearch(pointID: pointID, db: db)
+            let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
+            try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
         }
     }
 
@@ -330,6 +336,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 """, arguments: [id.uuidString, pointID.rawValue.uuidString, relativePath, sha256, byteCount, recognizedText, Date().timeIntervalSince1970])
             try db.execute(sql: "UPDATE points SET updated_at = ?, head_revision = head_revision + 1 WHERE id = ?",
                            arguments: [Date().timeIntervalSince1970, pointID.rawValue.uuidString])
+            let revision = try Int.fetchOne(db, sql: "SELECT head_revision FROM points WHERE id = ?", arguments: [pointID.rawValue.uuidString]) ?? 1
+            try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: Date().timeIntervalSince1970)
         }
     }
 
@@ -345,18 +353,28 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
 
     public func removeImage(id: UUID) async throws -> String {
         try await writer.write { db in
-            guard let path = try String.fetchOne(db, sql: "SELECT relative_path FROM point_images WHERE id = ?", arguments: [id.uuidString]) else {
+            guard let row = try Row.fetchOne(db, sql: "SELECT relative_path, point_id FROM point_images WHERE id = ?", arguments: [id.uuidString]) else {
                 throw PointVerseError.databaseCommitFailed
             }
             try db.execute(sql: "DELETE FROM point_images WHERE id = ?", arguments: [id.uuidString])
-            return path
+            let pointID = PointID(rawValue: UUID(uuidString: row["point_id"])!)
+            let timestamp = Date().timeIntervalSince1970
+            let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
+            try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
+            return row["relative_path"]
         }
     }
 
     public func updateImageText(id: UUID, recognizedText: String?) async throws {
         try await writer.write { db in
+            guard let rawPointID = try String.fetchOne(db, sql: "SELECT point_id FROM point_images WHERE id = ?", arguments: [id.uuidString]),
+                  let uuid = UUID(uuidString: rawPointID) else { throw PointVerseError.databaseCommitFailed }
             try db.execute(sql: "UPDATE point_images SET recognized_text = ? WHERE id = ?",
                            arguments: [recognizedText, id.uuidString])
+            let pointID = PointID(rawValue: uuid)
+            let timestamp = Date().timeIntervalSince1970
+            let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
+            try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
         }
     }
 
@@ -374,11 +392,73 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
 
     public func saveUserTranscript(pointID: PointID, userText: String) async throws {
         try await writer.write { db in
+            let timestamp = Date().timeIntervalSince1970
             try db.execute(sql: """
                 UPDATE transcripts SET user_text = ?, updated_at = ?
                 WHERE asset_id = (SELECT a.id FROM audio_assets a JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1)
-                """, arguments: [userText, Date().timeIntervalSince1970, pointID.rawValue.uuidString])
+                """, arguments: [userText, timestamp, pointID.rawValue.uuidString])
             try refreshSearch(pointID: pointID, db: db)
+            let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
+            try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
+        }
+    }
+
+    public func queuedEmbeddingDocuments(modelID: String) async throws -> [PointSemanticDocument] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT p.id, p.head_revision,
+                       TRIM(COALESCE(m.user_text, t.user_text, t.engine_text, '') || ' ' ||
+                            COALESCE((SELECT GROUP_CONCAT(recognized_text, ' ') FROM point_images
+                                      WHERE point_id = p.id AND recognized_text IS NOT NULL), '')) AS semantic_text,
+                       COALESCE(t.locale, '') AS locale
+                FROM points p
+                LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
+                LEFT JOIN audio_assets a ON a.message_id = m.id
+                LEFT JOIN transcripts t ON t.asset_id = a.id
+                WHERE EXISTS (
+                    SELECT 1 FROM durable_tasks task
+                    WHERE task.operation_id = 'embedding:' || p.id || ':' || p.head_revision || ':' || ?
+                      AND task.state IN ('queued', 'running')
+                )
+                ORDER BY p.updated_at
+                """, arguments: [modelID]).compactMap { row in
+                    guard let uuid = UUID(uuidString: row["id"]) else { return nil }
+                    return PointSemanticDocument(pointID: PointID(rawValue: uuid), revision: row["head_revision"],
+                                                 text: row["semantic_text"], localeIdentifier: row["locale"])
+                }
+        }
+    }
+
+    public func saveEmbedding(_ record: PointEmbeddingRecord) async throws {
+        try await writer.write { db in
+            guard let current = try Int.fetchOne(db, sql: "SELECT head_revision FROM points WHERE id = ?", arguments: [record.pointID.rawValue.uuidString]),
+                  current == record.revision else { return }
+            let timestamp = Date().timeIntervalSince1970
+            try db.execute(sql: """
+                INSERT INTO point_embeddings (point_id, content_revision, model_id, dimension, storage_format, vector, created_at)
+                VALUES (?, ?, ?, ?, 'float16-le', ?, ?)
+                ON CONFLICT(point_id, model_id) DO UPDATE SET
+                    content_revision = excluded.content_revision, dimension = excluded.dimension,
+                    storage_format = excluded.storage_format, vector = excluded.vector, created_at = excluded.created_at
+                """, arguments: [record.pointID.rawValue.uuidString, record.revision, record.modelID,
+                                   record.vector.count, EmbeddingMath.encodeFloat16(record.vector), timestamp])
+            try db.execute(sql: "UPDATE durable_tasks SET state = 'succeeded', updated_at = ? WHERE operation_id = ?",
+                           arguments: [timestamp, Self.embeddingOperationID(pointID: record.pointID, revision: record.revision, modelID: record.modelID)])
+        }
+    }
+
+    public func embeddings(modelID: String) async throws -> [PointEmbeddingRecord] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT e.point_id, e.content_revision, e.model_id, e.dimension, e.vector
+                FROM point_embeddings e JOIN points p ON p.id = e.point_id
+                WHERE e.model_id = ? AND e.content_revision = p.head_revision
+                """, arguments: [modelID]).compactMap { row in
+                    guard let uuid = UUID(uuidString: row["point_id"]),
+                          let vector = EmbeddingMath.decodeFloat16(row["vector"], dimension: row["dimension"]) else { return nil }
+                    return PointEmbeddingRecord(pointID: PointID(rawValue: uuid), revision: row["content_revision"],
+                                                modelID: row["model_id"], vector: vector)
+                }
         }
     }
 
@@ -420,6 +500,27 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             """, arguments: [pointID.rawValue.uuidString])
     }
 
+    private func bumpRevision(pointID: PointID, db: Database, timestamp: Double) throws -> Int {
+        try db.execute(sql: "UPDATE points SET head_revision = head_revision + 1, updated_at = ? WHERE id = ?",
+                       arguments: [timestamp, pointID.rawValue.uuidString])
+        return try Int.fetchOne(db, sql: "SELECT head_revision FROM points WHERE id = ?", arguments: [pointID.rawValue.uuidString]) ?? 1
+    }
+
+    private func enqueueEmbedding(pointID: PointID, revision: Int, db: Database, timestamp: Double) throws {
+        let modelID = EmbeddingModelIdentity.bgeSmallZhV15
+        let operationID = Self.embeddingOperationID(pointID: pointID, revision: revision, modelID: modelID)
+        let payload = "{\"pointId\":\"\(pointID.rawValue.uuidString)\",\"revision\":\(revision),\"modelId\":\"\(modelID)\"}"
+        try db.execute(sql: """
+            INSERT OR IGNORE INTO durable_tasks
+                (id, operation_id, kind, payload_json, state, next_run_at, created_at, updated_at)
+            VALUES (?, ?, 'embedding', ?, 'queued', ?, ?, ?)
+            """, arguments: [UUID().uuidString, operationID, payload, timestamp, timestamp, timestamp])
+    }
+
+    private static func embeddingOperationID(pointID: PointID, revision: Int, modelID: String) -> String {
+        "embedding:\(pointID.rawValue.uuidString):\(revision):\(modelID)"
+    }
+
     private static func createV1(in db: Database) throws {
         try db.execute(sql: Schema.v1)
     }
@@ -434,5 +535,43 @@ private enum Schema {
     CREATE TABLE derivations (id TEXT PRIMARY KEY NOT NULL, point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE, input_revision INTEGER NOT NULL, model_id TEXT NOT NULL, model_sha256 TEXT NOT NULL, prompt_version TEXT NOT NULL, title TEXT, summary TEXT, tags_json TEXT, next_question TEXT, raw_json TEXT, state TEXT NOT NULL CHECK (state IN ('queued','running','succeeded','failed')), adoption TEXT NOT NULL DEFAULT 'candidate', error_code TEXT, created_at REAL NOT NULL);
     CREATE TABLE durable_tasks (id TEXT PRIMARY KEY NOT NULL, operation_id TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('transcribe','derive')), payload_json TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('queued','running','succeeded','failed','cancelled')), attempt_count INTEGER NOT NULL DEFAULT 0, next_run_at REAL NOT NULL, lease_until REAL, last_error_code TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL);
     CREATE VIRTUAL TABLE point_search USING fts5(point_id UNINDEXED, accepted_title, transcript_text, summary, tags, tokenize = 'unicode61');
+    """
+
+    static let v3Embeddings = """
+    ALTER TABLE durable_tasks RENAME TO durable_tasks_v2;
+    CREATE TABLE durable_tasks (id TEXT PRIMARY KEY NOT NULL, operation_id TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('transcribe','derive','embedding','relationRefresh')), payload_json TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('queued','running','succeeded','failed','cancelled')), attempt_count INTEGER NOT NULL DEFAULT 0, next_run_at REAL NOT NULL, lease_until REAL, last_error_code TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+    INSERT INTO durable_tasks SELECT * FROM durable_tasks_v2;
+    DROP TABLE durable_tasks_v2;
+    CREATE TABLE point_embeddings (
+        point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+        content_revision INTEGER NOT NULL,
+        model_id TEXT NOT NULL,
+        dimension INTEGER NOT NULL,
+        storage_format TEXT NOT NULL CHECK (storage_format IN ('float16-le')),
+        vector BLOB NOT NULL,
+        created_at REAL NOT NULL,
+        PRIMARY KEY(point_id, model_id)
+    );
+    CREATE INDEX point_embeddings_model_revision ON point_embeddings(model_id, content_revision);
+    CREATE TABLE relation_candidates (
+        source_point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+        target_point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+        source_revision INTEGER NOT NULL,
+        target_revision INTEGER NOT NULL,
+        model_id TEXT NOT NULL,
+        cosine_score REAL NOT NULL,
+        created_at REAL NOT NULL,
+        PRIMARY KEY(source_point_id, target_point_id, model_id)
+    );
+    CREATE TABLE point_relations (
+        source_point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+        target_point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+        relation_type TEXT NOT NULL CHECK (relation_type IN ('duplicate','extend','contradict','related')),
+        confidence REAL NOT NULL,
+        judge_model_id TEXT NOT NULL,
+        explanation TEXT,
+        created_at REAL NOT NULL,
+        PRIMARY KEY(source_point_id, target_point_id, judge_model_id)
+    );
     """
 }

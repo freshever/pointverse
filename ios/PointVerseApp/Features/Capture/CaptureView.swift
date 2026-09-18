@@ -180,7 +180,10 @@ struct CaptureView: View {
             } onSkip: {
                 frameReview = nil
                 openDetail(for: review.pointID)
-                Task { await container.transcriptionService.transcribe(pointID: review.pointID) }
+                Task {
+                    await container.transcriptionService.transcribe(pointID: review.pointID)
+                    container.refreshEmbeddings()
+                }
             }
         }
     }
@@ -227,6 +230,7 @@ struct CaptureView: View {
         Task {
             do {
                 let id = try await container.database.commitTextPoint(text: text, createdAt: Date())
+                container.refreshEmbeddings()
                 let title = text.count > 20 ? String(text.prefix(20)) + "…" : text
                 textInput = ""
                 completedPoint = PointSummary(id: id, title: title, createdAt: Date(), transcriptState: "text")
@@ -292,7 +296,10 @@ struct CaptureView: View {
                 state = .saved
                 if frames.isEmpty {
                     openDetail(for: pointID)
-                    Task { await container.transcriptionService.transcribe(pointID: pointID) }
+                    Task {
+                        await container.transcriptionService.transcribe(pointID: pointID)
+                        container.refreshEmbeddings()
+                    }
                 } else {
                     frameReview = CapturedFrameReview(pointID: pointID, localeIdentifier: localeIdentifier,
                                                       frames: frames.map { CapturedFrame(data: $0) })
@@ -343,6 +350,7 @@ struct CaptureView: View {
             }
             notifyImagesChanged(pointID)
             await container.transcriptionService.transcribe(pointID: pointID)
+            container.refreshEmbeddings()
             for (id, data) in assets {
                 do {
                     let text = try await container.imageTextRecognizer.recognize(
@@ -350,6 +358,7 @@ struct CaptureView: View {
                         language: localeIdentifier
                     )
                     try await container.database.updateImageText(id: id, recognizedText: text.isEmpty ? nil : text)
+                    container.refreshEmbeddings()
                     notifyImagesChanged(pointID)
                     PointVerseLog.storage.info("Captured frame OCR completed")
                 } catch {

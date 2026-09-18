@@ -1,0 +1,4 @@
+coremltools>=8.0,<9
+numpy==1.26.4
+torch==2.5.0
+transformers==4.40.2

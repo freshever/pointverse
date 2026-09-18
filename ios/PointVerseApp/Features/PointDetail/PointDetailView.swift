@@ -143,12 +143,17 @@ struct PointDetailView: View {
         isSaving = true
         Task {
             try? await container.database.saveUserTranscript(pointID: point.id, userText: editedTranscript)
+            container.refreshEmbeddings()
             isSaving = false; isEditing = false; await reload()
         }
     }
 
     private func retryTranscription() {
-        Task { await container.transcriptionService.transcribe(pointID: point.id); await reload() }
+        Task {
+            await container.transcriptionService.transcribe(pointID: point.id)
+            container.refreshEmbeddings()
+            await reload()
+        }
     }
 
     private func duration(_ milliseconds: Int) -> String {

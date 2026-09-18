@@ -46,7 +46,9 @@ struct StarMapView: View {
 
     private func reload() async {
         do {
-            layout = StarLayoutEngine.make(entries: try await container.database.pointMapEntries())
+            async let entries = container.database.pointMapEntries()
+            async let embeddings = container.database.embeddings(modelID: EmbeddingModelIdentity.bgeSmallZhV15)
+            layout = StarLayoutEngine.make(entries: try await entries, embeddings: try await embeddings)
         } catch {
             loadFailed = true
         }
@@ -214,9 +216,10 @@ private struct StarLayout {
 
 @MainActor
 private enum StarLayoutEngine {
-    static func make(entries: [PointMapEntry]) -> StarLayout {
+    static func make(entries: [PointMapEntry], embeddings: [PointEmbeddingRecord]) -> StarLayout {
         guard !entries.isEmpty else { return .init(nodes: [], links: []) }
-        let vectors = entries.map { semanticVector(text: $0.content, locale: $0.localeIdentifier) }
+        let stored = Dictionary(uniqueKeysWithValues: embeddings.map { ($0.pointID, $0.vector.map(Double.init)) })
+        let vectors = entries.map { stored[$0.id] ?? semanticVector(text: $0.content, locale: $0.localeIdentifier) }
         var similarities = Array(repeating: Array(repeating: CGFloat(0), count: entries.count), count: entries.count)
         for i in entries.indices {
             for j in entries.indices where j > i {

@@ -5,4 +5,5 @@ public enum PointVerseLog {
     public static let storage = Logger(subsystem: "com.pointverse.poc", category: "storage")
     public static let database = Logger(subsystem: "com.pointverse.poc", category: "database")
     public static let transcription = Logger(subsystem: "com.pointverse.poc", category: "transcription")
+    public static let embedding = Logger(subsystem: "com.pointverse.poc", category: "embedding")
 }

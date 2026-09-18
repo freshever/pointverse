@@ -31,4 +31,13 @@ public protocol PointRepository: Sendable {
     func deletePoint(id: PointID) async throws -> String?
     func saveUserTranscript(pointID: PointID, userText: String) async throws
     func failTranscription(pointID: PointID, error: PointVerseError) async throws
+    func queuedEmbeddingDocuments(modelID: String) async throws -> [PointSemanticDocument]
+    func saveEmbedding(_ record: PointEmbeddingRecord) async throws
+    func embeddings(modelID: String) async throws -> [PointEmbeddingRecord]
+}
+
+public protocol PointEmbedding: Sendable {
+    var modelID: String { get }
+    var dimension: Int { get }
+    func encode(_ text: String) async throws -> [Float]
 }

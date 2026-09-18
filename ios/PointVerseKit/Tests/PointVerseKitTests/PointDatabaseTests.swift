@@ -99,3 +99,37 @@ import Testing
     try await database.saveCandidateTitle(pointID: pointID, title: "Context Notes", modelID: "qwen-test", modelSHA256: "qwen-sha")
     #expect(try await database.pointDetail(id: pointID).title == "Context Notes")
 }
+
+@Test func embeddingQueueTracksRevisionAndRejectsStaleResults() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let pointID = try await database.commitTextPoint(text: "想法之间会产生引力", createdAt: Date())
+    let first = try #require(try await database.queuedEmbeddingDocuments(modelID: EmbeddingModelIdentity.bgeSmallZhV15).first)
+    #expect(first.revision == 1)
+
+    try await database.addImage(pointID: pointID, id: UUID(), relativePath: "blobs/images/a.jpg",
+                                sha256: "image", byteCount: 10, recognizedText: "关系会随时间衰减")
+    let current = try #require(try await database.queuedEmbeddingDocuments(modelID: EmbeddingModelIdentity.bgeSmallZhV15).last)
+    #expect(current.revision == 2)
+    #expect(current.text.contains("关系会随时间衰减"))
+
+    try await database.saveEmbedding(.init(pointID: pointID, revision: first.revision,
+                                           modelID: EmbeddingModelIdentity.bgeSmallZhV15, vector: [1, 0]))
+    #expect(try await database.embeddings(modelID: EmbeddingModelIdentity.bgeSmallZhV15).isEmpty)
+    try await database.saveEmbedding(.init(pointID: pointID, revision: current.revision,
+                                           modelID: EmbeddingModelIdentity.bgeSmallZhV15, vector: [0.6, 0.8]))
+    let stored = try #require(try await database.embeddings(modelID: EmbeddingModelIdentity.bgeSmallZhV15).first)
+    #expect(stored.revision == 2)
+    #expect(abs(stored.vector[0] - 0.6) < 0.001)
+}
+
+@Test func embeddingMathReturnsNearestPoints() {
+    let a = PointID(), b = PointID(), c = PointID()
+    let records = [
+        PointEmbeddingRecord(pointID: a, revision: 1, modelID: "test", vector: [1, 0]),
+        PointEmbeddingRecord(pointID: b, revision: 1, modelID: "test", vector: [0.8, 0.2]),
+        PointEmbeddingRecord(pointID: c, revision: 1, modelID: "test", vector: [-1, 0]),
+    ]
+    let hits = EmbeddingMath.topK(query: [1, 0], records: records, excluding: a, limit: 2)
+    #expect(hits.map(\.pointID) == [b, c])
+}

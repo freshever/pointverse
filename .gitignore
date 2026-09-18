@@ -8,5 +8,6 @@ h5/data/*.sqlite-shm
 h5/data/*.sqlite-wal
 ios/DerivedData/
 ios/**/.build/
+ios/.venv-embedding/
 *.xcuserstate
 xcuserdata/
