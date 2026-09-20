@@ -8,7 +8,7 @@ final class AppContainer: ObservableObject {
     let imageBlobStore: ImageBlobStore
     let captureUseCase: CaptureUseCase
     let transcriptionService: TranscriptionService
-    let embeddingService: EmbeddingService?
+    private(set) var embeddingService: EmbeddingService?
     let imageTextRecognizer = ImageTextRecognizer()
     @Published private(set) var startupError: String?
     @Published private(set) var embeddingStartupError: String?
@@ -32,27 +32,7 @@ final class AppContainer: ObservableObject {
                 blobStore: blobStore,
                 recognizer: OnDeviceSpeechRecognizer()
             )
-            if ProcessInfo.processInfo.isiOSAppOnMac {
-                // Loading an iOS ML Program while running the iOS app directly on macOS
-                // can abort inside MPSGraph deployment-target validation. This is an
-                // Objective-C assertion, not a catchable Swift error.
-                self.embeddingService = nil
-                self.embeddingStartupError = "Mac 兼容模式暂不加载 BGE；请使用 iOS Simulator 或 iPhone"
-                PointVerseLog.embedding.notice("BGE disabled for iOS-app-on-Mac compatibility mode")
-            } else if let modelURL = Bundle.main.url(forResource: "BGESmallZhV15", withExtension: "mlmodelc"),
-               let vocabularyURL = Bundle.main.url(forResource: "bge-small-zh-v1.5-vocab", withExtension: "txt") {
-                do {
-                    let provider = try BGECoreMLEmbedding(modelURL: modelURL, vocabularyURL: vocabularyURL)
-                    self.embeddingService = EmbeddingService(repository: database, provider: provider)
-                } catch {
-                    self.embeddingService = nil
-                    self.embeddingStartupError = "BGE 模型加载失败：\(error.localizedDescription)"
-                    PointVerseLog.embedding.error("BGE model load failed: \(String(describing: error), privacy: .public)")
-                }
-            } else {
-                self.embeddingService = nil
-                self.embeddingStartupError = "App 中缺少 BGE 模型或词表"
-            }
+            self.embeddingService = nil
         } catch {
             fatalError("PointVerse storage could not be initialized: \(error)")
         }
@@ -74,9 +54,30 @@ final class AppContainer: ObservableObject {
         do {
             try await database.migrate()
             await transcriptionService.resumePending()
+            await prepareEmbeddingService()
             await embeddingService?.resumePending()
         } catch {
             startupError = "本地资料库初始化失败"
+        }
+    }
+
+    private func prepareEmbeddingService() async {
+        guard !ProcessInfo.processInfo.isiOSAppOnMac else {
+            embeddingStartupError = "Mac 兼容模式暂不加载 E5；请使用 iOS Simulator 或 iPhone"
+            return
+        }
+        guard let modelURL = Bundle.main.url(forResource: "MultilingualE5Small", withExtension: "mlmodelc"),
+              let tokenizerJSON = Bundle.main.url(forResource: "tokenizer", withExtension: "json") else {
+            embeddingStartupError = "App 中缺少 multilingual-e5-small 模型或 tokenizer"
+            return
+        }
+        do {
+            let provider = try await E5CoreMLEmbedding.load(modelURL: modelURL, tokenizerFolder: tokenizerJSON.deletingLastPathComponent())
+            embeddingService = EmbeddingService(repository: database, provider: provider)
+            embeddingStartupError = nil
+        } catch {
+            embeddingStartupError = "E5 模型加载失败：\(error.localizedDescription)"
+            PointVerseLog.embedding.error("E5 model load failed: \(String(describing: error), privacy: .public)")
         }
     }
 }

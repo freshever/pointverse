@@ -1,5 +1,9 @@
 # 点界 iPhone 本地 Embedding 与 Local Judge 技术方案 v1.0
 
+> 实施更新（2026-09-18）：为支持中文与英文跨语言关联，实际模型已由
+> `bge-small-zh-v1.5` 替换为 `intfloat/multilingual-e5-small`；采用 384 维、
+> Float32 计算与 INT8 权重。本文其余 BGE 内容保留为早期选型记录。
+
 > 状态：设计方案，尚未实现  
 > 目标平台：iOS 17+  
 > 首选模型：`BAAI/bge-small-zh-v1.5`

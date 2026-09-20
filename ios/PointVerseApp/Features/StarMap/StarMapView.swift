@@ -64,28 +64,56 @@ private struct Pseudo3DStarMap: View {
     @State private var dragStartPitch: CGFloat?
     @State private var zoom: CGFloat = 1
     @State private var zoomStart: CGFloat?
+    @State private var selectedLink: StarLayout.Link?
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
                 Canvas { context, size in
                     let projected = project(size: size)
+                    let clusters = displayClusters(projected: projected)
+                    let clusterByNode = Dictionary(uniqueKeysWithValues: clusters.flatMap { cluster in
+                        cluster.nodeIndices.map { ($0, cluster) }
+                    })
+                    var drawnClusterLinks = Set<String>()
 
                     for link in layout.links {
-                        guard projected.indices.contains(link.a), projected.indices.contains(link.b) else { continue }
+                        guard let first = clusterByNode[link.a], let second = clusterByNode[link.b],
+                              first.id != second.id else { continue }
+                        let key = first.id < second.id ? "\(first.id):\(second.id)" : "\(second.id):\(first.id)"
+                        guard drawnClusterLinks.insert(key).inserted else { continue }
                         var path = Path()
-                        path.move(to: projected[link.a].point)
-                        path.addLine(to: projected[link.b].point)
-                        let emphasis = max(0, min(1, (link.strength - 0.45) / 0.4))
-                        context.stroke(
-                            path,
-                            with: .color(Color.cyan.opacity(Double(0.16 + emphasis * 0.58))),
-                            lineWidth: 1 + emphasis * 2
-                        )
+                        path.move(to: first.point)
+                        path.addLine(to: second.point)
+                        let emphasis = max(0, min(1, (link.strength - 0.85) / 0.12))
+                        context.stroke(path, with: .color(linkColor(link.strength).opacity(Double(0.45 + emphasis * 0.45))),
+                                       style: StrokeStyle(lineWidth: 1.2 + emphasis * 2.2, lineCap: .round,
+                                                          dash: [5, 5]))
                     }
 
-                    for node in projected.sorted(by: { $0.depth < $1.depth }) {
-                        let point = layout.nodes[node.index].point
+                    for cluster in clusters.sorted(by: { $0.depth < $1.depth }) {
+                        if cluster.nodeIndices.count > 1 {
+                            let rect = CGRect(x: cluster.point.x - cluster.radius, y: cluster.point.y - cluster.radius,
+                                              width: cluster.radius * 2, height: cluster.radius * 2)
+                            context.fill(Path(ellipseIn: rect), with: .radialGradient(
+                                Gradient(colors: [.cyan.opacity(0.95), .indigo.opacity(0.72)]),
+                                center: cluster.point, startRadius: 1, endRadius: cluster.radius
+                            ))
+                            context.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)),
+                                           with: .color(.cyan.opacity(0.35)), lineWidth: 2)
+                            context.draw(
+                                Text("\(cluster.nodeIndices.count)").font(.headline.bold()).foregroundStyle(.white),
+                                at: cluster.point, anchor: .center
+                            )
+                            context.draw(
+                                Text("相关想法").font(.caption2).foregroundStyle(.white.opacity(0.75)),
+                                at: CGPoint(x: cluster.point.x, y: cluster.point.y + cluster.radius + 11), anchor: .center
+                            )
+                            continue
+                        }
+                        guard let index = cluster.nodeIndices.first else { continue }
+                        let node = projected[index]
+                        let point = layout.nodes[index].point
                         let color: Color = point.transcriptState == "failed"
                             ? .orange
                             : Date().timeIntervalSince(point.createdAt) < 86_400 * 7 ? .cyan : .indigo
@@ -97,7 +125,7 @@ private struct Pseudo3DStarMap: View {
                         )
                         context.fill(Path(ellipseIn: rect), with: .color(color))
                         context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)), with: .color(color.opacity(0.25)), lineWidth: 2)
-                        if layout.nodes[node.index].isEmbedded {
+                        if layout.nodes[index].isEmbedded {
                             context.stroke(
                                 Path(ellipseIn: rect.insetBy(dx: -6, dy: -6)),
                                 with: .color(.mint.opacity(0.72)),
@@ -117,7 +145,7 @@ private struct Pseudo3DStarMap: View {
                 .simultaneousGesture(zoomGesture)
                 .simultaneousGesture(
                     SpatialTapGesture().onEnded { value in
-                        selectNearest(to: value.location, size: proxy.size)
+                        handleTap(at: value.location, size: proxy.size)
                     }
                 )
 
@@ -133,10 +161,15 @@ private struct Pseudo3DStarMap: View {
                     .font(.caption).foregroundStyle(.white.opacity(0.7)).padding()
                     Spacer()
                     VStack(spacing: 10) {
-                        if let strongest = layout.strongestLink {
-                            strongestRelation(strongest)
+                        if let selectedLink {
+                            relationCard(selectedLink, selected: true)
+                        } else if let strongest = layout.strongestLink {
+                            relationCard(strongest, selected: false)
                         }
                         HStack(spacing: 10) {
+                            zoomButton(systemName: "minus.magnifyingglass", factor: 0.8)
+                            zoomButton(systemName: "plus.magnifyingglass", factor: 1.25)
+                            Divider().frame(height: 22).overlay(.white.opacity(0.2))
                             Text("视角").font(.caption).foregroundStyle(.white.opacity(0.65))
                             axisButton("X", color: .red, yaw: -.pi / 2, pitch: 0)
                             axisButton("Y", color: .green, yaw: 0, pitch: .pi / 2)
@@ -153,12 +186,24 @@ private struct Pseudo3DStarMap: View {
     }
 
     private var semanticStatus: some View {
-        HStack(spacing: 7) {
-            Image(systemName: layout.usesBGE ? "sparkles" : "bolt.trianglebadge.exclamationmark")
-            Text(layout.usesBGE ? "BGE 本地语义分析" : "系统语义分析")
-                .fontWeight(.semibold)
-            Spacer()
-            Text(layout.usesBGE ? "\(layout.embeddingCount)/\(layout.nodes.count) 已完成" : "BGE 未启用")
+        VStack(spacing: 7) {
+            HStack(spacing: 7) {
+                Image(systemName: layout.usesBGE ? "sparkles" : "bolt.trianglebadge.exclamationmark")
+                Text(layout.usesBGE ? "E5 多语言语义分析" : "系统语义分析")
+                    .fontWeight(.semibold)
+                Spacer()
+                Text(layout.usesBGE ? "\(layout.embeddingCount)/\(layout.nodes.count) 已完成" : "E5 未启用")
+            }
+            if layout.usesBGE {
+                HStack(spacing: 12) {
+                    legendDot(.indigo, "低候选")
+                    legendDot(.cyan, "中候选")
+                    legendDot(.mint, "高候选")
+                    Spacer()
+                    Text("点虚线看分数").foregroundStyle(.white.opacity(0.55))
+                }
+                .font(.caption2)
+            }
         }
         .foregroundStyle(layout.usesBGE ? Color.mint : Color.orange)
         .padding(.horizontal, 12)
@@ -167,28 +212,57 @@ private struct Pseudo3DStarMap: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke((layout.usesBGE ? Color.mint : Color.orange).opacity(0.35)))
     }
 
-    private func strongestRelation(_ link: StarLayout.Link) -> some View {
+    private func legendDot(_ color: Color, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(text).foregroundStyle(.white.opacity(0.68))
+        }
+    }
+
+    private func relationCard(_ link: StarLayout.Link, selected: Bool) -> some View {
         let first = layout.nodes[link.a].point.title
         let second = layout.nodes[link.b].point.title
-        return Button { onSelect(layout.nodes[link.a].point) } label: {
+        return Button {
+            if selected { selectedLink = nil } else { selectedLink = link }
+        } label: {
             HStack(spacing: 10) {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(linkColor(link.strength))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("发现最强语义关联 · 相似度 \(link.strength, format: .number.precision(.fractionLength(2)))")
+                    Text("\(selected ? "当前候选" : "最高候选") · E5 系数 \(link.strength, format: .number.precision(.fractionLength(3)))")
                         .font(.caption.bold()).foregroundStyle(.white)
                     Text("\(first)  ↔  \(second)")
                         .font(.caption2).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
                 }
                 Spacer()
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.white.opacity(0.5))
+                Text(relationLevel(link.strength)).font(.caption2.bold()).foregroundStyle(linkColor(link.strength))
+                Image(systemName: selected ? "xmark.circle.fill" : "hand.tap")
+                    .font(.caption).foregroundStyle(.white.opacity(0.5))
             }
             .padding(12)
             .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(.cyan.opacity(0.32)))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(linkColor(link.strength).opacity(0.4)))
             .padding(.horizontal)
         }
         .buttonStyle(.plain)
+    }
+
+    private func zoomButton(systemName: String, factor: CGFloat) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.22)) { zoom = min(2.2, max(0.55, zoom * factor)) }
+        } label: {
+            Image(systemName: systemName).foregroundStyle(.white)
+                .frame(width: 32, height: 32).background(.white.opacity(0.12), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func linkColor(_ score: CGFloat) -> Color {
+        score >= 0.94 ? .mint : score >= 0.89 ? .cyan : .indigo
+    }
+
+    private func relationLevel(_ score: CGFloat) -> String {
+        score >= 0.94 ? "高候选" : score >= 0.89 ? "中候选" : "低候选"
     }
 
     private var rotationGesture: some Gesture {
@@ -219,12 +293,78 @@ private struct Pseudo3DStarMap: View {
         }.buttonStyle(.plain)
     }
 
-    private func selectNearest(to location: CGPoint, size: CGSize) {
+    private func handleTap(at location: CGPoint, size: CGSize) {
         let nodes = project(size: size)
-        guard let nearest = nodes.min(by: {
+        let clusters = displayClusters(projected: nodes)
+        if let nearest = clusters.min(by: {
             hypot($0.point.x - location.x, $0.point.y - location.y) < hypot($1.point.x - location.x, $1.point.y - location.y)
-        }), hypot(nearest.point.x - location.x, nearest.point.y - location.y) <= max(34, nearest.radius + 18) else { return }
-        onSelect(layout.nodes[nearest.index].point)
+        }), hypot(nearest.point.x - location.x, nearest.point.y - location.y) <= max(34, nearest.radius + 14) {
+            if nearest.nodeIndices.count > 1 {
+                selectedLink = nil
+                withAnimation(.easeInOut(duration: 0.3)) { zoom = min(2.2, max(1.12, zoom * 1.45)) }
+            } else if let index = nearest.nodeIndices.first {
+                onSelect(layout.nodes[index].point)
+            }
+            return
+        }
+        let clusterByNode = Dictionary(uniqueKeysWithValues: clusters.flatMap { cluster in
+            cluster.nodeIndices.map { ($0, cluster) }
+        })
+        let visibleLinks = layout.links.filter {
+            clusterByNode[$0.a]?.id != clusterByNode[$0.b]?.id
+        }
+        selectedLink = visibleLinks.min(by: {
+            distance(from: location, to: $0, clusters: clusterByNode) < distance(from: location, to: $1, clusters: clusterByNode)
+        }).flatMap { distance(from: location, to: $0, clusters: clusterByNode) <= 18 ? $0 : nil }
+    }
+
+    private func displayClusters(projected: [ProjectedNode]) -> [DisplayCluster] {
+        let threshold: CGFloat
+        switch zoom {
+        case 1.55...: threshold = .infinity
+        case 1.18..<1.55: threshold = 0.94
+        case 0.88..<1.18: threshold = 0.89
+        default: threshold = 0.85
+        }
+        var remaining = Set(layout.nodes.indices)
+        var groups: [[Int]] = []
+        while let seed = remaining.first {
+            remaining.remove(seed)
+            var group = [seed], queue = [seed]
+            while let current = queue.popLast() {
+                for link in layout.links where link.strength >= threshold {
+                    let neighbor: Int?
+                    if link.a == current { neighbor = link.b }
+                    else if link.b == current { neighbor = link.a }
+                    else { neighbor = nil }
+                    if let neighbor, remaining.remove(neighbor) != nil {
+                        group.append(neighbor); queue.append(neighbor)
+                    }
+                }
+            }
+            groups.append(group)
+        }
+        return groups.enumerated().map { id, indices in
+            let members = indices.map { projected[$0] }
+            let count = CGFloat(members.count)
+            return DisplayCluster(
+                id: id,
+                nodeIndices: indices,
+                point: CGPoint(x: members.reduce(0) { $0 + $1.point.x } / count,
+                               y: members.reduce(0) { $0 + $1.point.y } / count),
+                depth: members.reduce(0) { $0 + $1.depth } / count,
+                radius: members.count == 1 ? members[0].radius : min(28, 12 + sqrt(count) * 4)
+            )
+        }
+    }
+
+    private func distance(from point: CGPoint, to link: StarLayout.Link, clusters: [Int: DisplayCluster]) -> CGFloat {
+        guard let a = clusters[link.a]?.point, let b = clusters[link.b]?.point else { return .infinity }
+        let dx = b.x - a.x, dy = b.y - a.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return hypot(point.x - a.x, point.y - a.y) }
+        let t = min(1, max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared))
+        return hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy))
     }
 
     private func project(size: CGSize) -> [ProjectedNode] {
@@ -250,6 +390,14 @@ private struct Pseudo3DStarMap: View {
 
 private struct ProjectedNode {
     let index: Int
+    let point: CGPoint
+    let depth: CGFloat
+    let radius: CGFloat
+}
+
+private struct DisplayCluster: Identifiable {
+    let id: Int
+    let nodeIndices: [Int]
     let point: CGPoint
     let depth: CGFloat
     let radius: CGFloat
@@ -319,12 +467,16 @@ private enum StarLayoutEngine {
         }
 
         var links: [StarLayout.Link] = [], used = Set<String>()
-        let linkThreshold: CGFloat = stored.count == entries.count ? 0.55 : 0.28
         for i in entries.indices {
             let candidates = entries.indices.filter { $0 != i }.sorted { similarities[i][$0] > similarities[i][$1] }
-            for j in candidates.prefix(2) where similarities[i][j] >= linkThreshold {
+            for j in candidates {
+                let bothEmbedded = stored[entries[i].id] != nil && stored[entries[j].id] != nil
+                let threshold: CGFloat = bothEmbedded ? 0.85 : (stored.isEmpty ? 0.28 : .infinity)
+                guard similarities[i][j] >= threshold else { continue }
                 let a = min(i, j), b = max(i, j)
-                if used.insert("\(a):\(b)").inserted { links.append(.init(a: a, b: b, strength: similarities[i][j])) }
+                if used.insert("\(a):\(b)").inserted {
+                    links.append(.init(a: a, b: b, strength: similarities[i][j]))
+                }
             }
         }
         return .init(

@@ -7,6 +7,9 @@ options:
 packages:
   PointVerseKit:
     path: PointVerseKit
+  SwiftTransformers:
+    url: https://github.com/huggingface/swift-transformers
+    exactVersion: 1.3.0
 targets:
   PointVerseWatch:
     type: application
@@ -42,6 +45,8 @@ targets:
     dependencies:
       - target: PointVerseWatch
       - package: PointVerseKit
+      - package: SwiftTransformers
+        product: Tokenizers
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv

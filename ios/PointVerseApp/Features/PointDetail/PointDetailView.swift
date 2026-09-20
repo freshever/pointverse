@@ -9,6 +9,8 @@ struct PointDetailView: View {
     @StateObject private var player = AudioPlayerViewModel()
     @State private var detail: PointDetail?
     @State private var images: [LoadedPointImage] = []
+    @State private var relatedPoints: [RelatedPoint] = []
+    @State private var relatedLoaded = false
     @State private var editedTranscript = ""
     @State private var isEditing = false
     @State private var isSaving = false
@@ -20,6 +22,7 @@ struct PointDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if detail?.modality != "text" { audioCard }
                 transcriptCard
+                relatedPointsCard
                 ForEach(images) { item in
                     VStack(alignment: .leading, spacing: 10) {
                         Image(uiImage: item.image)
@@ -114,12 +117,62 @@ struct PointDetailView: View {
         .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
     }
 
+    private var relatedPointsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("候选关联", systemImage: "point.3.connected.trianglepath.dotted").font(.headline)
+                Spacer()
+                Text("E5 多语言").font(.caption2.bold()).foregroundStyle(.mint)
+            }
+            if !relatedLoaded {
+                HStack { ProgressView(); Text("正在分析关联") }.font(.subheadline).foregroundStyle(.secondary)
+            } else if relatedPoints.isEmpty {
+                Text("暂时没有达到召回阈值的候选内容")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                ForEach(relatedPoints) { related in
+                    NavigationLink {
+                        PointDetailView(point: related.point)
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Circle().fill(relationColor(related.score)).frame(width: 9, height: 9).padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(related.point.title.isEmpty ? "未命名想法" : related.point.title)
+                                    .font(.subheadline.bold()).foregroundStyle(.primary).lineLimit(1)
+                                Text(related.content).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            Spacer(minLength: 8)
+                            Text(related.score, format: .number.precision(.fractionLength(3)))
+                                .font(.caption.monospacedDigit().bold())
+                                .foregroundStyle(relationColor(related.score))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(relationColor(related.score).opacity(0.12), in: Capsule())
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    if related.id != relatedPoints.last?.id { Divider() }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func relationColor(_ score: Float) -> Color {
+        score >= 0.94 ? .mint : score >= 0.89 ? .cyan : .indigo
+    }
+
     private var displayTitle: String {
         let value = detail?.title ?? point.title
         return value.isEmpty ? "语音想法" : value
     }
 
     private func reload() async {
+        relatedLoaded = false
+        async let related = container.database.relatedPoints(
+            to: point.id, modelID: EmbeddingModelIdentity.multilingualE5Small,
+            minimumScore: 0.85, limit: 5
+        )
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded
         if let path = loaded.audioRelativePath,
@@ -137,6 +190,8 @@ struct PointDetailView: View {
             for await item in group { if let item { result.append(item) } }
             return result.sorted { $0.asset.createdAt < $1.asset.createdAt }
         }
+        relatedPoints = (try? await related) ?? []
+        relatedLoaded = true
     }
 
     private func saveCorrection() {

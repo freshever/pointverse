@@ -1,6 +1,14 @@
 import Foundation
 
 public enum EmbeddingMath {
+    /// E5 cosine scores have a high baseline and should not be presented as a
+    /// percentage. Values below 0.84 are treated as background similarity; a
+    /// square-root curve lets clear cross-language matches enter the high band
+    /// without making borderline matches look strong.
+    public static func calibratedE5Score(_ cosine: Float) -> Float {
+        sqrt(min(1, max(0, (cosine - 0.84) / 0.07)))
+    }
+
     public static func normalize(_ vector: [Float]) -> [Float] {
         let magnitude = sqrt(vector.reduce(Float.zero) { $0 + $1 * $1 })
         guard magnitude > 0 else { return vector }

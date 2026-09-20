@@ -37,6 +37,19 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             try db.execute(sql: Schema.v3Embeddings)
         }
         try migrator.migrate(writer)
+        try await writer.write { db in
+            let modelID = EmbeddingModelIdentity.multilingualE5Small
+            try db.execute(sql: """
+                UPDATE durable_tasks SET state = 'cancelled', updated_at = ?
+                WHERE kind = 'embedding' AND state IN ('queued', 'running')
+                  AND operation_id NOT LIKE '%' || ?
+                """, arguments: [Date().timeIntervalSince1970, modelID])
+            for row in try Row.fetchAll(db, sql: "SELECT id, head_revision, updated_at FROM points") {
+                guard let uuid = UUID(uuidString: row["id"]) else { continue }
+                try enqueueEmbedding(pointID: PointID(rawValue: uuid), revision: row["head_revision"],
+                                     db: db, timestamp: row["updated_at"])
+            }
+        }
         PointVerseLog.database.info("Database migrations completed")
     }
 
@@ -459,6 +472,25 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     return PointEmbeddingRecord(pointID: PointID(rawValue: uuid), revision: row["content_revision"],
                                                 modelID: row["model_id"], vector: vector)
                 }
+        }
+    }
+
+    public func relatedPoints(
+        to pointID: PointID,
+        modelID: String,
+        minimumScore: Float = 0.85,
+        limit: Int = 5
+    ) async throws -> [RelatedPoint] {
+        let records = try await embeddings(modelID: modelID)
+        guard let source = records.first(where: { $0.pointID == pointID }) else { return [] }
+        let hits = EmbeddingMath.topK(query: source.vector, records: records, excluding: pointID, limit: max(limit * 3, limit))
+            .filter { $0.score >= minimumScore }
+            .prefix(limit)
+        let entries = try await pointMapEntries()
+        let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        return hits.compactMap { hit in
+            guard let entry = byID[hit.pointID] else { return nil }
+            return RelatedPoint(point: entry.point, content: entry.content, score: hit.score)
         }
     }
 

@@ -133,3 +133,27 @@ import Testing
     let hits = EmbeddingMath.topK(query: [1, 0], records: records, excluding: a, limit: 2)
     #expect(hits.map(\.pointID) == [b, c])
 }
+
+@Test func e5ScoreCalibrationSeparatesBackgroundFromClearMatches() {
+    #expect(EmbeddingMath.calibratedE5Score(0.84) == 0)
+    #expect(EmbeddingMath.calibratedE5Score(0.85) > 0.37)
+    #expect(EmbeddingMath.calibratedE5Score(0.8841) > 0.79)
+    #expect(EmbeddingMath.calibratedE5Score(0.91) > 0.999)
+}
+
+@Test func relatedPointsReturnContentAndCoefficientInOrder() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let source = try await database.commitTextPoint(text: "想法会随时间衰减")
+    let close = try await database.commitTextPoint(text: "Ideas gradually decay over time")
+    let far = try await database.commitTextPoint(text: "今晚吃红烧肉")
+    let modelID = EmbeddingModelIdentity.multilingualE5Small
+    try await database.saveEmbedding(.init(pointID: source, revision: 1, modelID: modelID, vector: [1, 0]))
+    try await database.saveEmbedding(.init(pointID: close, revision: 1, modelID: modelID, vector: [0.9, 0.1]))
+    try await database.saveEmbedding(.init(pointID: far, revision: 1, modelID: modelID, vector: [0, 1]))
+
+    let related = try await database.relatedPoints(to: source, modelID: modelID, minimumScore: 0.85, limit: 5)
+    #expect(related.map(\.id) == [close])
+    #expect(related.first?.content == "Ideas gradually decay over time")
+    #expect((related.first?.score ?? 0) > 0.99)
+}

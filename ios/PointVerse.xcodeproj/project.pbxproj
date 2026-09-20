@@ -7,10 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02F157B4EE85BB66B32061AD /* MultilingualE5Small.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 21B1B6A58E2B3AEC869942E0 /* MultilingualE5Small.mlpackage */; };
 		096226125B5039423956E298 /* WatchCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */; };
+		09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 7A2F90E93A7921822C385A42 /* Tokenizers */; };
 		0C5AF72B3024224085F88957 /* PointVerseWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 63BD3FCB4B14F9E1B147974B /* PointVerseWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		11466DB45DA594D12B07E742 /* PointVerseWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */; };
-		1E5CFE5C2BF06D55161728B6 /* BGEWordPieceTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4A1CB7B7E1FE6FEA7292045 /* BGEWordPieceTokenizer.swift */; };
 		40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */; };
 		42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A72376C331A5411479AD783 /* Localizable.strings */; };
 		4CFADA315C11FC4F77AB7B95 /* SystemAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */; };
@@ -21,17 +22,18 @@
 		68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC1CB606858B87E1316B5A6 /* CaptureView.swift */; };
 		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
 		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
-		81CD449B5F4F5F94463C8FB5 /* bge-small-zh-v1.5-vocab.txt in Resources */ = {isa = PBXBuildFile; fileRef = 313C5F01660286ACE8DF698A /* bge-small-zh-v1.5-vocab.txt */; };
 		8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E117BAE13164C24CE628D0 /* AppLocalization.swift */; };
 		86ECCF7F5A5CC64FC721261A /* WatchCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */; };
 		94435D8810214C8FC7F63198 /* SquarePhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */; };
-		9B0F36225C562D85B2294FA7 /* BGECoreMLEmbedding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B260B6CD028E51BE6FD299 /* BGECoreMLEmbedding.swift */; };
 		9D2EFB42E44719C20B7D5284 /* WatchTransferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6240E07F2C5E5DC0695CF722 /* WatchTransferManager.swift */; };
 		9F15B672E502D84FC0C9732D /* WatchCaptureViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C9277D58D6C430182370E5 /* WatchCaptureViewModel.swift */; };
+		A99D35AC9101FDD62C5004E9 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = CAD222DEB5F332B46BC5EA07 /* special_tokens_map.json */; };
+		AE065FB9DB6A08BCE1A96473 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = 271D595FD56333A5080F43AC /* tokenizer.json */; };
 		B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */; };
 		BB6EDB66E2C349D069AE0854 /* WatchAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */; };
+		CCCE03F54AEE4B8EEE36C22A /* E5CoreMLEmbedding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8495ACEE184C09CB063410C6 /* E5CoreMLEmbedding.swift */; };
 		D64CEABDB7E54CF6E688457A /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350717BAF15B6D474531ACEB /* EmbeddingService.swift */; };
-		D7B510E5AA1DC8093D360C41 /* BGESmallZhV15.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 2FAAAC92A654A7FDEDCE238B /* BGESmallZhV15.mlpackage */; };
+		D96BC05DDD408DFAF1854EBE /* tokenizer_config.json in Resources */ = {isa = PBXBuildFile; fileRef = 8B2FFAF03AFA64B293D72761 /* tokenizer_config.json */; };
 		D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7D3EA7AA748408B7A2F1DA5F /* InfoPlist.strings */; };
 		E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */; };
 		F39E94764FB17533DF598918 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAEA797E538F30926794551 /* AppContainer.swift */; };
@@ -64,11 +66,11 @@
 
 /* Begin PBXFileReference section */
 		1295EBA18DDFC6F925F284D4 /* PointVerse.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PointVerse.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		21B1B6A58E2B3AEC869942E0 /* MultilingualE5Small.mlpackage */ = {isa = PBXFileReference; path = MultilingualE5Small.mlpackage; sourceTree = "<group>"; };
 		24E265A97970E7093BC60BA7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		26DFE56B963C328D0138CCA7 /* PointVerseKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PointVerseKit; path = PointVerseKit; sourceTree = SOURCE_ROOT; };
+		271D595FD56333A5080F43AC /* tokenizer.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokenizer.json; sourceTree = "<group>"; };
 		2B2085183CD43466B8E2F5B7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		2FAAAC92A654A7FDEDCE238B /* BGESmallZhV15.mlpackage */ = {isa = PBXFileReference; path = BGESmallZhV15.mlpackage; sourceTree = "<group>"; };
-		313C5F01660286ACE8DF698A /* bge-small-zh-v1.5-vocab.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bge-small-zh-v1.5-vocab.txt"; sourceTree = "<group>"; };
 		350717BAF15B6D474531ACEB /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureView.swift; sourceTree = "<group>"; };
@@ -80,10 +82,10 @@
 		66E117BAE13164C24CE628D0 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		716533EFD2901EC614D27CC1 /* PointVerseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseApp.swift; sourceTree = "<group>"; };
 		7BC1CB606858B87E1316B5A6 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
+		8495ACEE184C09CB063410C6 /* E5CoreMLEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E5CoreMLEmbedding.swift; sourceTree = "<group>"; };
+		8B2FFAF03AFA64B293D72761 /* tokenizer_config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokenizer_config.json; sourceTree = "<group>"; };
 		952A2774D33165C315F2D5F3 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSessionEvents.swift; sourceTree = "<group>"; };
-		A4A1CB7B7E1FE6FEA7292045 /* BGEWordPieceTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BGEWordPieceTokenizer.swift; sourceTree = "<group>"; };
-		A8B260B6CD028E51BE6FD299 /* BGECoreMLEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BGECoreMLEmbedding.swift; sourceTree = "<group>"; };
 		A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointDetailView.swift; sourceTree = "<group>"; };
 		AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquarePhotoCropView.swift; sourceTree = "<group>"; };
 		AEBFF404379E2101831D913A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 		C49D567E2157613FF575EBB9 /* PointListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointListView.swift; sourceTree = "<group>"; };
 		C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureStore.swift; sourceTree = "<group>"; };
 		C90EF4F0CEE530E84E5262BB /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		CAD222DEB5F332B46BC5EA07 /* special_tokens_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = special_tokens_map.json; sourceTree = "<group>"; };
 		D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerViewModel.swift; sourceTree = "<group>"; };
 		D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
 		DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioRecorder.swift; sourceTree = "<group>"; };
@@ -107,6 +110,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */,
+				09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -145,8 +149,7 @@
 		21EA5E19DAD9F8106EE36010 /* Embedding */ = {
 			isa = PBXGroup;
 			children = (
-				A8B260B6CD028E51BE6FD299 /* BGECoreMLEmbedding.swift */,
-				A4A1CB7B7E1FE6FEA7292045 /* BGEWordPieceTokenizer.swift */,
+				8495ACEE184C09CB063410C6 /* E5CoreMLEmbedding.swift */,
 				350717BAF15B6D474531ACEB /* EmbeddingService.swift */,
 			);
 			path = Embedding;
@@ -191,8 +194,8 @@
 		4A5E95FF65A4A4675BAD1B63 /* Embedding */ = {
 			isa = PBXGroup;
 			children = (
-				313C5F01660286ACE8DF698A /* bge-small-zh-v1.5-vocab.txt */,
-				2FAAAC92A654A7FDEDCE238B /* BGESmallZhV15.mlpackage */,
+				21B1B6A58E2B3AEC869942E0 /* MultilingualE5Small.mlpackage */,
+				CCB1472B79A003F08D97BC4D /* multilingual-e5-small-tokenizer */,
 			);
 			path = Embedding;
 			sourceTree = "<group>";
@@ -276,6 +279,16 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		CCB1472B79A003F08D97BC4D /* multilingual-e5-small-tokenizer */ = {
+			isa = PBXGroup;
+			children = (
+				CAD222DEB5F332B46BC5EA07 /* special_tokens_map.json */,
+				8B2FFAF03AFA64B293D72761 /* tokenizer_config.json */,
+				271D595FD56333A5080F43AC /* tokenizer.json */,
+			);
+			path = "multilingual-e5-small-tokenizer";
+			sourceTree = "<group>";
+		};
 		F118855ED00548C902C2640A /* ImageGeneration */ = {
 			isa = PBXGroup;
 			children = (
@@ -330,6 +343,7 @@
 			name = PointVerse;
 			packageProductDependencies = (
 				EF1601925276AADCFA77677C /* PointVerseKit */,
+				7A2F90E93A7921822C385A42 /* Tokenizers */,
 			);
 			productName = PointVerse;
 			productReference = 1295EBA18DDFC6F925F284D4 /* PointVerse.app */;
@@ -367,6 +381,7 @@
 			mainGroup = A994A31E2C289E4E910AB9C5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				959A8485B5F031ACFD74A8A0 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				AFD9463716429DBB81244AF7 /* XCLocalSwiftPackageReference "PointVerseKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -388,7 +403,9 @@
 				5E53701C9355270F9A084DCB /* Assets.xcassets in Resources */,
 				D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */,
 				42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */,
-				81CD449B5F4F5F94463C8FB5 /* bge-small-zh-v1.5-vocab.txt in Resources */,
+				A99D35AC9101FDD62C5004E9 /* special_tokens_map.json in Resources */,
+				AE065FB9DB6A08BCE1A96473 /* tokenizer.json in Resources */,
+				D96BC05DDD408DFAF1854EBE /* tokenizer_config.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -415,13 +432,12 @@
 				F39E94764FB17533DF598918 /* AppContainer.swift in Sources */,
 				8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */,
 				79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */,
-				9B0F36225C562D85B2294FA7 /* BGECoreMLEmbedding.swift in Sources */,
-				D7B510E5AA1DC8093D360C41 /* BGESmallZhV15.mlpackage in Sources */,
-				1E5CFE5C2BF06D55161728B6 /* BGEWordPieceTokenizer.swift in Sources */,
 				40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */,
 				68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */,
+				CCCE03F54AEE4B8EEE36C22A /* E5CoreMLEmbedding.swift in Sources */,
 				D64CEABDB7E54CF6E688457A /* EmbeddingService.swift in Sources */,
 				E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */,
+				02F157B4EE85BB66B32061AD /* MultilingualE5Small.mlpackage in Sources */,
 				B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */,
 				5243C3E32851018575973FBB /* PointListView.swift in Sources */,
 				F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */,
@@ -702,7 +718,23 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		959A8485B5F031ACFD74A8A0 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = exactVersion;
+				version = 1.3.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		7A2F90E93A7921822C385A42 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 959A8485B5F031ACFD74A8A0 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
 		EF1601925276AADCFA77677C /* PointVerseKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PointVerseKit;

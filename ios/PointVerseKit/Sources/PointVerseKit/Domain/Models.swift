@@ -115,7 +115,8 @@ public struct PointMapEntry: Identifiable, Equatable, Sendable {
 }
 
 public enum EmbeddingModelIdentity {
-    public static let bgeSmallZhV15 = "baai-bge-small-zh-v1.5-coreml-fp32"
+    public static let multilingualE5Small = "intfloat-multilingual-e5-small-coreml-fp32-int8"
+    public static let bgeSmallZhV15 = multilingualE5Small
 }
 
 public struct PointSemanticDocument: Equatable, Sendable {
@@ -152,6 +153,19 @@ public struct SimilarityHit: Equatable, Sendable {
 
     public init(pointID: PointID, score: Float) {
         self.pointID = pointID
+        self.score = score
+    }
+}
+
+public struct RelatedPoint: Identifiable, Equatable, Sendable {
+    public var id: PointID { point.id }
+    public let point: PointSummary
+    public let content: String
+    public let score: Float
+
+    public init(point: PointSummary, content: String, score: Float) {
+        self.point = point
+        self.content = content
         self.score = score
     }
 }

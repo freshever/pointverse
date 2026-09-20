@@ -14,7 +14,7 @@
 
 原音播放器、系统设备端转写、失败重试、人工修正和全文搜索已经接入。精简版只使用 Apple Speech 的强制端侧模式；不再链接或下载 Whisper、Qwen、Qwen-VL 与 Stable Diffusion。系统转写不可用时保留原音并允许重试。
 
-主界面包含“记录、星图、想法”三个入口。星图使用 SwiftUI Canvas 伪 3D 展示 Point，支持旋转、缩放、点选并打开详情；当前连线是布局提示，不作为持久化的语义关系。计划中的 BGE Embedding 与 Local Judge 见 [`../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md`](../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md)。
+主界面包含“记录、星图、想法”三个入口。星图使用 SwiftUI Canvas 伪 3D 展示 Point，支持旋转、缩放、点选并打开详情；当前连线是布局提示，不作为持久化的语义关系。Embedding 已切换为 `multilingual-e5-small`（Float32 计算、INT8 权重），支持中英跨语言关联；设计演进见 [`../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md`](../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md)。
 
 尚未完成的 P0 工作是 staging 崩溃恢复与真机杀进程验收。Llama 属于 P2，不在当前骨架中伪实现。
 
