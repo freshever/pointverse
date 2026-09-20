@@ -200,10 +200,15 @@ private struct SemanticGlobe: View {
         drawCoordinateLabels(context: &context, geometry: geometry)
 
         let projected = projectedNodes(geometry: geometry)
+        let clusters = displayClusters(projected: projected, geometry: geometry)
+        let clusterByNode = Dictionary(uniqueKeysWithValues: clusters.flatMap { cluster in
+            cluster.nodeIndices.map { ($0, cluster) }
+        })
+        var drawnLinks = Set<String>()
         for link in layout.links {
-            let first = projected[link.a]
-            let second = projected[link.b]
-            guard first.visible, second.visible else { continue }
+            guard let first = clusterByNode[link.a], let second = clusterByNode[link.b], first.id != second.id else { continue }
+            let key = first.id < second.id ? "\(first.id):\(second.id)" : "\(second.id):\(first.id)"
+            guard drawnLinks.insert(key).inserted else { continue }
             var path = Path()
             path.move(to: first.point)
             path.addLine(to: second.point)
@@ -214,7 +219,29 @@ private struct SemanticGlobe: View {
             )
         }
 
-        for node in projected.filter(\.visible).sorted(by: { $0.depth < $1.depth }) {
+        for cluster in clusters.sorted(by: { $0.depth < $1.depth }) {
+            if cluster.nodeIndices.count > 1 {
+                let radius = min(25, 11 + sqrt(CGFloat(cluster.nodeIndices.count)) * 3.5)
+                let rect = CGRect(x: cluster.point.x - radius, y: cluster.point.y - radius, width: radius * 2, height: radius * 2)
+                context.fill(
+                    Path(ellipseIn: rect),
+                    with: .radialGradient(
+                        Gradient(colors: [.mint.opacity(0.95), .cyan.opacity(0.7), .blue.opacity(0.65)]),
+                        center: cluster.point,
+                        startRadius: 1,
+                        endRadius: radius
+                    )
+                )
+                context.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(.cyan.opacity(0.3)), lineWidth: 2)
+                context.draw(
+                    Text("\(cluster.nodeIndices.count)").font(.caption.bold()).foregroundStyle(.white),
+                    at: cluster.point,
+                    anchor: .center
+                )
+                continue
+            }
+            guard let nodeIndex = cluster.nodeIndices.first else { continue }
+            let node = projected[nodeIndex]
             let radius: CGFloat = node.embedded ? 6.5 : 5
             let color: Color = node.embedded ? .mint : .cyan
             let rect = CGRect(x: node.point.x - radius, y: node.point.y - radius, width: radius * 2, height: radius * 2)
@@ -311,11 +338,69 @@ private struct SemanticGlobe: View {
     }
 
     private func selectNode(at location: CGPoint, size: CGSize) {
-        let nodes = projectedNodes(geometry: globeGeometry(size: size)).filter(\.visible)
-        guard let nearest = nodes.min(by: {
+        let projected = projectedNodes(geometry: globeGeometry(size: size))
+        let clusters = displayClusters(projected: projected, geometry: globeGeometry(size: size))
+        guard let nearest = clusters.min(by: {
             hypot($0.point.x - location.x, $0.point.y - location.y) < hypot($1.point.x - location.x, $1.point.y - location.y)
         }), hypot(nearest.point.x - location.x, nearest.point.y - location.y) <= 26 else { return }
-        onSelect(layout.nodes[nearest.index].point)
+        if nearest.nodeIndices.count > 1 {
+            withAnimation(.easeInOut(duration: 0.28)) {
+                zoom = min(2.4, max(1.12, zoom * 1.5))
+            }
+        } else if let index = nearest.nodeIndices.first {
+            onSelect(layout.nodes[index].point)
+        }
+    }
+
+    /// Map-style clustering in spherical coordinates. Membership is calculated
+    /// before camera rotation, so dragging the globe never changes a cluster.
+    /// Zoom is the only input that controls when a cluster expands into leaves.
+    private func displayClusters(projected: [GlobeNode], geometry: GlobeGeometry) -> [GlobeCluster] {
+        guard zoom < 1.75 else {
+            return projected.filter(\.visible).map {
+                GlobeCluster(id: $0.index, nodeIndices: [$0.index], point: $0.point, depth: $0.depth)
+            }
+        }
+
+        let angularDistance: CGFloat
+        switch zoom {
+        case ..<0.82: angularDistance = 0.52
+        case ..<1.08: angularDistance = 0.40
+        case ..<1.38: angularDistance = 0.29
+        default: angularDistance = 0.19
+        }
+        var remaining = Set(layout.nodes.indices)
+        var result: [GlobeCluster] = []
+
+        while let seed = remaining.min() {
+            remaining.remove(seed)
+            let seedPosition = layout.nodes[seed].position.normalized
+            let neighbors = remaining.filter { candidate in
+                sphericalAngle(seedPosition, layout.nodes[candidate].position.normalized) <= angularDistance
+            }
+            let members = [seed] + neighbors.sorted()
+            remaining.subtract(neighbors)
+
+            let center = members.reduce(Point3D(x: 0, y: 0, z: 0)) {
+                $0 + layout.nodes[$1].position.normalized
+            }.normalized
+            let rotatedCenter = rotate(center)
+            guard rotatedCenter.z >= 0 else { continue }
+            result.append(
+                GlobeCluster(
+                    id: seed,
+                    nodeIndices: members,
+                    point: screenPoint(rotatedCenter, geometry: geometry),
+                    depth: rotatedCenter.z
+                )
+            )
+        }
+        return result
+    }
+
+    private func sphericalAngle(_ lhs: Point3D, _ rhs: Point3D) -> CGFloat {
+        let dot = min(1, max(-1, lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z))
+        return acos(dot)
     }
 
     private func globeGeometry(size: CGSize) -> GlobeGeometry {
@@ -368,4 +453,11 @@ private struct GlobeNode {
     let visible: Bool
     let title: String
     let embedded: Bool
+}
+
+private struct GlobeCluster {
+    let id: Int
+    let nodeIndices: [Int]
+    let point: CGPoint
+    let depth: CGFloat
 }
