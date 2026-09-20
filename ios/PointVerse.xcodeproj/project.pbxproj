@@ -11,6 +11,7 @@
 		096226125B5039423956E298 /* WatchCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */; };
 		09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 7A2F90E93A7921822C385A42 /* Tokenizers */; };
 		0C5AF72B3024224085F88957 /* PointVerseWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 63BD3FCB4B14F9E1B147974B /* PointVerseWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		10C5BEE589506F9103953797 /* GlobeMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E358989C9C5842581151C831 /* GlobeMapView.swift */; };
 		11466DB45DA594D12B07E742 /* PointVerseWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */; };
 		40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */; };
 		42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A72376C331A5411479AD783 /* Localizable.strings */; };
@@ -99,6 +100,7 @@
 		D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerViewModel.swift; sourceTree = "<group>"; };
 		D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
 		DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioRecorder.swift; sourceTree = "<group>"; };
+		E358989C9C5842581151C831 /* GlobeMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobeMapView.swift; sourceTree = "<group>"; };
 		F05C89EAA234DFC507134DC1 /* StarMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarMapView.swift; sourceTree = "<group>"; };
 		F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseWatchApp.swift; sourceTree = "<group>"; };
 		F6E23365C1D6C56005A335E5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
 		58090F47C961A275EB8A9FBD /* StarMap */ = {
 			isa = PBXGroup;
 			children = (
+				E358989C9C5842581151C831 /* GlobeMapView.swift */,
 				F05C89EAA234DFC507134DC1 /* StarMapView.swift */,
 			);
 			path = StarMap;
@@ -436,6 +439,7 @@
 				68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */,
 				CCCE03F54AEE4B8EEE36C22A /* E5CoreMLEmbedding.swift in Sources */,
 				D64CEABDB7E54CF6E688457A /* EmbeddingService.swift in Sources */,
+				10C5BEE589506F9103953797 /* GlobeMapView.swift in Sources */,
 				E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */,
 				02F157B4EE85BB66B32061AD /* MultilingualE5Small.mlpackage in Sources */,
 				B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */,

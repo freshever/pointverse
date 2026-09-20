@@ -403,7 +403,7 @@ private struct DisplayCluster: Identifiable {
     let radius: CGFloat
 }
 
-private struct Point3D {
+struct Point3D {
     var x: CGFloat
     var y: CGFloat
     var z: CGFloat
@@ -414,7 +414,7 @@ private struct Point3D {
     var normalized: Self { self * (1 / max(length, 0.001)) }
 }
 
-private struct StarLayout {
+struct StarLayout {
     let nodes: [Node]
     let links: [Link]
     let embeddingCount: Int
@@ -425,7 +425,7 @@ private struct StarLayout {
 }
 
 @MainActor
-private enum StarLayoutEngine {
+enum StarLayoutEngine {
     static func make(entries: [PointMapEntry], embeddings: [PointEmbeddingRecord]) -> StarLayout {
         guard !entries.isEmpty else { return .init(nodes: [], links: [], embeddingCount: 0) }
         let stored = Dictionary(uniqueKeysWithValues: embeddings.map { ($0.pointID, $0.vector.map(Double.init)) })
