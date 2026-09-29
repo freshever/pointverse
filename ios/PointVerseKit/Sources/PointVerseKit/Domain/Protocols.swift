@@ -34,6 +34,8 @@ public protocol PointRepository: Sendable {
     func queuedEmbeddingDocuments(modelID: String) async throws -> [PointSemanticDocument]
     func saveEmbedding(_ record: PointEmbeddingRecord) async throws
     func embeddings(modelID: String) async throws -> [PointEmbeddingRecord]
+    func geographies(version: String) async throws -> [PointGeographyRecord]
+    func saveGeographies(_ records: [PointGeographyRecord]) async throws
     func relatedPoints(to pointID: PointID, modelID: String, minimumScore: Float, limit: Int) async throws -> [RelatedPoint]
 }
 

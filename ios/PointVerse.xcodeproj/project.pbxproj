@@ -13,6 +13,7 @@
 		0C5AF72B3024224085F88957 /* PointVerseWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 63BD3FCB4B14F9E1B147974B /* PointVerseWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		10C5BEE589506F9103953797 /* GlobeMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E358989C9C5842581151C831 /* GlobeMapView.swift */; };
 		11466DB45DA594D12B07E742 /* PointVerseWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */; };
+		1EB414AAE84DDCBFD535D666 /* PlanetDemoPoints.json in Resources */ = {isa = PBXBuildFile; fileRef = 570637AF5F61BA4ADD8FECA7 /* PlanetDemoPoints.json */; };
 		40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */; };
 		42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A72376C331A5411479AD783 /* Localizable.strings */; };
 		4CFADA315C11FC4F77AB7B95 /* SystemAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */; };
@@ -75,6 +76,7 @@
 		350717BAF15B6D474531ACEB /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureView.swift; sourceTree = "<group>"; };
+		570637AF5F61BA4ADD8FECA7 /* PlanetDemoPoints.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = PlanetDemoPoints.json; sourceTree = "<group>"; };
 		57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		5B725E10B707CD2D76D20BE3 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		5E1E2217C4EB458898C792E5 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 		81A3169B31AB258CEB9BFFB0 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				570637AF5F61BA4ADD8FECA7 /* PlanetDemoPoints.json */,
 				4A5E95FF65A4A4675BAD1B63 /* Embedding */,
 				7D3EA7AA748408B7A2F1DA5F /* InfoPlist.strings */,
 				4A72376C331A5411479AD783 /* Localizable.strings */,
@@ -406,6 +409,7 @@
 				5E53701C9355270F9A084DCB /* Assets.xcassets in Resources */,
 				D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */,
 				42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */,
+				1EB414AAE84DDCBFD535D666 /* PlanetDemoPoints.json in Resources */,
 				A99D35AC9101FDD62C5004E9 /* special_tokens_map.json in Resources */,
 				AE065FB9DB6A08BCE1A96473 /* tokenizer.json in Resources */,
 				D96BC05DDD408DFAF1854EBE /* tokenizer_config.json in Resources */,

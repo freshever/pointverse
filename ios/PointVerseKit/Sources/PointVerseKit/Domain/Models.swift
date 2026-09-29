@@ -147,6 +147,47 @@ public struct PointEmbeddingRecord: Equatable, Sendable {
     }
 }
 
+public enum GeographyIdentity {
+    public static let semanticSphereV1 = "e5-semantic-sphere-v1"
+    public static let compactSphereV2 = "e5-compact-sphere-v2"
+    public static let denseSphereV3 = "e5-dense-sphere-v3"
+    public static let distributedCommunitiesV4 = "e5-distributed-communities-v4"
+}
+
+public struct PointGeographyRecord: Equatable, Sendable {
+    public let pointID: PointID
+    public let geographyVersion: String
+    public let contentRevision: Int
+    public let communityID: String?
+    public let latitude: Double
+    public let longitude: Double
+    public let altitude: Double
+    public let placementConfidence: Double
+    public let isPinned: Bool
+
+    public init(
+        pointID: PointID,
+        geographyVersion: String,
+        contentRevision: Int,
+        communityID: String? = nil,
+        latitude: Double,
+        longitude: Double,
+        altitude: Double = 0,
+        placementConfidence: Double,
+        isPinned: Bool = false
+    ) {
+        self.pointID = pointID
+        self.geographyVersion = geographyVersion
+        self.contentRevision = contentRevision
+        self.communityID = communityID
+        self.latitude = latitude
+        self.longitude = longitude
+        self.altitude = altitude
+        self.placementConfidence = placementConfidence
+        self.isPinned = isPinned
+    }
+}
+
 public struct SimilarityHit: Equatable, Sendable {
     public let pointID: PointID
     public let score: Float

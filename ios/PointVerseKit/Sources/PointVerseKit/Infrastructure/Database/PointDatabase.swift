@@ -36,6 +36,25 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         migrator.registerMigration("v3-embeddings") { db in
             try db.execute(sql: Schema.v3Embeddings)
         }
+        migrator.registerMigration("v4-point-geography") { db in
+            try db.execute(sql: """
+                CREATE TABLE point_geography (
+                    point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    geography_version TEXT NOT NULL,
+                    content_revision INTEGER NOT NULL,
+                    community_id TEXT,
+                    latitude REAL NOT NULL,
+                    longitude REAL NOT NULL,
+                    altitude REAL NOT NULL DEFAULT 0,
+                    placement_confidence REAL NOT NULL,
+                    is_pinned INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (point_id, geography_version)
+                );
+                CREATE INDEX point_geography_version
+                ON point_geography(geography_version, content_revision);
+                """)
+        }
         try migrator.migrate(writer)
         try await writer.write { db in
             let modelID = EmbeddingModelIdentity.multilingualE5Small
@@ -472,6 +491,58 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     return PointEmbeddingRecord(pointID: PointID(rawValue: uuid), revision: row["content_revision"],
                                                 modelID: row["model_id"], vector: vector)
                 }
+        }
+    }
+
+    public func geographies(version: String) async throws -> [PointGeographyRecord] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT point_id, geography_version, content_revision, community_id,
+                       latitude, longitude, altitude, placement_confidence, is_pinned
+                FROM point_geography
+                WHERE geography_version = ?
+                """, arguments: [version]).compactMap { row in
+                    guard let uuid = UUID(uuidString: row["point_id"]) else { return nil }
+                    return PointGeographyRecord(
+                        pointID: PointID(rawValue: uuid),
+                        geographyVersion: row["geography_version"],
+                        contentRevision: row["content_revision"],
+                        communityID: row["community_id"],
+                        latitude: row["latitude"],
+                        longitude: row["longitude"],
+                        altitude: row["altitude"],
+                        placementConfidence: row["placement_confidence"],
+                        isPinned: row["is_pinned"]
+                    )
+                }
+        }
+    }
+
+    public func saveGeographies(_ records: [PointGeographyRecord]) async throws {
+        guard !records.isEmpty else { return }
+        try await writer.write { db in
+            let timestamp = Date().timeIntervalSince1970
+            for record in records {
+                try db.execute(sql: """
+                    INSERT INTO point_geography (
+                        point_id, geography_version, content_revision, community_id,
+                        latitude, longitude, altitude, placement_confidence, is_pinned, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(point_id, geography_version) DO UPDATE SET
+                        content_revision = excluded.content_revision,
+                        community_id = excluded.community_id,
+                        latitude = CASE WHEN point_geography.is_pinned = 1 THEN point_geography.latitude ELSE excluded.latitude END,
+                        longitude = CASE WHEN point_geography.is_pinned = 1 THEN point_geography.longitude ELSE excluded.longitude END,
+                        altitude = excluded.altitude,
+                        placement_confidence = excluded.placement_confidence,
+                        is_pinned = point_geography.is_pinned,
+                        updated_at = excluded.updated_at
+                    """, arguments: [
+                        record.pointID.rawValue.uuidString, record.geographyVersion, record.contentRevision,
+                        record.communityID, record.latitude, record.longitude, record.altitude,
+                        record.placementConfidence, record.isPinned, timestamp
+                    ])
+            }
         }
     }
 

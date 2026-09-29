@@ -157,3 +157,66 @@ import Testing
     #expect(related.first?.content == "Ideas gradually decay over time")
     #expect((related.first?.score ?? 0) > 0.99)
 }
+
+@Test func geographyPersistsAndCascadesWithPoint() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let pointID = try await database.commitTextPoint(text: "稳定的语义地点")
+    let record = PointGeographyRecord(
+        pointID: pointID,
+        geographyVersion: GeographyIdentity.semanticSphereV1,
+        contentRevision: 1,
+        latitude: 31.2,
+        longitude: 121.5,
+        placementConfidence: 0.92
+    )
+    try await database.saveGeographies([record])
+    let stored = try #require(try await database.geographies(version: GeographyIdentity.semanticSphereV1).first)
+    #expect(stored.pointID == pointID)
+    #expect(abs(stored.latitude - 31.2) < 0.000_001)
+    #expect(abs(stored.longitude - 121.5) < 0.000_001)
+
+    _ = try await database.deletePoint(id: pointID)
+    #expect(try await database.geographies(version: GeographyIdentity.semanticSphereV1).isEmpty)
+}
+
+@Test func semanticGeographyIsDeterministicAndDoesNotMoveExistingPoints() {
+    let first = PointID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!)
+    let second = PointID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!)
+    let third = PointID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!)
+    let modelID = EmbeddingModelIdentity.multilingualE5Small
+    let initial = [
+        PointEmbeddingRecord(pointID: first, revision: 1, modelID: modelID, vector: [1, 0, 0]),
+        PointEmbeddingRecord(pointID: second, revision: 1, modelID: modelID, vector: [0.99, 0.01, 0]),
+    ]
+    let initialGeography = SemanticGeographyEngine.make(embeddings: initial, previous: [])
+    #expect(initialGeography == SemanticGeographyEngine.make(embeddings: initial, previous: []))
+
+    let expanded = initial + [
+        PointEmbeddingRecord(pointID: third, revision: 1, modelID: modelID, vector: [0.98, 0.02, 0]),
+    ]
+    let updated = SemanticGeographyEngine.make(embeddings: expanded, previous: initialGeography)
+    for stored in initialGeography {
+        let current = updated.first { $0.pointID == stored.pointID }
+        #expect(current?.latitude == stored.latitude)
+        #expect(current?.longitude == stored.longitude)
+        #expect(current?.communityID == stored.communityID)
+    }
+}
+
+@Test func distributedGeographySpreadsUnrelatedGroupsAcrossSphere() {
+    let modelID = EmbeddingModelIdentity.multilingualE5Small
+    let records = (0..<24).map { index in
+        PointEmbeddingRecord(
+            pointID: PointID(rawValue: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!),
+            revision: 1,
+            modelID: modelID,
+            vector: [Float(index == 0 ? 1 : 0), Float(index == 1 ? 1 : 0), Float(index >= 2 ? 1 : 0)]
+        )
+    }
+    let geography = SemanticGeographyEngine.make(embeddings: records, previous: [])
+    #expect(geography.count == records.count)
+    #expect(Set(geography.compactMap(\.communityID)).count >= 2)
+    #expect(geography.contains { $0.latitude > 20 })
+    #expect(geography.contains { $0.latitude < -20 })
+}
