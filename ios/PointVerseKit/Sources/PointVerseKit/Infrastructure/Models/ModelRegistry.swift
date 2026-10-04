@@ -146,6 +146,20 @@ public struct ModelManifest: Codable, Equatable, Sendable {
         license: "Apache-2.0",
         minimumFreeDiskBytes: 3_000_000_000
     )
+
+    /// INT8 Core ML weights published by Hark. The small model descriptor is
+    /// fetched and verified when these weights finish installing.
+    public static let harkMultilingualE5Small = ModelManifest(
+        id: "hark-multilingual-e5-small-coreml-int8",
+        revision: "0a386d4aea14586b042c6e68a83acb6ff8d87970",
+        filename: "hark-multilingual-e5-small-weight.bin",
+        downloadURL: URL(string: "https://huggingface.co/tuanda2912/hark-multilingual-e5-small-coreml/resolve/0a386d4aea14586b042c6e68a83acb6ff8d87970/MultilingualE5Small.mlpackage/Data/com.apple.CoreML/weights/weight.bin?download=true")!,
+        mirrorDownloadURLs: [URL(string: "https://hf-mirror.com/tuanda2912/hark-multilingual-e5-small-coreml/resolve/0a386d4aea14586b042c6e68a83acb6ff8d87970/MultilingualE5Small.mlpackage/Data/com.apple.CoreML/weights/weight.bin?download=true")!],
+        displayByteCount: 118_420_800,
+        sha256: "7397889b9a97ebb83004fab7380c403d7bd4fddb475a952923c3eb21151bf69f",
+        license: "MIT",
+        minimumFreeDiskBytes: 500_000_000
+    )
 }
 
 public enum ModelSelection {
@@ -157,6 +171,7 @@ public enum ModelSelection {
     public static let languageModels: [ModelManifest] = [.qwen3_0_6BQ8, .qwen3_1_7BQ8, .qwen3VL2BQ8]
     public static let imageModels: [ModelManifest] = [.stableDiffusion21Base6Bit]
     public static let visionModels: [ModelManifest] = [.qwen3VL2BQ8, .qwen3VL2BProjectorQ8]
+    public static let embeddingModels: [ModelManifest] = [.harkMultilingualE5Small]
 
     public static func selectedSpeechModel(defaults: UserDefaults = .standard) -> ModelManifest {
         let id = defaults.string(forKey: speechDefaultsKey) ?? ModelManifest.whisperBaseQ5.id

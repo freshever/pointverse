@@ -2,8 +2,25 @@ import Foundation
 
 public protocol AudioRecording: Sendable {
     func start(at temporaryURL: URL) async throws
+    func activity() async -> AudioRecordingActivity
     func stop() async throws -> RecordingResult
     func cancel() async
+}
+
+public struct AudioRecordingActivity: Sendable {
+    public let durationMilliseconds: Int
+    public let hasDetectedVoice: Bool
+    public let silenceMilliseconds: Int
+
+    public init(durationMilliseconds: Int, hasDetectedVoice: Bool, silenceMilliseconds: Int) {
+        self.durationMilliseconds = durationMilliseconds
+        self.hasDetectedVoice = hasDetectedVoice
+        self.silenceMilliseconds = silenceMilliseconds
+    }
+
+    public var shouldAutoStop: Bool {
+        hasDetectedVoice && silenceMilliseconds >= 3_000
+    }
 }
 
 public protocol AudioBlobStoring: Sendable {

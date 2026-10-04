@@ -24,13 +24,24 @@ final class AudioPlayerViewModel: NSObject, ObservableObject, AVAudioPlayerDeleg
         if player.isPlaying {
             player.pause()
             isPlaying = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } else {
-            if player.currentTime >= player.duration { player.currentTime = 0 }
-            isPlaying = player.play()
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .spokenAudio)
+                try session.setActive(true)
+                if player.currentTime >= player.duration { player.currentTime = 0 }
+                isPlaying = player.play()
+            } catch {
+                isPlaying = false
+            }
         }
     }
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor in isPlaying = false }
+        Task { @MainActor in
+            isPlaying = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 }

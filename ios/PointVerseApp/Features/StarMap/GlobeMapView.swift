@@ -12,6 +12,8 @@ struct GlobeMapView: View {
     @State private var selected: PointSummary?
     @State private var loadFailed = false
     @State private var showingDemo = false
+    @State private var isRecalculating = false
+    @State private var pendingSemanticCount = 0
 
     var body: some View {
         ZStack {
@@ -26,7 +28,13 @@ struct GlobeMapView: View {
                 ContentUnavailableView {
                     Label("等待第一个坐标", systemImage: "globe.asia.australia.fill")
                 } description: {
-                    Text("保存想法后，它会出现在语义地球上。")
+                    if let error = container.embeddingStartupError {
+                        Text(error)
+                    } else {
+                        Text(pendingSemanticCount > 0
+                             ? "\(pendingSemanticCount) 条内容正在等待转写或语义分析。"
+                             : "保存想法后，它会出现在语义地球上。")
+                    }
                 }
                 .foregroundStyle(.white)
             } else {
@@ -41,10 +49,28 @@ struct GlobeMapView: View {
             Button { showingDemo = true } label: { Image(systemName: "flask") }
                 .tint(.white)
                 .accessibilityLabel("打开球面分布演示")
+            Button {
+                Task { await recalculateGeography() }
+            } label: {
+                if isRecalculating {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "location.circle")
+                }
+            }
+            .tint(.white)
+            .disabled(isRecalculating)
+            .accessibilityLabel("重新计算经纬度")
             Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
                 .tint(.white)
         }
-        .task { await reload() }
+        .task {
+            container.refreshEmbeddings()
+            await reload()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: EmbeddingService.didChangeNotification)) { _ in
+            Task { await reload() }
+        }
         .sheet(item: $selected) { point in
             NavigationStack { PointDetailView(point: point) }
                 .environmentObject(container)
@@ -57,18 +83,36 @@ struct GlobeMapView: View {
     }
 
     private func reload() async {
+        await loadGeography(discardingSavedCoordinates: false)
+    }
+
+    private func recalculateGeography() async {
+        guard !isRecalculating else { return }
+        isRecalculating = true
+        await loadGeography(discardingSavedCoordinates: true)
+        isRecalculating = false
+    }
+
+    private func loadGeography(discardingSavedCoordinates: Bool) async {
         do {
             async let entries = container.database.pointMapEntries()
             async let embeddings = container.database.embeddings(modelID: EmbeddingModelIdentity.bgeSmallZhV15)
-            async let storedGeographies = container.database.geographies(version: GeographyIdentity.distributedCommunitiesV4)
+            async let storedGeographies = container.database.geographies(version: GeographyIdentity.relativeSemanticV6)
             let loadedEntries = try await entries
             let loadedEmbeddings = try await embeddings
-            let previous = try await storedGeographies
+            let embeddedPointIDs = Set(loadedEmbeddings.map(\.pointID))
+            // A point must not receive a fake geography based on its ID or its
+            // voice modality. It joins the globe only after its transcribed
+            // text (plus understood image text) has a real E5 embedding.
+            let semanticEntries = loadedEntries.filter { embeddedPointIDs.contains($0.id) }
+            pendingSemanticCount = loadedEntries.count - semanticEntries.count
+            let previous = discardingSavedCoordinates ? [] : try await storedGeographies
             let generated = SemanticGeographyEngine.make(embeddings: loadedEmbeddings, previous: previous)
+            PointVerseLog.embedding.info("Globe reload entries=\(loadedEntries.count, privacy: .public) embeddings=\(loadedEmbeddings.count, privacy: .public) pending=\(pendingSemanticCount, privacy: .public) communities=\(Set(generated.compactMap(\.communityID)).count, privacy: .public)")
             try await container.database.saveGeographies(generated)
-            layout = StarLayoutEngine.make(entries: loadedEntries, embeddings: loadedEmbeddings)
+            layout = StarLayoutEngine.make(entries: semanticEntries, embeddings: loadedEmbeddings)
             geographies = Dictionary(uniqueKeysWithValues: generated.map { ($0.pointID, $0) })
-            contentByPointID = Dictionary(uniqueKeysWithValues: loadedEntries.map { ($0.id, $0.content) })
+            contentByPointID = Dictionary(uniqueKeysWithValues: semanticEntries.map { ($0.id, $0.content) })
         } catch {
             loadFailed = true
         }
@@ -216,7 +260,7 @@ private struct SemanticGlobe: View {
                         HStack(spacing: 6) {
                             Image(systemName: "circle.hexagongrid.fill")
                                 .foregroundStyle(.mint)
-                            Text("\(Set(communityByPointID.values).count) 个语义群 · 同色表示同一群")
+                            Text("\(layout.embeddingCount) 条有效向量 · \(Set(communityByPointID.values).count) 个语义群")
                             Spacer()
                             Circle().fill(.gray).frame(width: 7, height: 7)
                             Text("待分析")
@@ -440,28 +484,6 @@ private struct SemanticGlobe: View {
 
         let projected = projectedNodes(geometry: geometry)
         let clusters = displayClusters(projected: projected, geometry: geometry)
-        let clusterByNode = Dictionary(uniqueKeysWithValues: clusters.flatMap { cluster in
-            cluster.nodeIndices.map { ($0, cluster) }
-        })
-        var drawnLinks = Set<String>()
-        for link in layout.links {
-            guard let first = clusterByNode[link.a], let second = clusterByNode[link.b], first.id != second.id else { continue }
-            let key = first.id < second.id ? "\(first.id):\(second.id)" : "\(second.id):\(first.id)"
-            guard drawnLinks.insert(key).inserted else { continue }
-            var path = Path()
-            path.move(to: first.point)
-            path.addLine(to: second.point)
-            let firstCommunities = Set(first.nodeIndices.compactMap { projected[$0].communityID })
-            let secondCommunities = Set(second.nodeIndices.compactMap { projected[$0].communityID })
-            let isLocalRoad = firstCommunities.count == 1 && firstCommunities == secondCommunities
-            let width = 0.9 + max(0, link.strength - 0.85) * 8
-            context.stroke(path, with: .color(.black.opacity(0.5)), lineWidth: width + 2)
-            context.stroke(
-                path,
-                with: .color(linkColor(link.strength).opacity(isLocalRoad ? 0.72 : 0.46)),
-                style: StrokeStyle(lineWidth: width, dash: isLocalRoad ? [] : [5, 4])
-            )
-        }
 
         for cluster in clusters.sorted(by: { $0.depth < $1.depth }) {
             if cluster.nodeIndices.count > 1 {
@@ -645,7 +667,7 @@ private struct SemanticGlobe: View {
                 id: region.id,
                 center: region.center,
                 color: regionColor(region),
-                landRadius: min(0.5, max(0.2, contentRadius + 0.12))
+                landRadius: min(0.72, max(0.34, contentRadius + 0.20))
             )
         }
         guard !atlasRegions.isEmpty else { return }
@@ -673,7 +695,7 @@ private struct SemanticGlobe: View {
                 cell.move(to: screenPoint(corners[0], geometry: geometry))
                 for corner in corners.dropFirst() { cell.addLine(to: screenPoint(corner, geometry: geometry)) }
                 cell.closeSubpath()
-                context.fill(cell, with: .color(region.color.opacity(0.13)))
+                context.fill(cell, with: .color(region.color.opacity(0.24)))
 
                 // A coast borders ocean; an administrative border separates owners.
                 let east = owner(at: spherePoint(latitude: latitude + step / 2, longitude: longitude + step * 1.5))
@@ -702,7 +724,7 @@ private struct SemanticGlobe: View {
         context.stroke(
             edge,
             with: .color((isCoast ? Color.cyan : region.color).opacity(isCoast ? 0.4 : 0.66)),
-            style: StrokeStyle(lineWidth: isCoast ? 0.7 : 1.1, dash: isCoast ? [] : [3, 2])
+            style: StrokeStyle(lineWidth: isCoast ? 0.8 : 1.1)
         )
     }
 
@@ -1228,7 +1250,7 @@ private struct PlanetDistributionDemoView: View {
             let pointID = PointID(rawValue: sample.id)
             return (pointID, PointGeographyRecord(
                 pointID: pointID,
-                geographyVersion: GeographyIdentity.distributedCommunitiesV4,
+                geographyVersion: GeographyIdentity.relativeSemanticV6,
                 contentRevision: 1,
                 communityID: sample.communityID,
                 latitude: sample.latitude,

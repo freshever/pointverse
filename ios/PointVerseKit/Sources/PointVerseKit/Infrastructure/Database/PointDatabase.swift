@@ -447,10 +447,11 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 LEFT JOIN audio_assets a ON a.message_id = m.id
                 LEFT JOIN transcripts t ON t.asset_id = a.id
-                WHERE EXISTS (
-                    SELECT 1 FROM durable_tasks task
-                    WHERE task.operation_id = 'embedding:' || p.id || ':' || p.head_revision || ':' || ?
-                      AND task.state IN ('queued', 'running')
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM point_embeddings e
+                    WHERE e.point_id = p.id
+                      AND e.model_id = ?
+                      AND e.content_revision = p.head_revision
                 )
                 ORDER BY p.updated_at
                 """, arguments: [modelID]).compactMap { row in

@@ -26,7 +26,14 @@ public actor CaptureUseCase {
 
     public func finish(localeIdentifier: String = Locale.current.identifier) async throws -> PointID {
         guard let operationID else { throw PointVerseError.audioCommitFailed }
-        let recording = try await recorder.stop()
+        let recording: RecordingResult
+        do {
+            recording = try await recorder.stop()
+        } catch {
+            self.operationID = nil
+            await recorder.cancel()
+            throw error
+        }
         let audio = try await blobStore.commit(recording, assetID: UUID())
         do {
             let pointID = try await repository.commitVoiceCapture(
@@ -40,6 +47,10 @@ public actor CaptureUseCase {
             try? await blobStore.delete(relativePath: audio.relativePath)
             throw PointVerseError.databaseCommitFailed
         }
+    }
+
+    public func recordingActivity() async -> AudioRecordingActivity {
+        await recorder.activity()
     }
 
     public func cancel() async {

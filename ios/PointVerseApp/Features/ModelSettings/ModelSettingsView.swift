@@ -78,6 +78,22 @@ struct ModelSettingsView: View {
                     )
                 }
             } header: { AppText("图片理解") }
+
+            Section {
+                ForEach(container.embeddingModelManagers, id: \.manifest.id) { manager in
+                    ModelRow(
+                        manager: manager,
+                        name: "Multilingual E5 Small · Hark INT8",
+                        metadata: metadata(manager.manifest),
+                        explanation: "把转写文字转换成多语言语义坐标，用于地球上的内容聚类。首次安装后会在设备上编译一次。",
+                        isSelected: true,
+                        onSelect: {},
+                        onInstalled: { Task { await container.prepareEmbeddingService() } },
+                        onRemoved: { container.removeEmbeddingArtifacts() },
+                        canSelect: false
+                    )
+                }
+            } header: { AppText("语义分类") }
         }
         .navigationTitle(AppLocalization.string("本地模型", language: appLanguage))
         .onChange(of: selectedLanguageModelID) { _, _ in regenerateTitles() }
@@ -138,7 +154,9 @@ private struct ModelRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     var onInstalled: () -> Void = {}
+    var onRemoved: () -> Void = {}
     var canSelect = true
+    @State private var wasInstalled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -178,7 +196,10 @@ private struct ModelRow: View {
         }
         .onChange(of: manager.state) { _, state in
             if state == .installed { onInstalled() }
+            if wasInstalled, state == .notInstalled { onRemoved() }
+            wasInstalled = state == .installed
         }
+        .onAppear { wasInstalled = manager.state == .installed }
         .confirmationDialog(
             AppLocalization.string("确认卸载模型？", language: appLanguage),
             isPresented: $isShowingRemovalConfirmation,

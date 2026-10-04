@@ -4,12 +4,26 @@ public enum SemanticGeographyEngine {
     public static func make(
         embeddings: [PointEmbeddingRecord],
         previous: [PointGeographyRecord],
-        version: String = GeographyIdentity.distributedCommunitiesV4
+        version: String = GeographyIdentity.relativeSemanticV6
     ) -> [PointGeographyRecord] {
         let records = embeddings.sorted { $0.pointID.rawValue.uuidString < $1.pointID.rawValue.uuidString }
         guard !records.isEmpty else { return [] }
-        let previousByID = Dictionary(uniqueKeysWithValues: previous.filter { $0.geographyVersion == version }.map { ($0.pointID, $0) })
-        let vectors = records.map { normalize($0.vector.map(Double.init)) }
+        let revisionByID = Dictionary(uniqueKeysWithValues: records.map { ($0.pointID, $0.revision) })
+        // A saved coordinate is reusable only while it describes the current
+        // semantic content. Transcription, edits and image understanding all
+        // bump the revision and must therefore be placed again.
+        let reusable = previous.filter {
+            $0.geographyVersion == version
+                && ($0.isPinned || revisionByID[$0.pointID] == $0.contentRevision)
+        }
+        let previousByID = Dictionary(uniqueKeysWithValues: reusable.map { ($0.pointID, $0) })
+        let rawVectors = records.map { normalize($0.vector.map(Double.init)) }
+        // Multilingual E5 vectors share a large common component, so their raw
+        // cosine values are high even for unrelated sentences. Geography cares
+        // about differences within this user's collection: remove the collection
+        // centroid before comparing topics, while retaining the raw vector when
+        // every item is effectively identical.
+        let vectors = relativeVectors(rawVectors)
         let (seeds, communities) = communityAssignment(vectors)
         let centers = seeds.indices.map { fibonacciCenter(index: $0, count: seeds.count) }
         var positions = records.enumerated().map { index, record in
@@ -17,7 +31,7 @@ public enum SemanticGeographyEngine {
             let neighbors = records.indices.compactMap { candidate -> (Vector3, Double)? in
                 guard candidate != index, let stored = previousByID[records[candidate].pointID] else { return nil }
                 let score = dot(vectors[index], vectors[candidate])
-                guard score >= 0.85 else { return nil }
+                guard score >= 0.88 else { return nil }
                 return (cartesian(latitude: stored.latitude, longitude: stored.longitude), pow(score, 6))
             }
             if !neighbors.isEmpty {
@@ -41,8 +55,8 @@ public enum SemanticGeographyEngine {
                     forces[j] = forces[j] - towardI * repulsion
 
                     let similarity = dot(vectors[i], vectors[j])
-                    guard similarity >= 0.85 else { continue }
-                    let strength = clamp((similarity - 0.85) / 0.15, minimum: 0, maximum: 1)
+                    guard similarity >= 0.88 else { continue }
+                    let strength = clamp((similarity - 0.88) / 0.12, minimum: 0, maximum: 1)
                     let targetAngle = 0.14 - strength * 0.105
                     let attraction = (angle - targetAngle) * (0.016 + strength * 0.032)
                     forces[i] = forces[i] + towardJ * attraction
@@ -75,7 +89,7 @@ public enum SemanticGeographyEngine {
                     ?? records[seeds[communities[index]]].pointID.rawValue.uuidString,
                 latitude: coordinate.latitude,
                 longitude: coordinate.longitude,
-                placementConfidence: clamp((nearestScore - 0.75) / 0.20, minimum: 0, maximum: 1),
+                placementConfidence: clamp((nearestScore + 1) / 2, minimum: 0, maximum: 1),
                 isPinned: previousByID[records[index].pointID]?.isPinned ?? false
             )
         }
@@ -96,6 +110,21 @@ public enum SemanticGeographyEngine {
     private static func normalize(_ vector: [Double]) -> [Double] {
         let norm = sqrt(vector.reduce(0) { $0 + $1 * $1 })
         return norm > 0 ? vector.map { $0 / norm } : vector
+    }
+
+    private static func relativeVectors(_ vectors: [[Double]]) -> [[Double]] {
+        guard vectors.count > 1, let dimension = vectors.first?.count, dimension > 0,
+              vectors.allSatisfy({ $0.count == dimension }) else { return vectors }
+        var centroid = Array(repeating: 0.0, count: dimension)
+        for vector in vectors {
+            for index in 0..<dimension { centroid[index] += vector[index] }
+        }
+        centroid = centroid.map { $0 / Double(vectors.count) }
+        return vectors.map { vector in
+            let residual = zip(vector, centroid).map { $0.0 - $0.1 }
+            let norm = sqrt(residual.reduce(0) { $0 + $1 * $1 })
+            return norm > 0.000_1 ? residual.map { $0 / norm } : vector
+        }
     }
 
     private static func dot(_ lhs: [Double], _ rhs: [Double]) -> Double {
@@ -121,7 +150,7 @@ public enum SemanticGeographyEngine {
                 return leftDistance == rightDistance ? lhs > rhs : leftDistance < rightDistance
             }
             guard let candidate,
-                  1 - seeds.map({ dot(vectors[candidate], vectors[$0]) }).max()! >= 0.10 else { break }
+                  1 - seeds.map({ dot(vectors[candidate], vectors[$0]) }).max()! >= 0.07 else { break }
             seeds.append(candidate)
         }
         let assignment = vectors.indices.map { index in

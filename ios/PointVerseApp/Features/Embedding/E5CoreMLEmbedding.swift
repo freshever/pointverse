@@ -3,6 +3,18 @@ import Foundation
 import PointVerseKit
 import Tokenizers
 
+enum E5EmbeddingLoadError: LocalizedError {
+    case coreML(String)
+    case tokenizer(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .coreML(let message): "Core ML 模型无法加载：\(message)"
+        case .tokenizer(let message): "Tokenizer 无法加载：\(message)"
+        }
+    }
+}
+
 actor E5CoreMLEmbedding: PointEmbedding {
     nonisolated let modelID = EmbeddingModelIdentity.multilingualE5Small
     nonisolated let dimension = 384
@@ -23,9 +35,25 @@ actor E5CoreMLEmbedding: PointEmbedding {
         // CPU inference is numerically verified and, unlike a thrown error, the
         // Metal assertion cannot be recovered from at runtime.
         configuration.computeUnits = .cpuOnly
-        async let tokenizer = AutoTokenizer.from(modelFolder: tokenizerFolder)
-        let model = try MLModel(contentsOf: modelURL, configuration: configuration)
-        return try await E5CoreMLEmbedding(model: model, tokenizer: tokenizer, maxLength: maxLength)
+        let model: MLModel
+        do {
+            model = try MLModel(contentsOf: modelURL, configuration: configuration)
+            PointVerseLog.embedding.info("E5 Core ML model loaded")
+        } catch {
+            let nsError = error as NSError
+            PointVerseLog.embedding.error("E5 Core ML load failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) message=\(nsError.localizedDescription, privacy: .public)")
+            throw E5EmbeddingLoadError.coreML("\(nsError.domain) (\(nsError.code)): \(nsError.localizedDescription)")
+        }
+        let tokenizer: any Tokenizer
+        do {
+            tokenizer = try await AutoTokenizer.from(modelFolder: tokenizerFolder)
+            PointVerseLog.embedding.info("E5 tokenizer loaded")
+        } catch {
+            let nsError = error as NSError
+            PointVerseLog.embedding.error("E5 tokenizer load failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) message=\(nsError.localizedDescription, privacy: .public)")
+            throw E5EmbeddingLoadError.tokenizer("\(nsError.domain) (\(nsError.code)): \(nsError.localizedDescription)")
+        }
+        return E5CoreMLEmbedding(model: model, tokenizer: tokenizer, maxLength: maxLength)
     }
 
     func encode(_ text: String) async throws -> [Float] {

@@ -16,6 +16,9 @@ final class WatchCaptureViewModel: ObservableObject {
     private var pressTask: Task<Void, Never>?
     private var timerTask: Task<Void, Never>?
     private var fingerIsDown = false
+    private var longPressActivated = false
+    private var wasRecordingWhenPressed = false
+    private var finishWhenRecordingStarts = false
 
     var statusText: String {
         if isRecording { return "正在录音" }
@@ -38,9 +41,13 @@ final class WatchCaptureViewModel: ObservableObject {
         fingerIsDown = true
         isPressed = true
         errorMessage = nil
+        longPressActivated = false
+        wasRecordingWhenPressed = isRecording
+        guard !isRecording else { return }
         pressTask = Task {
             try? await Task.sleep(for: .milliseconds(220))
             guard !Task.isCancelled, fingerIsDown else { return }
+            longPressActivated = true
             await startRecording()
         }
     }
@@ -50,7 +57,13 @@ final class WatchCaptureViewModel: ObservableObject {
         isPressed = false
         pressTask?.cancel()
         pressTask = nil
-        if isRecording { Task { await finishRecording() } }
+        if isRecording, longPressActivated || wasRecordingWhenPressed {
+            Task { await finishRecording() }
+        } else if longPressActivated {
+            finishWhenRecordingStarts = true
+        } else if !longPressActivated, !wasRecordingWhenPressed {
+            Task { await startRecording() }
+        }
     }
 
     private func startRecording() async {
@@ -60,18 +73,23 @@ final class WatchCaptureViewModel: ObservableObject {
             try await recorder.start(captureID: captureID, url: url)
             isRecording = true
             WKInterfaceDevice.current().play(.start)
+            if finishWhenRecordingStarts {
+                finishWhenRecordingStarts = false
+                await finishRecording()
+                return
+            }
             timerTask = Task {
-                var seconds = 0
                 while !Task.isCancelled {
-                    elapsedText = await recorder.elapsedText()
-                    try? await Task.sleep(for: .seconds(1))
-                    seconds += 1
-                    if seconds >= 60 {
+                    let activity = await recorder.activity()
+                    let seconds = min(60, activity.durationMilliseconds / 1_000)
+                    elapsedText = String(format: "%02d:%02d", seconds / 60, seconds % 60)
+                    if activity.shouldAutoStop || activity.durationMilliseconds >= 60_000 {
                         fingerIsDown = false
                         isPressed = false
                         await finishRecording()
                         return
                     }
+                    try? await Task.sleep(for: .milliseconds(200))
                 }
             }
         } catch {

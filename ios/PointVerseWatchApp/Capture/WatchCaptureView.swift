@@ -25,9 +25,9 @@ struct WatchCaptureView: View {
                                 .onChanged { _ in model.pressBegan() }
                                 .onEnded { _ in model.pressEnded() }
                         )
-                        .accessibilityLabel(model.isRecording ? "松开保存" : "按住录音")
+                        .accessibilityLabel(model.isRecording ? "停止录音" : "开始录音")
 
-                    Text(model.isRecording ? model.elapsedText : "按住录音，松开保存")
+                    Text(model.isRecording ? model.elapsedText : "轻点录音，或按住说话")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()

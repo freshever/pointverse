@@ -4,6 +4,7 @@ import QwenAdapter
 import Speech
 
 actor TranscriptionService {
+    static let didChangeNotification = Notification.Name("PointVerseTranscriptionDidChange")
     private let repository: any PointRepository
     private let blobStore: any AudioBlobStoring
     private let recognizer: OnDeviceSpeechRecognizer
@@ -27,15 +28,35 @@ actor TranscriptionService {
             guard let audioPath = detail.audioRelativePath else { return }
             let audioURL = try await blobStore.url(for: audioPath)
             try await repository.markTranscriptionRunning(pointID: pointID)
+            await notifyChange(pointID)
             let text = try await recognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier)
             try await repository.saveTranscript(pointID: pointID, engineText: text, modelID: "apple-speech-on-device", modelSHA256: "system")
+            // The transcript is ready for display now. Title derivation can take
+            // considerably longer and must not keep the UI in its running state.
+            await notifyChange(pointID)
             try await saveRuleTitle(pointID: pointID, transcript: text)
-            _ = await deriveTitle(pointID: pointID)
             PointVerseLog.transcription.info("Apple Speech transcription completed")
+            // Semantic indexing can start as soon as transcription returns.
+            // The slower local-LLM title pass continues independently.
+            Task {
+                _ = await self.deriveTitle(pointID: pointID)
+                await self.notifyChange(pointID)
+            }
         } catch let error as PointVerseError {
             try? await repository.failTranscription(pointID: pointID, error: error)
+            await notifyChange(pointID)
         } catch {
             try? await repository.failTranscription(pointID: pointID, error: .transcriptionFailed)
+            await notifyChange(pointID)
+        }
+    }
+
+    private func notifyChange(_ pointID: PointID) async {
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: Self.didChangeNotification,
+                object: pointID.rawValue.uuidString
+            )
         }
     }
 

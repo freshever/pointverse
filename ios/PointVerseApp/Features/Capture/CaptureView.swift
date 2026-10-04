@@ -10,6 +10,8 @@ struct CaptureView: View {
     @State private var elapsed = 0
     @State private var failureKey = "录音启动失败"
     @State private var recordingStartTask: Task<Void, Never>?
+    @State private var longPressRecording = false
+    @State private var finishWhenRecordingStarts = false
     @State private var activeLocaleIdentifier: String?
     @StateObject private var camera = CameraFrameSampler()
     @AppStorage("captureCameraEnabled") private var cameraEnabled = true
@@ -125,14 +127,29 @@ struct CaptureView: View {
             .animation(.easeOut(duration: 0.12), value: state)
             .contentShape(Circle())
             .onTapGesture {
+                guard !longPressRecording else { return }
                 if state == .recording { finishRecording() }
                 else { beginRecording() }
+            }
+            .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 40) {
+                guard state != .recording else { return }
+                longPressRecording = true
+                finishWhenRecordingStarts = false
+                beginRecording()
+            } onPressingChanged: { pressing in
+                guard !pressing, longPressRecording else { return }
+                longPressRecording = false
+                if state == .recording {
+                    finishRecording()
+                } else {
+                    finishWhenRecordingStarts = true
+                }
             }
             .accessibilityLabel(AppLocalization.string(state == .recording ? "完成录音" : "开始录音", language: appLanguage))
             .accessibilityHint(AppLocalization.string(state == .recording ? "轻点结束录音" : "轻点开始录音", language: appLanguage))
             .disabled(state == .saving)
 
-            AppText(state == .recording ? "再次轻点结束" : "轻点开始")
+            AppText(state == .recording ? "再次轻点结束" : "轻点录音，或按住说话")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(state == .recording ? .red : .secondary)
 
@@ -166,10 +183,16 @@ struct CaptureView: View {
             camera.stopPreview()
         }
         .task(id: startedAt) {
-            guard let startedAt else { return }
-            while !Task.isCancelled {
-                elapsed = Int(Date().timeIntervalSince(startedAt))
-                try? await Task.sleep(for: .seconds(1))
+            guard startedAt != nil else { return }
+            while !Task.isCancelled, state == .recording {
+                let activity = await container.captureUseCase.recordingActivity()
+                elapsed = activity.durationMilliseconds / 1_000
+                if activity.shouldAutoStop {
+                    PointVerseLog.capture.info("Automatically stopping after three seconds of silence")
+                    finishRecording()
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(200))
             }
         }
         .sheet(item: $frameReview) { review in
@@ -253,6 +276,10 @@ struct CaptureView: View {
                 try await container.captureUseCase.start()
                 startedAt = Date()
                 state = .recording
+                if finishWhenRecordingStarts {
+                    finishWhenRecordingStarts = false
+                    finishRecording()
+                }
             } catch PointVerseError.microphonePermissionDenied {
                 camera.cancelCollecting()
                 startedAt = nil

@@ -49,6 +49,10 @@ struct PointDetailView: View {
             guard note.object as? String == point.id.rawValue.uuidString else { return }
             Task { await reload() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: TranscriptionService.didChangeNotification)) { note in
+            guard note.object as? String == point.id.rawValue.uuidString else { return }
+            Task { await reload() }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

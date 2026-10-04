@@ -3,7 +3,11 @@ import Foundation
 import PointVerseKit
 
 actor SystemAudioRecorder: AudioRecording {
+    private static let voiceThreshold: Float = -45
+    private static let minimumDurationMilliseconds = 1_000
     private var recorder: AVAudioRecorder?
+    private var detectedVoice = false
+    private var lastVoiceTime: TimeInterval?
 
     func start(at temporaryURL: URL) async throws {
         PointVerseLog.capture.info("Recording start requested")
@@ -58,6 +62,8 @@ actor SystemAudioRecorder: AudioRecording {
             recorder.isMeteringEnabled = true
             guard recorder.record() else { throw PointVerseError.audioSessionUnavailable }
             self.recorder = recorder
+            detectedVoice = false
+            lastVoiceTime = nil
             PointVerseLog.capture.info("AVAudioRecorder started")
         } catch let error as PointVerseError {
             PointVerseLog.capture.error("Recording start failed with PointVerse code: \(error.rawValue, privacy: .public)")
@@ -69,6 +75,24 @@ actor SystemAudioRecorder: AudioRecording {
         }
     }
 
+    func activity() async -> AudioRecordingActivity {
+        guard let recorder else {
+            return AudioRecordingActivity(durationMilliseconds: 0, hasDetectedVoice: false, silenceMilliseconds: 0)
+        }
+        recorder.updateMeters()
+        let currentTime = recorder.currentTime
+        if recorder.averagePower(forChannel: 0) >= Self.voiceThreshold {
+            detectedVoice = true
+            lastVoiceTime = currentTime
+        }
+        let silence = lastVoiceTime.map { max(0, Int((currentTime - $0) * 1_000)) } ?? 0
+        return AudioRecordingActivity(
+            durationMilliseconds: Int(currentTime * 1_000),
+            hasDetectedVoice: detectedVoice,
+            silenceMilliseconds: silence
+        )
+    }
+
     func stop() async throws -> RecordingResult {
         guard let recorder else { throw PointVerseError.audioCommitFailed }
         let duration = max(0, Int(recorder.currentTime * 1_000))
@@ -77,7 +101,7 @@ actor SystemAudioRecorder: AudioRecording {
         PointVerseLog.capture.info("AVAudioRecorder stopped: durationMs=\(duration, privacy: .public)")
         self.recorder = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        guard duration > 0 else {
+        guard duration >= Self.minimumDurationMilliseconds, detectedVoice else {
             try? FileManager.default.removeItem(at: url)
             throw PointVerseError.audioCommitFailed
         }

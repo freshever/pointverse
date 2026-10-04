@@ -152,6 +152,8 @@ public enum GeographyIdentity {
     public static let compactSphereV2 = "e5-compact-sphere-v2"
     public static let denseSphereV3 = "e5-dense-sphere-v3"
     public static let distributedCommunitiesV4 = "e5-distributed-communities-v4"
+    public static let semanticTopicsV5 = "e5-semantic-topics-v5"
+    public static let relativeSemanticV6 = "e5-relative-semantic-v6"
 }
 
 public struct PointGeographyRecord: Equatable, Sendable {
