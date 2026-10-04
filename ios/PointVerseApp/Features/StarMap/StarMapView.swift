@@ -56,6 +56,8 @@ struct StarMapView: View {
 }
 
 private struct Pseudo3DStarMap: View {
+    private let minimumZoom: CGFloat = 0.55
+    private let maximumZoom: CGFloat = 12
     let layout: StarLayout
     let onSelect: (PointSummary) -> Void
     @State private var yaw: CGFloat = 0.35
@@ -249,7 +251,9 @@ private struct Pseudo3DStarMap: View {
 
     private func zoomButton(systemName: String, factor: CGFloat) -> some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.22)) { zoom = min(2.2, max(0.55, zoom * factor)) }
+            withAnimation(.easeInOut(duration: 0.22)) {
+                zoom = min(maximumZoom, max(minimumZoom, zoom * factor))
+            }
         } label: {
             Image(systemName: systemName).foregroundStyle(.white)
                 .frame(width: 32, height: 32).background(.white.opacity(0.12), in: Circle())
@@ -269,8 +273,11 @@ private struct Pseudo3DStarMap: View {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
                 if dragStartYaw == nil { dragStartYaw = yaw; dragStartPitch = pitch }
-                yaw = (dragStartYaw ?? yaw) + value.translation.width * 0.008
-                pitch = min(.pi / 2, max(-.pi / 2, (dragStartPitch ?? pitch) + value.translation.height * 0.008))
+                // Slow rotation as the camera moves closer so dense points can
+                // be positioned precisely instead of flying past the viewport.
+                let sensitivity = 0.008 / sqrt(max(1, zoom))
+                yaw = (dragStartYaw ?? yaw) + value.translation.width * sensitivity
+                pitch = min(.pi / 2, max(-.pi / 2, (dragStartPitch ?? pitch) + value.translation.height * sensitivity))
             }
             .onEnded { _ in dragStartYaw = nil; dragStartPitch = nil }
     }
@@ -279,7 +286,7 @@ private struct Pseudo3DStarMap: View {
         MagnificationGesture()
             .onChanged { value in
                 if zoomStart == nil { zoomStart = zoom }
-                zoom = min(2.2, max(0.55, (zoomStart ?? zoom) * value))
+                zoom = min(maximumZoom, max(minimumZoom, (zoomStart ?? zoom) * value))
             }
             .onEnded { _ in zoomStart = nil }
     }
@@ -301,7 +308,9 @@ private struct Pseudo3DStarMap: View {
         }), hypot(nearest.point.x - location.x, nearest.point.y - location.y) <= max(34, nearest.radius + 14) {
             if nearest.nodeIndices.count > 1 {
                 selectedLink = nil
-                withAnimation(.easeInOut(duration: 0.3)) { zoom = min(2.2, max(1.12, zoom * 1.45)) }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    zoom = min(maximumZoom, max(1.12, zoom * 1.45))
+                }
             } else if let index = nearest.nodeIndices.first {
                 onSelect(layout.nodes[index].point)
             }
