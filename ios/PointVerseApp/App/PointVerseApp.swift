@@ -33,6 +33,10 @@ private struct RootView: View {
                 .tabItem { Label { AppText("地球") } icon: { Image(systemName: "globe.asia.australia.fill") } }
             NavigationStack { PointListView() }
                 .tabItem { Label { AppText("想法") } icon: { Image(systemName: "circle.grid.2x2.fill") } }
+            NavigationStack { ImageGenerationView() }
+                .tabItem { Label { AppText("图片") } icon: { Image(systemName: "photo.badge.plus") } }
+            NavigationStack { ModelSettingsView() }
+                .tabItem { Label { AppText("模型") } icon: { Image(systemName: "cpu") } }
         }
         .tint(.indigo)
     }

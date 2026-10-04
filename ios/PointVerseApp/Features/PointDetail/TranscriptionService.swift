@@ -1,16 +1,19 @@
 import Foundation
 import PointVerseKit
+import QwenAdapter
 import Speech
 
 actor TranscriptionService {
     private let repository: any PointRepository
     private let blobStore: any AudioBlobStoring
     private let recognizer: OnDeviceSpeechRecognizer
+    private let titleGenerator: QwenTitleGenerator
 
-    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: OnDeviceSpeechRecognizer) {
+    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: OnDeviceSpeechRecognizer, titleGenerator: QwenTitleGenerator) {
         self.repository = repository
         self.blobStore = blobStore
         self.recognizer = recognizer
+        self.titleGenerator = titleGenerator
     }
 
     func resumePending() async {
@@ -27,12 +30,73 @@ actor TranscriptionService {
             let text = try await recognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier)
             try await repository.saveTranscript(pointID: pointID, engineText: text, modelID: "apple-speech-on-device", modelSHA256: "system")
             try await saveRuleTitle(pointID: pointID, transcript: text)
+            _ = await deriveTitle(pointID: pointID)
             PointVerseLog.transcription.info("Apple Speech transcription completed")
         } catch let error as PointVerseError {
             try? await repository.failTranscription(pointID: pointID, error: error)
         } catch {
             try? await repository.failTranscription(pointID: pointID, error: .transcriptionFailed)
         }
+    }
+
+    func deriveMissingTitles(languageIdentifier: String? = nil) async {
+        guard let manifest = ModelSelection.selectedLanguageModel() else { return }
+        let language = Self.titleLanguage(languageIdentifier)
+        let modelID = Self.derivationModelID(manifest: manifest, language: language)
+        guard let pointIDs = try? await repository.pointIDsNeedingTitle(modelID: modelID) else { return }
+        for pointID in pointIDs { _ = await deriveTitle(pointID: pointID, languageIdentifier: language) }
+    }
+
+    @discardableResult
+    func deriveTitle(pointID: PointID, languageIdentifier: String? = nil) async -> String? {
+        do {
+            let detail = try await repository.pointDetail(id: pointID)
+            guard let transcript = detail.effectiveTranscript, !transcript.isEmpty else { return nil }
+            let imageText = try await repository.images(pointID: pointID).enumerated().compactMap { index, image in
+                guard let text = image.recognizedText, !text.isEmpty else { return nil }
+                return "Photo \(index + 1): " + String(text.prefix(300))
+            }.joined(separator: "\n")
+            let conversation = try await repository.conversationMessages(pointID: pointID)
+            let language = Self.titleLanguage(languageIdentifier)
+            let context = imageText.isEmpty
+                ? transcript
+                : "Attached photos:\n\(imageText)\n\nSaved content:\n\(String(transcript.prefix(700)))"
+            let title = try await titleGenerator.generateTitle(
+                transcript: context,
+                conversation: conversation,
+                localeIdentifier: language
+            )
+            guard let manifest = ModelSelection.selectedLanguageModel() else { return nil }
+            try await repository.saveCandidateTitle(
+                pointID: pointID,
+                title: title,
+                modelID: Self.derivationModelID(manifest: manifest, language: language),
+                modelSHA256: manifest.sha256
+            )
+            return title
+        } catch {
+            return nil
+        }
+    }
+
+    private static func titleLanguage(_ requested: String?) -> String {
+        let stored = requested ?? UserDefaults.standard.string(forKey: "appLanguage") ?? "system"
+        return stored == "system" || stored.isEmpty ? Locale.current.identifier : stored
+    }
+
+    private static func derivationModelID(manifest: ModelManifest, language: String) -> String {
+        let normalized = language.replacingOccurrences(of: "_", with: "-").lowercased()
+        let suffix: String
+        if normalized.hasPrefix("zh-hant") || normalized.hasPrefix("zh-tw") || normalized.hasPrefix("zh-hk") {
+            suffix = "zh-hant"
+        } else if normalized.hasPrefix("zh") {
+            suffix = "zh-hans"
+        } else if normalized.hasPrefix("ja") {
+            suffix = "ja"
+        } else {
+            suffix = "en"
+        }
+        return manifest.id + "-title-" + suffix
     }
 
     private func saveRuleTitle(pointID: PointID, transcript: String) async throws {

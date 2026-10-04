@@ -8,8 +8,13 @@ packages:
   PointVerseKit:
     path: PointVerseKit
   SwiftTransformers:
-    url: https://github.com/huggingface/swift-transformers
+    url: https://github.com/huggingface/swift-transformers.git
     exactVersion: 1.3.0
+  LlamaRuntime:
+    path: Vendor/LlamaRuntime
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    exactVersion: 0.9.20
 targets:
   PointVerseWatch:
     type: application
@@ -38,15 +43,29 @@ targets:
           - Features/PointDetail/WhisperRecognizer.swift
           - Features/PointDetail/QwenTitleGenerator.swift
           - Features/PointDetail/ConversationService.swift
-          - Features/ModelSettings
-          - Features/ImageGeneration/ImageGenerationView.swift
-          - Features/ImageGeneration/LocalImageGenerator.swift
-          - Features/ImageGeneration/PhotoLibrarySaver.swift
     dependencies:
       - target: PointVerseWatch
       - package: PointVerseKit
       - package: SwiftTransformers
         product: Tokenizers
+      - target: QwenAdapter
+      - target: StableDiffusion
+      - package: ZIPFoundation
+        product: ZIPFoundation
+    postBuildScripts:
+      - name: Embed llama runtime
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/llama.framework/llama
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/llama.framework/llama
+        script: |
+          set -e
+          destination="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          mkdir -p "${destination}"
+          ditto "${BUILT_PRODUCTS_DIR}/llama.framework" "${destination}/llama.framework"
+          if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier "${destination}/llama.framework"
+          fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv
@@ -57,6 +76,39 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseApp/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
+  QwenAdapter:
+    type: framework
+    platform: iOS
+    sources:
+      - path: PointVerseApp/Features/PointDetail/QwenTitleGenerator.swift
+    dependencies:
+      - package: PointVerseKit
+      - package: LlamaRuntime
+        product: llama
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv.qwen-adapter
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+  StableDiffusion:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Vendor/StableDiffusionRuntime/Sources/StableDiffusion
+        excludes:
+          # PointVerse currently ships the classic Stable Diffusion pipeline.
+          # SD3's T5/Hub files pull in networking packages that are not needed
+          # for local image generation and can break device framework linking.
+          - pipeline/StableDiffusion3Pipeline.swift
+          - pipeline/StableDiffusion3Pipeline+Resources.swift
+          - pipeline/TextEncoderT5.swift
+          - pipeline/MultiModalDiffusionTransformer.swift
+          - tokenizer/T5Tokenizer.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv.stable-diffusion
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   PointVerseWatch:
     build:

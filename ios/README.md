@@ -12,11 +12,18 @@
 - 保存事实、Point 列表和模型占位状态界面。
 - 简体中文、繁体中文、英文和日文界面与麦克风权限说明；Capture 同时持久化当前 locale，供 multilingual Whisper 使用。
 
-原音播放器、系统设备端转写、失败重试、人工修正和全文搜索已经接入。精简版只使用 Apple Speech 的强制端侧模式；不再链接或下载 Whisper、Qwen、Qwen-VL 与 Stable Diffusion。系统转写不可用时保留原音并允许重试。
+原音播放器、系统设备端转写、失败重试、人工修正和全文搜索已经接入。语音仍使用 Apple Speech 的强制端侧模式；Qwen3 已恢复为可下载的本地知识整理模型，用于生成标题和整理图片生成提示词。Qwen3-VL 模型与视觉投影文件可以在模型页下载，用于后续图片理解；Stable Diffusion 2.1 Core ML 6-bit 已恢复为设备端图片生成模型。系统转写或可选模型不可用时，Point 原始内容仍会保存。
 
-主界面包含“记录、星图、想法”三个入口。星图使用 SwiftUI Canvas 伪 3D 展示 Point，支持旋转、缩放、点选并打开详情；当前连线是布局提示，不作为持久化的语义关系。Embedding 已切换为 `multilingual-e5-small`（Float32 计算、INT8 权重），支持中英跨语言关联；设计演进见 [`../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md`](../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md)。
+主界面包含记录、星图、地球、想法、图片和模型入口。图片页支持本地生图、保存相册和系统 OCR；模型页负责 Qwen、Qwen-VL 和 Stable Diffusion 模型的下载、校验、选择与卸载。Embedding 已切换为 `multilingual-e5-small`（Float32 计算、INT8 权重），支持中英跨语言关联；设计演进见 [`../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md`](../docs/PointVerse-bge-small-zh-v1.5-本地Embedding方案-v1.0.md)。
 
-尚未完成的 P0 工作是 staging 崩溃恢复与真机杀进程验收。Llama 属于 P2，不在当前骨架中伪实现。
+生成式模型运行时说明：
+
+- llama 官方 XCFramework 当前只提供 iPhone `arm64`，不包含 iOS Simulator slice；Qwen/Qwen-VL 功能必须在真机验证。
+- Stable Diffusion runtime 以 Apple 官方源码的本地 vendor package 接入，并统一使用 `swift-transformers 1.3.0`，避免旧 revision 失效和依赖版本冲突。
+- Qwen 与 Stable Diffusion 共用 `ModelExecutionGate`，禁止两个大模型同时占用内存。
+- 图片模型首次下载约 1.14 GB，解压与 Core ML 首次编译还需要额外磁盘空间。
+
+尚未完成的 P0 工作是 staging 崩溃恢复与真机杀进程验收。省市区的生成式批量命名仍需在现有 Qwen runtime 上增加缓存与版本化任务；当前地图继续使用可解释命名器作为即时缺省值。
 
 ## Apple Watch MVP
 

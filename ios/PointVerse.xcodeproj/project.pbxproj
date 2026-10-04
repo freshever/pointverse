@@ -8,41 +8,94 @@
 
 /* Begin PBXBuildFile section */
 		02F157B4EE85BB66B32061AD /* MultilingualE5Small.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 21B1B6A58E2B3AEC869942E0 /* MultilingualE5Small.mlpackage */; };
+		0403D24A840DB3949141041F /* StableDiffusionXLPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23D9255CEF715935BBCF82D /* StableDiffusionXLPipeline.swift */; };
+		059B1ACD5CA8EC65D212AE49 /* QwenTitleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */; };
+		072CFBA7B29727BFF04EBCAE /* Scheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4B951AC0E4E7FD9868D02E /* Scheduler.swift */; };
 		096226125B5039423956E298 /* WatchCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */; };
 		09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 7A2F90E93A7921822C385A42 /* Tokenizers */; };
+		0A93B5C11B1AA271C609E1EB /* StableDiffusion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 536719040C9C2105BB05FD62 /* StableDiffusion.framework */; };
 		0C5AF72B3024224085F88957 /* PointVerseWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 63BD3FCB4B14F9E1B147974B /* PointVerseWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0F8DD920DC4D03EE3CC35292 /* DiscreteFlowScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B932242879D224BCEF9626 /* DiscreteFlowScheduler.swift */; };
 		10C5BEE589506F9103953797 /* GlobeMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E358989C9C5842581151C831 /* GlobeMapView.swift */; };
 		11466DB45DA594D12B07E742 /* PointVerseWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */; };
 		1EB414AAE84DDCBFD535D666 /* PlanetDemoPoints.json in Resources */ = {isa = PBXBuildFile; fileRef = 570637AF5F61BA4ADD8FECA7 /* PlanetDemoPoints.json */; };
+		2429A46A83897B1FAFBA992C /* StableDiffusion.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 536719040C9C2105BB05FD62 /* StableDiffusion.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		31A071F6761627FDB08336F9 /* TorchRandomSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53ABA557DCC1188A09DE59A5 /* TorchRandomSource.swift */; };
 		40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */; };
+		41DB29E04C1064FA9A2FEB3D /* NumPyRandomSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CC55A416E6C0509DD5F1A4 /* NumPyRandomSource.swift */; };
 		42EDCEE27B34D5E5DB5DB273 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A72376C331A5411479AD783 /* Localizable.strings */; };
+		47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */; };
+		49B5F93E98E22678E689C3DE /* QwenAdapter.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A8D65E3405B008E1C081E305 /* QwenAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		4CFADA315C11FC4F77AB7B95 /* SystemAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */; };
 		5243C3E32851018575973FBB /* PointListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49D567E2157613FF575EBB9 /* PointListView.swift */; };
 		5408E114E7F43BA7E7B759FF /* StarMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05C89EAA234DFC507134DC1 /* StarMapView.swift */; };
+		550C638AF64E9E46E398E5CC /* SampleTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE9AA28AD841E45FEAFEBD6D /* SampleTimer.swift */; };
 		57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */ = {isa = PBXBuildFile; productRef = EF1601925276AADCFA77677C /* PointVerseKit */; };
+		59FF5DF895DCB368308FB3B0 /* BPETokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75365435A6E01C968537D58 /* BPETokenizer.swift */; };
 		5E53701C9355270F9A084DCB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AEBFF404379E2101831D913A /* Assets.xcassets */; };
+		5EAA3BCB289517246E1E543E /* TextEncoderXL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 827ABCDFD59C1B331A255524 /* TextEncoderXL.swift */; };
+		61587BBA6359215EBDCA518D /* CGImage+vImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808A88A153216C5EBC837445 /* CGImage+vImage.swift */; };
 		68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC1CB606858B87E1316B5A6 /* CaptureView.swift */; };
+		74303CB0F04AC4BE3D6B9FC0 /* TextEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36FF9CC8B9C00D935D7408F /* TextEncoder.swift */; };
+		7974CDE5998A4B7AD5BAB10A /* StableDiffusionPipeline+Resources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C02B961CB05C9089228FB2 /* StableDiffusionPipeline+Resources.swift */; };
 		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
+		7C0EDD35A754BF1CEC505B4E /* ControlNet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2647D26123734C582B6CB2FB /* ControlNet.swift */; };
 		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
 		8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E117BAE13164C24CE628D0 /* AppLocalization.swift */; };
+		854DEB3CC1EB4F769E275404 /* MultilingualTextEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5614BE0FEF48738B5275B52F /* MultilingualTextEncoder.swift */; };
 		86ECCF7F5A5CC64FC721261A /* WatchCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */; };
+		8846D339929A6F0653028413 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */; };
+		8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */; };
+		8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
 		94435D8810214C8FC7F63198 /* SquarePhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */; };
+		95954644EAA1D1837CD48006 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = B430E296F7E046097A251A8A /* llama */; };
 		9D2EFB42E44719C20B7D5284 /* WatchTransferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6240E07F2C5E5DC0695CF722 /* WatchTransferManager.swift */; };
+		9DA2ED22F4484D4BA80C374E /* Decoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111334D25491A0A24BE3075D /* Decoder.swift */; };
 		9F15B672E502D84FC0C9732D /* WatchCaptureViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C9277D58D6C430182370E5 /* WatchCaptureViewModel.swift */; };
+		A68225D65CBCA26170D10214 /* StableDiffusionPipeline.Configuration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1184A858FE6D276A15F14868 /* StableDiffusionPipeline.Configuration.swift */; };
 		A99D35AC9101FDD62C5004E9 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = CAD222DEB5F332B46BC5EA07 /* special_tokens_map.json */; };
 		AE065FB9DB6A08BCE1A96473 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = 271D595FD56333A5080F43AC /* tokenizer.json */; };
+		AEDF4B2B7527A4E9F346CFCF /* SafetyChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15EAE6A70FE425CC80E32226 /* SafetyChecker.swift */; };
+		B0E438EF98EDBBA74F0D46E7 /* ManagedMLModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60A72C3D22FFA14B1554CC7 /* ManagedMLModel.swift */; };
 		B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */; };
+		B605428A4B68511E9FED8AC7 /* QwenAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A8D65E3405B008E1C081E305 /* QwenAdapter.framework */; };
+		B60E1A281FB66EE6882607E1 /* ResourceManaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4CE814ADC2DA9B2A01C155 /* ResourceManaging.swift */; };
 		BB6EDB66E2C349D069AE0854 /* WatchAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */; };
+		CB4C950DBF68CEC221E707A4 /* BPETokenizer+Reading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BD327E4695085ADD59280A8 /* BPETokenizer+Reading.swift */; };
 		CCCE03F54AEE4B8EEE36C22A /* E5CoreMLEmbedding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8495ACEE184C09CB063410C6 /* E5CoreMLEmbedding.swift */; };
+		D3B520B849AC356DA6C23C3C /* StableDiffusionPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C40EF65B22360BCC3692A8D /* StableDiffusionPipeline.swift */; };
 		D64CEABDB7E54CF6E688457A /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350717BAF15B6D474531ACEB /* EmbeddingService.swift */; };
+		D7E52A4E5FDF3BA8703611EE /* Encoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C82A22688D04231A96E4DE52 /* Encoder.swift */; };
 		D96BC05DDD408DFAF1854EBE /* tokenizer_config.json in Resources */ = {isa = PBXBuildFile; fileRef = 8B2FFAF03AFA64B293D72761 /* tokenizer_config.json */; };
 		D9B44A1BEDAD91D3C5BE425E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7D3EA7AA748408B7A2F1DA5F /* InfoPlist.strings */; };
+		DB47ED85B950E7186690FD09 /* DPMSolverMultistepScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC82FDB14F5B5130C340BC6B /* DPMSolverMultistepScheduler.swift */; };
+		DD25805861582A2E0CD38F34 /* PointVerseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6F5166BFEC828BA1323CFA2B /* PointVerseKit */; };
+		DEB22754FC8E1E6C3011AF91 /* ImageGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */; };
+		E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD50731098248359D1259BC /* ModelDownloadManager.swift */; };
 		E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */; };
+		EF0EABC50D816343D7FEDE60 /* NvRandomSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663CB78A60E539C05531657D /* NvRandomSource.swift */; };
 		F39E94764FB17533DF598918 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAEA797E538F30926794551 /* AppContainer.swift */; };
 		F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716533EFD2901EC614D27CC1 /* PointVerseApp.swift */; };
+		FE5BABA417C93B7CFDFA1C82 /* Unet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D89E5819041E4CFD5EFC610 /* Unet.swift */; };
+		FF2D4E30E06CB7E677D36C28 /* RandomSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E7F1E746A15F829D7C58B6 /* RandomSource.swift */; };
+		FFBDBAFBD8C661600328CAD8 /* StableDiffusionXL+Resources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D9DFDCA6FE923A75CDA51F /* StableDiffusionXL+Resources.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		6A85B754C2501EC496075B68 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CC1D0EBFA164DD5440BFF8C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F73D699F688EC0633B1AC82F;
+			remoteInfo = StableDiffusion;
+		};
+		7E588BF788924A3087393D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CC1D0EBFA164DD5440BFF8C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 429F8476F7B36AD371AD6306;
+			remoteInfo = QwenAdapter;
+		};
 		A9579808E61BDF68AE3B2EE7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8CC1D0EBFA164DD5440BFF8C /* Project object */;
@@ -64,57 +117,116 @@
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C642D0CB72B3A9E241C8D104 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				49B5F93E98E22678E689C3DE /* QwenAdapter.framework in Embed Frameworks */,
+				2429A46A83897B1FAFBA992C /* StableDiffusion.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		05C02B961CB05C9089228FB2 /* StableDiffusionPipeline+Resources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StableDiffusionPipeline+Resources.swift"; sourceTree = "<group>"; };
+		06B932242879D224BCEF9626 /* DiscreteFlowScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscreteFlowScheduler.swift; sourceTree = "<group>"; };
+		111334D25491A0A24BE3075D /* Decoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Decoder.swift; sourceTree = "<group>"; };
+		1184A858FE6D276A15F14868 /* StableDiffusionPipeline.Configuration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StableDiffusionPipeline.Configuration.swift; sourceTree = "<group>"; };
 		1295EBA18DDFC6F925F284D4 /* PointVerse.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PointVerse.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		15EAE6A70FE425CC80E32226 /* SafetyChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyChecker.swift; sourceTree = "<group>"; };
+		1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		21B1B6A58E2B3AEC869942E0 /* MultilingualE5Small.mlpackage */ = {isa = PBXFileReference; path = MultilingualE5Small.mlpackage; sourceTree = "<group>"; };
 		24E265A97970E7093BC60BA7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		2647D26123734C582B6CB2FB /* ControlNet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlNet.swift; sourceTree = "<group>"; };
+		26CC55A416E6C0509DD5F1A4 /* NumPyRandomSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumPyRandomSource.swift; sourceTree = "<group>"; };
 		26DFE56B963C328D0138CCA7 /* PointVerseKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PointVerseKit; path = PointVerseKit; sourceTree = SOURCE_ROOT; };
 		271D595FD56333A5080F43AC /* tokenizer.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokenizer.json; sourceTree = "<group>"; };
 		2B2085183CD43466B8E2F5B7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		350717BAF15B6D474531ACEB /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
+		39E7F1E746A15F829D7C58B6 /* RandomSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomSource.swift; sourceTree = "<group>"; };
+		3D89E5819041E4CFD5EFC610 /* Unet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Unet.swift; sourceTree = "<group>"; };
+		420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QwenTitleGenerator.swift; sourceTree = "<group>"; };
+		4BD327E4695085ADD59280A8 /* BPETokenizer+Reading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BPETokenizer+Reading.swift"; sourceTree = "<group>"; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
+		4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalImageGenerator.swift; sourceTree = "<group>"; };
 		52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureView.swift; sourceTree = "<group>"; };
+		536719040C9C2105BB05FD62 /* StableDiffusion.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = StableDiffusion.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		53ABA557DCC1188A09DE59A5 /* TorchRandomSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TorchRandomSource.swift; sourceTree = "<group>"; };
+		5614BE0FEF48738B5275B52F /* MultilingualTextEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultilingualTextEncoder.swift; sourceTree = "<group>"; };
 		570637AF5F61BA4ADD8FECA7 /* PlanetDemoPoints.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = PlanetDemoPoints.json; sourceTree = "<group>"; };
 		57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		5B725E10B707CD2D76D20BE3 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		5D4B951AC0E4E7FD9868D02E /* Scheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scheduler.swift; sourceTree = "<group>"; };
 		5E1E2217C4EB458898C792E5 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		6240E07F2C5E5DC0695CF722 /* WatchTransferManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferManager.swift; sourceTree = "<group>"; };
 		63BD3FCB4B14F9E1B147974B /* PointVerseWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PointVerseWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		663CB78A60E539C05531657D /* NvRandomSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NvRandomSource.swift; sourceTree = "<group>"; };
 		66E117BAE13164C24CE628D0 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
+		69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
 		716533EFD2901EC614D27CC1 /* PointVerseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseApp.swift; sourceTree = "<group>"; };
+		77D9DFDCA6FE923A75CDA51F /* StableDiffusionXL+Resources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StableDiffusionXL+Resources.swift"; sourceTree = "<group>"; };
+		7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		7BC1CB606858B87E1316B5A6 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
+		808A88A153216C5EBC837445 /* CGImage+vImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CGImage+vImage.swift"; sourceTree = "<group>"; };
+		827ABCDFD59C1B331A255524 /* TextEncoderXL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextEncoderXL.swift; sourceTree = "<group>"; };
 		8495ACEE184C09CB063410C6 /* E5CoreMLEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E5CoreMLEmbedding.swift; sourceTree = "<group>"; };
 		8B2FFAF03AFA64B293D72761 /* tokenizer_config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokenizer_config.json; sourceTree = "<group>"; };
+		8C40EF65B22360BCC3692A8D /* StableDiffusionPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StableDiffusionPipeline.swift; sourceTree = "<group>"; };
 		952A2774D33165C315F2D5F3 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		99C9AD12C654B6A70F665BFF /* BackgroundSessionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSessionEvents.swift; sourceTree = "<group>"; };
+		9C6D968845E46BF90D462603 /* LlamaRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LlamaRuntime; path = Vendor/LlamaRuntime; sourceTree = SOURCE_ROOT; };
+		A8D65E3405B008E1C081E305 /* QwenAdapter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = QwenAdapter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointDetailView.swift; sourceTree = "<group>"; };
 		AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquarePhotoCropView.swift; sourceTree = "<group>"; };
 		AEBFF404379E2101831D913A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
+		B60A72C3D22FFA14B1554CC7 /* ManagedMLModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedMLModel.swift; sourceTree = "<group>"; };
+		B75365435A6E01C968537D58 /* BPETokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BPETokenizer.swift; sourceTree = "<group>"; };
 		B9C9277D58D6C430182370E5 /* WatchCaptureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureViewModel.swift; sourceTree = "<group>"; };
 		BB8FC5C9693E7897ADE1AD80 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		BE9AA28AD841E45FEAFEBD6D /* SampleTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleTimer.swift; sourceTree = "<group>"; };
 		C49D567E2157613FF575EBB9 /* PointListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointListView.swift; sourceTree = "<group>"; };
+		C82A22688D04231A96E4DE52 /* Encoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Encoder.swift; sourceTree = "<group>"; };
 		C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureStore.swift; sourceTree = "<group>"; };
 		C90EF4F0CEE530E84E5262BB /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		CAD222DEB5F332B46BC5EA07 /* special_tokens_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = special_tokens_map.json; sourceTree = "<group>"; };
 		D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerViewModel.swift; sourceTree = "<group>"; };
 		D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
+		D36FF9CC8B9C00D935D7408F /* TextEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextEncoder.swift; sourceTree = "<group>"; };
 		DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioRecorder.swift; sourceTree = "<group>"; };
+		DF4CE814ADC2DA9B2A01C155 /* ResourceManaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceManaging.swift; sourceTree = "<group>"; };
+		E23D9255CEF715935BBCF82D /* StableDiffusionXLPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StableDiffusionXLPipeline.swift; sourceTree = "<group>"; };
 		E358989C9C5842581151C831 /* GlobeMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobeMapView.swift; sourceTree = "<group>"; };
 		F05C89EAA234DFC507134DC1 /* StarMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarMapView.swift; sourceTree = "<group>"; };
 		F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseWatchApp.swift; sourceTree = "<group>"; };
 		F6E23365C1D6C56005A335E5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FC82FDB14F5B5130C340BC6B /* DPMSolverMultistepScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DPMSolverMultistepScheduler.swift; sourceTree = "<group>"; };
+		FFD50731098248359D1259BC /* ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		AC115D4C0C7F16D8BA24A897 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DD25805861582A2E0CD38F34 /* PointVerseKit in Frameworks */,
+				95954644EAA1D1837CD48006 /* llama in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AE1916440F5CF4FABF12F535 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */,
 				09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */,
+				B605428A4B68511E9FED8AC7 /* QwenAdapter.framework in Frameworks */,
+				0A93B5C11B1AA271C609E1EB /* StableDiffusion.framework in Frameworks */,
+				8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -150,6 +262,16 @@
 			path = Connectivity;
 			sourceTree = "<group>";
 		};
+		13CE2A2DBA8AE5AD53A20748 /* StableDiffusion */ = {
+			isa = PBXGroup;
+			children = (
+				D18E276D6181632F93DF051A /* pipeline */,
+				7C7AB55B2EBF17F4E10518D6 /* tokenizer */,
+			);
+			name = StableDiffusion;
+			path = Vendor/StableDiffusionRuntime/Sources/StableDiffusion;
+			sourceTree = "<group>";
+		};
 		21EA5E19DAD9F8106EE36010 /* Embedding */ = {
 			isa = PBXGroup;
 			children = (
@@ -172,6 +294,8 @@
 			children = (
 				1295EBA18DDFC6F925F284D4 /* PointVerse.app */,
 				63BD3FCB4B14F9E1B147974B /* PointVerseWatch.app */,
+				A8D65E3405B008E1C081E305 /* QwenAdapter.framework */,
+				536719040C9C2105BB05FD62 /* StableDiffusion.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -181,6 +305,7 @@
 			children = (
 				D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */,
 				A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */,
+				420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */,
 				AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */,
 				57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */,
 			);
@@ -224,6 +349,24 @@
 			path = StarMap;
 			sourceTree = "<group>";
 		};
+		5900BEFDD6595398DEFECE2F /* ModelSettings */ = {
+			isa = PBXGroup;
+			children = (
+				FFD50731098248359D1259BC /* ModelDownloadManager.swift */,
+				69C910CB0389D1CACBF76AF1 /* ModelSettingsView.swift */,
+			);
+			path = ModelSettings;
+			sourceTree = "<group>";
+		};
+		7C7AB55B2EBF17F4E10518D6 /* tokenizer */ = {
+			isa = PBXGroup;
+			children = (
+				B75365435A6E01C968537D58 /* BPETokenizer.swift */,
+				4BD327E4695085ADD59280A8 /* BPETokenizer+Reading.swift */,
+			);
+			path = tokenizer;
+			sourceTree = "<group>";
+		};
 		81A3169B31AB258CEB9BFFB0 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -238,6 +381,7 @@
 		8BB94F2A41814A28CC6F5E7C /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				9C6D968845E46BF90D462603 /* LlamaRuntime */,
 				26DFE56B963C328D0138CCA7 /* PointVerseKit */,
 			);
 			name = Packages;
@@ -257,6 +401,7 @@
 				8BB94F2A41814A28CC6F5E7C /* Packages */,
 				013E34F74C8E7DA1188C20ED /* PointVerseApp */,
 				56FC1279A39BD5B102A7C913 /* PointVerseWatchApp */,
+				13CE2A2DBA8AE5AD53A20748 /* StableDiffusion */,
 				2ACCE446338288A6F4B0FC9B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -267,6 +412,7 @@
 				FC153A3B722ECC263F440A3D /* Capture */,
 				21EA5E19DAD9F8106EE36010 /* Embedding */,
 				F118855ED00548C902C2640A /* ImageGeneration */,
+				5900BEFDD6595398DEFECE2F /* ModelSettings */,
 				2CC9756829FE102BD437FA02 /* PointDetail */,
 				23947489219C6D320A1E0E29 /* PointList */,
 				58090F47C961A275EB8A9FBD /* StarMap */,
@@ -295,10 +441,44 @@
 			path = "multilingual-e5-small-tokenizer";
 			sourceTree = "<group>";
 		};
+		D18E276D6181632F93DF051A /* pipeline */ = {
+			isa = PBXGroup;
+			children = (
+				808A88A153216C5EBC837445 /* CGImage+vImage.swift */,
+				2647D26123734C582B6CB2FB /* ControlNet.swift */,
+				111334D25491A0A24BE3075D /* Decoder.swift */,
+				06B932242879D224BCEF9626 /* DiscreteFlowScheduler.swift */,
+				FC82FDB14F5B5130C340BC6B /* DPMSolverMultistepScheduler.swift */,
+				C82A22688D04231A96E4DE52 /* Encoder.swift */,
+				B60A72C3D22FFA14B1554CC7 /* ManagedMLModel.swift */,
+				5614BE0FEF48738B5275B52F /* MultilingualTextEncoder.swift */,
+				26CC55A416E6C0509DD5F1A4 /* NumPyRandomSource.swift */,
+				663CB78A60E539C05531657D /* NvRandomSource.swift */,
+				39E7F1E746A15F829D7C58B6 /* RandomSource.swift */,
+				DF4CE814ADC2DA9B2A01C155 /* ResourceManaging.swift */,
+				15EAE6A70FE425CC80E32226 /* SafetyChecker.swift */,
+				BE9AA28AD841E45FEAFEBD6D /* SampleTimer.swift */,
+				5D4B951AC0E4E7FD9868D02E /* Scheduler.swift */,
+				1184A858FE6D276A15F14868 /* StableDiffusionPipeline.Configuration.swift */,
+				8C40EF65B22360BCC3692A8D /* StableDiffusionPipeline.swift */,
+				05C02B961CB05C9089228FB2 /* StableDiffusionPipeline+Resources.swift */,
+				77D9DFDCA6FE923A75CDA51F /* StableDiffusionXL+Resources.swift */,
+				E23D9255CEF715935BBCF82D /* StableDiffusionXLPipeline.swift */,
+				D36FF9CC8B9C00D935D7408F /* TextEncoder.swift */,
+				827ABCDFD59C1B331A255524 /* TextEncoderXL.swift */,
+				53ABA557DCC1188A09DE59A5 /* TorchRandomSource.swift */,
+				3D89E5819041E4CFD5EFC610 /* Unet.swift */,
+			);
+			path = pipeline;
+			sourceTree = "<group>";
+		};
 		F118855ED00548C902C2640A /* ImageGeneration */ = {
 			isa = PBXGroup;
 			children = (
+				1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */,
 				B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */,
+				4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */,
+				7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */,
 			);
 			path = ImageGeneration;
 			sourceTree = "<group>";
@@ -332,6 +512,26 @@
 			productReference = 63BD3FCB4B14F9E1B147974B /* PointVerseWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
+		429F8476F7B36AD371AD6306 /* QwenAdapter */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E499E7617D5D3517645084AC /* Build configuration list for PBXNativeTarget "QwenAdapter" */;
+			buildPhases = (
+				CA681B3CB4FB11576FCEE14A /* Sources */,
+				AC115D4C0C7F16D8BA24A897 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = QwenAdapter;
+			packageProductDependencies = (
+				6F5166BFEC828BA1323CFA2B /* PointVerseKit */,
+				B430E296F7E046097A251A8A /* llama */,
+			);
+			productName = QwenAdapter;
+			productReference = A8D65E3405B008E1C081E305 /* QwenAdapter.framework */;
+			productType = "com.apple.product-type.framework";
+		};
 		50C14C1ABB1B86D1C9E99CBB /* PointVerse */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CB6CC0CFF25E95E4EA52019A /* Build configuration list for PBXNativeTarget "PointVerse" */;
@@ -339,21 +539,43 @@
 				86425D7D40EEBC226046D492 /* Sources */,
 				201FE5C1FC09851568E2E7B8 /* Resources */,
 				AE1916440F5CF4FABF12F535 /* Frameworks */,
+				C642D0CB72B3A9E241C8D104 /* Embed Frameworks */,
 				12D266E0B763D1108FC5A681 /* Embed Watch Content */,
+				861696554E44E53CF45B9252 /* Embed llama runtime */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				06E436A6742F5873673E6EAF /* PBXTargetDependency */,
+				BAFD32D66E44B47563E454A4 /* PBXTargetDependency */,
+				93A10989D0A8E3588290CD78 /* PBXTargetDependency */,
 			);
 			name = PointVerse;
 			packageProductDependencies = (
 				EF1601925276AADCFA77677C /* PointVerseKit */,
 				7A2F90E93A7921822C385A42 /* Tokenizers */,
+				6011DC563607EA13BFF8E848 /* ZIPFoundation */,
 			);
 			productName = PointVerse;
 			productReference = 1295EBA18DDFC6F925F284D4 /* PointVerse.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F73D699F688EC0633B1AC82F /* StableDiffusion */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1F138F82DFD1E9BC6FA0DCCE /* Build configuration list for PBXNativeTarget "StableDiffusion" */;
+			buildPhases = (
+				6DF9851DDD5144A472CF2982 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StableDiffusion;
+			packageProductDependencies = (
+			);
+			productName = StableDiffusion;
+			productReference = 536719040C9C2105BB05FD62 /* StableDiffusion.framework */;
+			productType = "com.apple.product-type.framework";
 		};
 /* End PBXNativeTarget section */
 
@@ -387,7 +609,9 @@
 			mainGroup = A994A31E2C289E4E910AB9C5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				959A8485B5F031ACFD74A8A0 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				89D6598E16B2F01A7EFB4353 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+				656D84356EA7D603F4E30D96 /* XCLocalSwiftPackageReference "Vendor/LlamaRuntime" */,
 				AFD9463716429DBB81244AF7 /* XCLocalSwiftPackageReference "PointVerseKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -397,6 +621,8 @@
 			targets = (
 				31ED093F9AE5C346B3D48763 /* PointVerseWatch */,
 				50C14C1ABB1B86D1C9E99CBB /* PointVerse */,
+				429F8476F7B36AD371AD6306 /* QwenAdapter */,
+				F73D699F688EC0633B1AC82F /* StableDiffusion */,
 			);
 		};
 /* End PBXProject section */
@@ -418,6 +644,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		861696554E44E53CF45B9252 /* Embed llama runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/llama.framework/llama",
+			);
+			name = "Embed llama runtime";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/llama.framework/llama",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\ndestination=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nmkdir -p \"${destination}\"\nditto \"${BUILT_PRODUCTS_DIR}/llama.framework\" \"${destination}/llama.framework\"\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier \"${destination}/llama.framework\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		46129456DF8E2B04FDFC1CBF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -429,6 +678,39 @@
 				86ECCF7F5A5CC64FC721261A /* WatchCaptureView.swift in Sources */,
 				9F15B672E502D84FC0C9732D /* WatchCaptureViewModel.swift in Sources */,
 				9D2EFB42E44719C20B7D5284 /* WatchTransferManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6DF9851DDD5144A472CF2982 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB4C950DBF68CEC221E707A4 /* BPETokenizer+Reading.swift in Sources */,
+				59FF5DF895DCB368308FB3B0 /* BPETokenizer.swift in Sources */,
+				61587BBA6359215EBDCA518D /* CGImage+vImage.swift in Sources */,
+				7C0EDD35A754BF1CEC505B4E /* ControlNet.swift in Sources */,
+				DB47ED85B950E7186690FD09 /* DPMSolverMultistepScheduler.swift in Sources */,
+				9DA2ED22F4484D4BA80C374E /* Decoder.swift in Sources */,
+				0F8DD920DC4D03EE3CC35292 /* DiscreteFlowScheduler.swift in Sources */,
+				D7E52A4E5FDF3BA8703611EE /* Encoder.swift in Sources */,
+				B0E438EF98EDBBA74F0D46E7 /* ManagedMLModel.swift in Sources */,
+				854DEB3CC1EB4F769E275404 /* MultilingualTextEncoder.swift in Sources */,
+				41DB29E04C1064FA9A2FEB3D /* NumPyRandomSource.swift in Sources */,
+				EF0EABC50D816343D7FEDE60 /* NvRandomSource.swift in Sources */,
+				FF2D4E30E06CB7E677D36C28 /* RandomSource.swift in Sources */,
+				B60E1A281FB66EE6882607E1 /* ResourceManaging.swift in Sources */,
+				AEDF4B2B7527A4E9F346CFCF /* SafetyChecker.swift in Sources */,
+				550C638AF64E9E46E398E5CC /* SampleTimer.swift in Sources */,
+				072CFBA7B29727BFF04EBCAE /* Scheduler.swift in Sources */,
+				7974CDE5998A4B7AD5BAB10A /* StableDiffusionPipeline+Resources.swift in Sources */,
+				A68225D65CBCA26170D10214 /* StableDiffusionPipeline.Configuration.swift in Sources */,
+				D3B520B849AC356DA6C23C3C /* StableDiffusionPipeline.swift in Sources */,
+				FFBDBAFBD8C661600328CAD8 /* StableDiffusionXL+Resources.swift in Sources */,
+				0403D24A840DB3949141041F /* StableDiffusionXLPipeline.swift in Sources */,
+				74303CB0F04AC4BE3D6B9FC0 /* TextEncoder.swift in Sources */,
+				5EAA3BCB289517246E1E543E /* TextEncoderXL.swift in Sources */,
+				31A071F6761627FDB08336F9 /* TorchRandomSource.swift in Sources */,
+				FE5BABA417C93B7CFDFA1C82 /* Unet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -444,8 +726,13 @@
 				CCCE03F54AEE4B8EEE36C22A /* E5CoreMLEmbedding.swift in Sources */,
 				D64CEABDB7E54CF6E688457A /* EmbeddingService.swift in Sources */,
 				10C5BEE589506F9103953797 /* GlobeMapView.swift in Sources */,
+				DEB22754FC8E1E6C3011AF91 /* ImageGenerationView.swift in Sources */,
 				E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */,
+				8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */,
+				E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */,
+				47E2CE4217A243757878E183 /* ModelSettingsView.swift in Sources */,
 				02F157B4EE85BB66B32061AD /* MultilingualE5Small.mlpackage in Sources */,
+				8846D339929A6F0653028413 /* PhotoLibrarySaver.swift in Sources */,
 				B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */,
 				5243C3E32851018575973FBB /* PointListView.swift in Sources */,
 				F6C5199E32631C23D76117E9 /* PointVerseApp.swift in Sources */,
@@ -456,6 +743,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CA681B3CB4FB11576FCEE14A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				059B1ACD5CA8EC65D212AE49 /* QwenTitleGenerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -463,6 +758,16 @@
 			isa = PBXTargetDependency;
 			target = 31ED093F9AE5C346B3D48763 /* PointVerseWatch */;
 			targetProxy = A9579808E61BDF68AE3B2EE7 /* PBXContainerItemProxy */;
+		};
+		93A10989D0A8E3588290CD78 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F73D699F688EC0633B1AC82F /* StableDiffusion */;
+			targetProxy = 6A85B754C2501EC496075B68 /* PBXContainerItemProxy */;
+		};
+		BAFD32D66E44B47563E454A4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 429F8476F7B36AD371AD6306 /* QwenAdapter */;
+			targetProxy = 7E588BF788924A3087393D5D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -614,6 +919,30 @@
 			};
 			name = Release;
 		};
+		AEE071553BBDD398C52AF83D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.qwen-adapter";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 		C59B447D4178CE5CC9C9A270 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -687,9 +1016,90 @@
 			};
 			name = Release;
 		};
+		DF0C56EC7CF2F7735164CF51 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.stable-diffusion";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		E100A39F71506E64A36E08B2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.qwen-adapter";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		FF11C5AD428A4AD0C9657A57 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.stable-diffusion";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		1F138F82DFD1E9BC6FA0DCCE /* Build configuration list for PBXNativeTarget "StableDiffusion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DF0C56EC7CF2F7735164CF51 /* Debug */,
+				FF11C5AD428A4AD0C9657A57 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		9883EC62E6A1BF3C4E246766 /* Build configuration list for PBXProject "PointVerse" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -717,9 +1127,22 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		E499E7617D5D3517645084AC /* Build configuration list for PBXNativeTarget "QwenAdapter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E100A39F71506E64A36E08B2 /* Debug */,
+				AEE071553BBDD398C52AF83D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		656D84356EA7D603F4E30D96 /* XCLocalSwiftPackageReference "Vendor/LlamaRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/LlamaRuntime;
+		};
 		AFD9463716429DBB81244AF7 /* XCLocalSwiftPackageReference "PointVerseKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = PointVerseKit;
@@ -727,9 +1150,17 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		959A8485B5F031ACFD74A8A0 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+		0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.20;
+			};
+		};
+		89D6598E16B2F01A7EFB4353 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers.git";
 			requirement = {
 				kind = exactVersion;
 				version = 1.3.0;
@@ -738,10 +1169,23 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		6011DC563607EA13BFF8E848 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+		6F5166BFEC828BA1323CFA2B /* PointVerseKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PointVerseKit;
+		};
 		7A2F90E93A7921822C385A42 /* Tokenizers */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 959A8485B5F031ACFD74A8A0 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			package = 89D6598E16B2F01A7EFB4353 /* XCRemoteSwiftPackageReference "swift-transformers" */;
 			productName = Tokenizers;
+		};
+		B430E296F7E046097A251A8A /* llama */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = llama;
 		};
 		EF1601925276AADCFA77677C /* PointVerseKit */ = {
 			isa = XCSwiftPackageProductDependency;

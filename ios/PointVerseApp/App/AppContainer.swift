@@ -1,5 +1,6 @@
 import Foundation
 import PointVerseKit
+import QwenAdapter
 
 @MainActor
 final class AppContainer: ObservableObject {
@@ -8,6 +9,13 @@ final class AppContainer: ObservableObject {
     let imageBlobStore: ImageBlobStore
     let captureUseCase: CaptureUseCase
     let transcriptionService: TranscriptionService
+    let speechModelManagers: [ModelDownloadManager]
+    let languageModelManagers: [ModelDownloadManager]
+    let imageModelManagers: [ModelDownloadManager]
+    let visionModelManagers: [ModelDownloadManager]
+    let imageGenerator: LocalImageGenerator
+    let visionGenerator: QwenVisionGenerator
+    let promptTranslator: QwenTitleGenerator
     private(set) var embeddingService: EmbeddingService?
     let imageTextRecognizer = ImageTextRecognizer()
     @Published private(set) var startupError: String?
@@ -19,6 +27,9 @@ final class AppContainer: ObservableObject {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let database = try PointDatabase(path: root.appending(path: "pointverse.sqlite").path)
             let blobStore = AudioBlobStore(rootURL: root)
+            let modelRegistry = ModelRegistry(rootURL: root)
+            let modelExecutionGate = ModelExecutionGate()
+            let qwenGenerator = QwenTitleGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
             self.database = database
             self.blobStore = blobStore
             self.imageBlobStore = ImageBlobStore(rootURL: root)
@@ -27,11 +38,19 @@ final class AppContainer: ObservableObject {
                 blobStore: blobStore,
                 repository: database
             )
+            self.promptTranslator = qwenGenerator
+            self.visionGenerator = QwenVisionGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
             self.transcriptionService = TranscriptionService(
                 repository: database,
                 blobStore: blobStore,
-                recognizer: OnDeviceSpeechRecognizer()
+                recognizer: OnDeviceSpeechRecognizer(),
+                titleGenerator: qwenGenerator
             )
+            self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: root, executionGate: modelExecutionGate)
+            self.speechModelManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
+            self.languageModelManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
+            self.imageModelManagers = ModelSelection.imageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
+            self.visionModelManagers = ModelSelection.visionModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.embeddingService = nil
         } catch {
             fatalError("PointVerse storage could not be initialized: \(error)")
@@ -54,6 +73,7 @@ final class AppContainer: ObservableObject {
         do {
             try await database.migrate()
             await transcriptionService.resumePending()
+            await transcriptionService.deriveMissingTitles()
             await prepareEmbeddingService()
             await embeddingService?.resumePending()
         } catch {
