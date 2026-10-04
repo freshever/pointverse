@@ -32,7 +32,9 @@ targets:
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseWatchApp/Info.plist
-        SKIP_INSTALL: NO
+        # The watch app is embedded in the iOS app. If both applications are
+        # installable archive roots, Xcode creates a Generic Xcode Archive.
+        SKIP_INSTALL: YES
   PointVerse:
     type: application
     platform: iOS
@@ -76,6 +78,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseApp/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: NO
   QwenAdapter:
     type: framework
     platform: iOS
