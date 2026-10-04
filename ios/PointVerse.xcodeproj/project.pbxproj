@@ -49,6 +49,7 @@
 		8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
 		94435D8810214C8FC7F63198 /* SquarePhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */; };
 		95954644EAA1D1837CD48006 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = B430E296F7E046097A251A8A /* llama */; };
+		9B023FB90A85549F4B82EBCE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4B70F36F5A1D8993B8D44B9 /* Assets.xcassets */; };
 		9D2EFB42E44719C20B7D5284 /* WatchTransferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6240E07F2C5E5DC0695CF722 /* WatchTransferManager.swift */; };
 		9DA2ED22F4484D4BA80C374E /* Decoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111334D25491A0A24BE3075D /* Decoder.swift */; };
 		9F15B672E502D84FC0C9732D /* WatchCaptureViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C9277D58D6C430182370E5 /* WatchCaptureViewModel.swift */; };
@@ -201,6 +202,7 @@
 		DF4CE814ADC2DA9B2A01C155 /* ResourceManaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceManaging.swift; sourceTree = "<group>"; };
 		E23D9255CEF715935BBCF82D /* StableDiffusionXLPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StableDiffusionXLPipeline.swift; sourceTree = "<group>"; };
 		E358989C9C5842581151C831 /* GlobeMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobeMapView.swift; sourceTree = "<group>"; };
+		E4B70F36F5A1D8993B8D44B9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F05C89EAA234DFC507134DC1 /* StarMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarMapView.swift; sourceTree = "<group>"; };
 		F09CF32054F6D91CEF12BA6E /* PointVerseWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointVerseWatchApp.swift; sourceTree = "<group>"; };
 		F6E23365C1D6C56005A335E5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -332,6 +334,7 @@
 		56FC1279A39BD5B102A7C913 /* PointVerseWatchApp */ = {
 			isa = PBXGroup;
 			children = (
+				E4B70F36F5A1D8993B8D44B9 /* Assets.xcassets */,
 				8E66921770A54A54330EA946 /* App */,
 				047550F118237DA88CBD168F /* Capture */,
 				116999ADD5EFBB4D7DD15D57 /* Connectivity */,
@@ -500,6 +503,7 @@
 			buildConfigurationList = AFD12AFDEBD37F2384F1A52F /* Build configuration list for PBXNativeTarget "PointVerseWatch" */;
 			buildPhases = (
 				46129456DF8E2B04FDFC1CBF /* Sources */,
+				83DF8BA845AF335EC1AF1D50 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -639,6 +643,14 @@
 				A99D35AC9101FDD62C5004E9 /* special_tokens_map.json in Resources */,
 				AE065FB9DB6A08BCE1A96473 /* tokenizer.json in Resources */,
 				D96BC05DDD408DFAF1854EBE /* tokenizer_config.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		83DF8BA845AF335EC1AF1D50 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B023FB90A85549F4B82EBCE /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -803,6 +815,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
@@ -810,6 +823,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
@@ -824,9 +838,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv.watchkitapp;
 				PRODUCT_NAME = "点界 Watch";
 				SDKROOT = watchos;
@@ -905,6 +921,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
@@ -912,6 +929,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
@@ -936,6 +954,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.qwen-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -950,9 +969,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv.watchkitapp;
 				PRODUCT_NAME = "点界 Watch";
 				SDKROOT = watchos;
@@ -1033,6 +1054,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.stable-diffusion";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1057,6 +1079,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.qwen-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1081,6 +1104,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.stable-diffusion";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
