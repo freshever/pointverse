@@ -23,6 +23,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-    <string>com.dianjie.pv</string>
+	<string>org.dianjie.pv</string>
 </dict>
 </plist>

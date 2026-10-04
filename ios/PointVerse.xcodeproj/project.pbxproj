@@ -810,7 +810,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.dianjie.pv;
+				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = NO;
@@ -827,7 +827,7 @@
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dianjie.pv.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv.watchkitapp;
 				PRODUCT_NAME = "点界 Watch";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -912,7 +912,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.dianjie.pv;
+				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = NO;
@@ -936,7 +936,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.qwen-adapter";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.qwen-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
@@ -953,7 +953,7 @@
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dianjie.pv.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv.watchkitapp;
 				PRODUCT_NAME = "点界 Watch";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1033,7 +1033,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.stable-diffusion";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.stable-diffusion";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
@@ -1057,7 +1057,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.qwen-adapter";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.qwen-adapter";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
@@ -1081,7 +1081,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dianjie.pv.stable-diffusion";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.dianjie.pv.stable-diffusion";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;

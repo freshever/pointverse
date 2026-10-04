@@ -25,7 +25,7 @@ targets:
           - Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.watchkitapp
         DEVELOPMENT_TEAM: SS4H5JZU3H
         CODE_SIGN_STYLE: Automatic
         PRODUCT_NAME: 点界 Watch
@@ -70,7 +70,7 @@ targets:
           fi
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv
+        PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv
         DEVELOPMENT_TEAM: SS4H5JZU3H
         CODE_SIGN_STYLE: Automatic
         PRODUCT_NAME: 点界
@@ -90,7 +90,7 @@ targets:
         product: llama
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv.qwen-adapter
+        PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.qwen-adapter
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
   StableDiffusion:
@@ -109,7 +109,7 @@ targets:
           - tokenizer/T5Tokenizer.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.dianjie.pv.stable-diffusion
+        PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.stable-diffusion
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
 schemes:
