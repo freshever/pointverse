@@ -6,6 +6,7 @@ final class WatchTransferManager: NSObject, WCSessionDelegate, @unchecked Sendab
     private let session = WCSession.default
     private let lock = NSLock()
     private var pending: [(URL, Data)] = []
+    var onAcknowledged: (@Sendable (UUID) -> Void)?
 
     func activate() {
         guard WCSession.isSupported() else { return }
@@ -24,6 +25,12 @@ final class WatchTransferManager: NSObject, WCSessionDelegate, @unchecked Sendab
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         flushIfActivated()
+    }
+
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        guard let value = userInfo["acknowledgedCaptureID"] as? String,
+              let captureID = UUID(uuidString: value) else { return }
+        onAcknowledged?(captureID)
     }
 
     private func flushIfActivated() {

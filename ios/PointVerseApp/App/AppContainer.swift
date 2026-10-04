@@ -81,6 +81,14 @@ final class AppContainer: ObservableObject {
         }
     }
 
+    func startWatchConnectivity() {
+        PhoneWatchTransferReceiver.shared.configure(
+            database: database,
+            blobStore: blobStore,
+            transcriptionService: transcriptionService
+        )
+    }
+
     private func prepareEmbeddingService() async {
         guard !ProcessInfo.processInfo.isiOSAppOnMac else {
             embeddingStartupError = "Mac 兼容模式暂不加载 E5；请使用 iOS Simulator 或 iPhone"

@@ -25,6 +25,9 @@ final class WatchCaptureViewModel: ObservableObject {
     }
 
     func prepare() async {
+        transfer.onAcknowledged = { [weak self] captureID in
+            Task { @MainActor [weak self] in await self?.acknowledge(captureID) }
+        }
         transfer.activate()
         captures = (try? await store.allCaptures()) ?? []
         await queuePendingTransfers()
@@ -103,5 +106,13 @@ final class WatchCaptureViewModel: ObservableObject {
                 transfer.enqueue(fileURL: url, manifest: capture)
             }
         }
+    }
+
+    private func acknowledge(_ captureID: UUID) async {
+        guard var capture = captures.first(where: { $0.captureID == captureID }) else { return }
+        capture.syncState = .acknowledged
+        try? await store.update(capture)
+        captures = (try? await store.allCaptures()) ?? captures
+        WKInterfaceDevice.current().play(.success)
     }
 }

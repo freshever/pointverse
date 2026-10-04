@@ -13,7 +13,10 @@ struct PointVerseApp: App {
                 .environment(\.appLanguage, appLanguage)
                 .environment(\.locale, displayLocale)
                 .id(appLanguage)
-                .task { await container.prepare() }
+                .task {
+                    container.startWatchConnectivity()
+                    await container.prepare()
+                }
         }
     }
 
