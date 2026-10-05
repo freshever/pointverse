@@ -108,11 +108,6 @@ final class AppContainer: ObservableObject {
     }
 
     func prepareEmbeddingService() async {
-        guard !ProcessInfo.processInfo.isiOSAppOnMac else {
-            embeddingStartupError = "Mac 兼容模式暂不加载 E5；请使用 iOS Simulator 或 iPhone"
-            PointVerseLog.embedding.notice("E5 disabled in iOS-on-Mac compatibility mode")
-            return
-        }
         guard let tokenizerJSON = Bundle.main.url(forResource: "tokenizer", withExtension: "json") else {
             embeddingStartupError = "App 中缺少 multilingual-e5-small tokenizer"
             PointVerseLog.embedding.error("E5 tokenizer resource is missing")
