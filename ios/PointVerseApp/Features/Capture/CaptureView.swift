@@ -24,18 +24,24 @@ struct CaptureView: View {
     @Environment(\.appLanguage) private var appLanguage
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                inputModeButton(value: "voice", title: "语音", systemImage: "waveform")
-                inputModeButton(value: "text", title: "文本", systemImage: "keyboard")
-            }
-            .padding(5)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-            .padding(.horizontal, 20).padding(.vertical, 10)
+        GeometryReader { geometry in
+            let compact = geometry.size.height < 680 || geometry.size.width < 360
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    inputModeButton(value: "voice", title: "语音", systemImage: "waveform")
+                    inputModeButton(value: "text", title: "文本", systemImage: "keyboard")
+                }
+                .padding(5)
+                .frame(maxWidth: 420)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, compact ? 12 : 20)
+                .padding(.vertical, compact ? 6 : 10)
 
-            if inputMode == "text" { textCaptureContent } else { voiceCaptureContent }
+                if inputMode == "text" { textCaptureContent } else { voiceCaptureContent(compact: compact) }
+            }
         }
         .navigationTitle(AppLocalization.string("点界", language: appLanguage))
+        .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: Binding(
             get: { completedPoint != nil },
             set: { if !$0 { completedPoint = nil } }
@@ -59,7 +65,7 @@ struct CaptureView: View {
                 AppText(title)
             }
             .font(.subheadline.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 46)
+            .frame(maxWidth: .infinity, minHeight: 50)
             .contentShape(Rectangle())
             .background(inputMode == value ? Color(uiColor: .systemBackground) : .clear,
                         in: RoundedRectangle(cornerRadius: 10))
@@ -69,7 +75,7 @@ struct CaptureView: View {
         .accessibilityAddTraits(inputMode == value ? .isSelected : [])
     }
 
-    private var voiceCaptureContent: some View {
+    private func voiceCaptureContent(compact: Bool) -> some View {
         ZStack {
             if cameraEnabled {
                 CameraPreview(session: camera.session)
@@ -84,13 +90,13 @@ struct CaptureView: View {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             }
 
-            VStack(spacing: 28) {
+            VStack(spacing: compact ? 14 : 28) {
             TimelineView(.periodic(from: .now, by: 60)) { timeline in
                 VStack(spacing: 3) {
                     Text(timeline.date.formatted(date: .long, time: .omitted))
-                        .font(.headline)
+                        .font(compact ? .subheadline.weight(.semibold) : .headline)
                     Text(timeline.date.formatted(date: .omitted, time: .shortened))
-                        .font(.title3.monospacedDigit().weight(.medium))
+                        .font((compact ? Font.body : Font.title3).monospacedDigit().weight(.medium))
                 }
                 .foregroundStyle(.secondary)
                 .environment(\.locale, captureDisplayLocale)
@@ -139,10 +145,10 @@ struct CaptureView: View {
                 Circle()
                     .fill(state == .recording ? Color.red : Color.indigo)
                 Image(systemName: state == .recording ? "stop.fill" : "viewfinder")
-                    .font(.system(size: 42, weight: .semibold))
+                    .font(.system(size: compact ? 34 : 42, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 112, height: 112)
+            .frame(width: compact ? 88 : 112, height: compact ? 88 : 112)
             .scaleEffect(state == .recording ? 1.08 : 1)
             .animation(.easeOut(duration: 0.12), value: state)
             .contentShape(Circle())
@@ -193,7 +199,7 @@ struct CaptureView: View {
             }
             Spacer()
             }
-            .padding(24)
+            .padding(compact ? 14 : 24)
         }
         .preferredColorScheme(cameraEnabled ? .dark : nil)
         .onAppear {
