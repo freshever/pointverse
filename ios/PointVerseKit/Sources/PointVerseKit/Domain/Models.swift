@@ -296,11 +296,24 @@ public struct TranscriptionCandidate: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct DetectedNoteEvent: Codable, Equatable, Sendable {
+    public let note: String
+    public let startSeconds: Double
+    public let durationSeconds: Double
+
+    public init(note: String, startSeconds: Double, durationSeconds: Double) {
+        self.note = note; self.startSeconds = startSeconds; self.durationSeconds = durationSeconds
+    }
+}
+
 public struct AudioUnderstanding: Equatable, Sendable {
     public let durationSeconds: Double
     public let loudnessDB: Double
     public let bpm: Double?
     public let dominantPitchHz: Double?
+    public let detectedNotes: [String]
+    public let estimatedKey: String?
+    public let noteSequence: [DetectedNoteEvent]
     public let rhythmStrength: Double
     public let semanticTags: [String]
     public let clapModelID: String?
@@ -308,12 +321,17 @@ public struct AudioUnderstanding: Equatable, Sendable {
     public let updatedAt: Date
 
     public init(durationSeconds: Double, loudnessDB: Double, bpm: Double?, dominantPitchHz: Double?,
+                detectedNotes: [String] = [], estimatedKey: String? = nil,
+                noteSequence: [DetectedNoteEvent] = [],
                 rhythmStrength: Double, semanticTags: [String], clapModelID: String?, hasVoice: Bool,
                 updatedAt: Date = Date()) {
         self.durationSeconds = durationSeconds
         self.loudnessDB = loudnessDB
         self.bpm = bpm
         self.dominantPitchHz = dominantPitchHz
+        self.detectedNotes = detectedNotes
+        self.estimatedKey = estimatedKey
+        self.noteSequence = noteSequence
         self.rhythmStrength = rhythmStrength
         self.semanticTags = semanticTags
         self.clapModelID = clapModelID
@@ -325,6 +343,8 @@ public struct AudioUnderstanding: Equatable, Sendable {
         var values = semanticTags
         if let bpm { values.append("BPM \(Int(bpm.rounded()))") }
         if let dominantPitchHz { values.append("主音高 \(Int(dominantPitchHz.rounded())) Hz") }
+        if !detectedNotes.isEmpty { values.append("音符 " + detectedNotes.joined(separator: " ")) }
+        if let estimatedKey { values.append("调性 " + estimatedKey) }
         values.append(String(format: "响度 %.1f dB", loudnessDB))
         return values.joined(separator: " · ")
     }

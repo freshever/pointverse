@@ -12,6 +12,7 @@ struct PointDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appLanguage) private var appLanguage
     @StateObject private var player = AudioPlayerViewModel()
+    @StateObject private var notePlayer = NotePreviewPlayer()
     @State private var detail: PointDetail?
     @State private var images: [LoadedPointImage] = []
     @State private var messages: [ConversationMessage] = []
@@ -288,6 +289,33 @@ struct PointDetailView: View {
                     if let bpm = value.bpm { Text("\(Int(bpm.rounded())) BPM") }
                     if let pitch = value.dominantPitchHz { Text("\(Int(pitch.rounded())) Hz") }
                 }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                if !value.detectedNotes.isEmpty {
+                    HStack {
+                        Text("音符：" + value.detectedNotes.joined(separator: "  "))
+                            .font(.subheadline.monospacedDigit())
+                        Spacer()
+                        Button {
+                            player.stop()
+                            if value.noteSequence.isEmpty {
+                                notePlayer.toggle(notes: value.detectedNotes)
+                            } else {
+                                notePlayer.toggle(sequence: value.noteSequence)
+                            }
+                        } label: {
+                            Label(notePlayer.isPlaying ? "停止" : "播放音符",
+                                  systemImage: notePlayer.isPlaying ? "stop.fill" : "play.fill")
+                        }
+                        .buttonStyle(.bordered).controlSize(.small)
+                    }
+                    if !value.noteSequence.isEmpty {
+                        Text(value.noteSequence.prefix(24).map(\.note).joined(separator: " → "))
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                if let key = value.estimatedKey {
+                    Text("估计调性：" + key).font(.caption).foregroundStyle(.secondary)
+                }
                 if value.clapModelID == nil {
                     Text("基础声学分析已完成；安装 CLAP 后可补充语义向量与更准确标签。")
                         .font(.caption).foregroundStyle(.secondary)

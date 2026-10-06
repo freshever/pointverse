@@ -46,6 +46,8 @@ actor AudioUnderstandingService {
         let value = AudioUnderstanding(
             durationSeconds: features.duration, loudnessDB: features.loudness,
             bpm: features.bpm, dominantPitchHz: features.pitch,
+            detectedNotes: features.notes, estimatedKey: features.key,
+            noteSequence: features.sequence,
             rhythmStrength: features.rhythmStrength,
             semanticTags: Array(Set(tags)).sorted(), clapModelID: clapResult?.modelID, hasVoice: hasVoice
         )
@@ -65,6 +67,9 @@ actor AudioUnderstandingService {
         let pitch: Double?
         let rhythmStrength: Double
         let tags: [String]
+        let notes: [String]
+        let key: String?
+        let sequence: [DetectedNoteEvent]
     }
 
     nonisolated private static func extractFeatures(url: URL) throws -> Features {
@@ -83,6 +88,12 @@ actor AudioUnderstandingService {
         let envelopeStride = max(1, Int(sampleRate / 100))
         var envelopeEnergy = 0.0
         var envelopeSamples = 0
+        var pitchSamples: [Float] = []
+        let pitchStride = max(1, Int(sampleRate / 8_000))
+        let pitchSampleRate = sampleRate / Double(pitchStride)
+        let maximumPitchSamples = Int(pitchSampleRate * 20)
+        pitchSamples.reserveCapacity(maximumPitchSamples)
+        var absoluteSampleIndex = 0
 
         while file.framePosition < file.length {
             buffer.frameLength = 0
@@ -91,6 +102,10 @@ actor AudioUnderstandingService {
             let values = channels[0]
             for index in 0..<Int(buffer.frameLength) {
                 let sample = values[index]
+                if pitchSamples.count < maximumPitchSamples, absoluteSampleIndex % pitchStride == 0 {
+                    pitchSamples.append(sample)
+                }
+                absoluteSampleIndex += 1
                 energy += Double(sample * sample)
                 sampleCount += 1
                 if (sample >= 0) != (previous >= 0), abs(sample - previous) > 0.01 { crossings += 1 }
@@ -110,13 +125,15 @@ actor AudioUnderstandingService {
         let pitchEstimate = Double(crossings) * sampleRate / (2 * Double(sampleCount))
         let pitch = (55...1_200).contains(pitchEstimate) ? pitchEstimate : nil
         let tempo = estimateTempo(envelope)
+        let tonal = estimateNotes(samples: pitchSamples, sampleRate: pitchSampleRate)
         var tags: [String] = [loudness > -18 ? "响亮" : loudness < -42 ? "安静" : "中等响度"]
         if tempo.strength > 0.18 { tags.append("节奏明显") }
         else { tags.append("环境声") }
         if let bpm = tempo.bpm { tags.append(bpm >= 120 ? "快速" : bpm < 80 ? "舒缓" : "中速") }
-        if pitch != nil { tags.append("有调性") }
+        if !tonal.notes.isEmpty { tags.append("有调性") }
         return Features(duration: duration, loudness: loudness, bpm: tempo.bpm,
-                        pitch: pitch, rhythmStrength: tempo.strength, tags: tags)
+                        pitch: tonal.dominantHz ?? pitch, rhythmStrength: tempo.strength, tags: tags,
+                        notes: tonal.notes, key: tonal.key, sequence: tonal.sequence)
     }
 
     nonisolated private static func estimateTempo(_ envelope: [Double]) -> (bpm: Double?, strength: Double) {
@@ -136,6 +153,113 @@ actor AudioUnderstandingService {
         }
         guard bestLag > 0, best > 0.08 else { return (nil, max(0, best)) }
         return (6_000 / Double(bestLag), min(1, best))
+    }
+
+    nonisolated private static func estimateNotes(samples: [Float], sampleRate: Double)
+        -> (notes: [String], key: String?, dominantHz: Double?, sequence: [DetectedNoteEvent]) {
+        let frameSize = 1_024, hop = 512
+        guard samples.count >= frameSize else { return ([], nil, nil, []) }
+        let minimumLag = max(2, Int(sampleRate / 1_000))
+        let maximumLag = min(frameSize / 2, Int(sampleRate / 55))
+        var midiCounts: [Int: Int] = [:]
+        var frequencySum: [Int: Double] = [:]
+        var frameNotes: [Int?] = []
+        var start = 0
+        while start + frameSize <= samples.count {
+            let frame = samples[start..<(start + frameSize)]
+            let rms = sqrt(frame.reduce(0.0) { $0 + Double($1 * $1) } / Double(frameSize))
+            if rms > 0.012 {
+                var bestLag = 0, bestCorrelation = 0.0
+                for lag in minimumLag...maximumLag {
+                    var correlation = 0.0, leftEnergy = 0.0, rightEnergy = 0.0
+                    for index in 0..<(frameSize - lag) {
+                        let left = Double(samples[start + index])
+                        let right = Double(samples[start + index + lag])
+                        correlation += left * right; leftEnergy += left * left; rightEnergy += right * right
+                    }
+                    let normalized = correlation / sqrt(max(0.000_000_1, leftEnergy * rightEnergy))
+                    if normalized > bestCorrelation { bestCorrelation = normalized; bestLag = lag }
+                }
+                if bestLag > 0, bestCorrelation > 0.72 {
+                    let frequency = sampleRate / Double(bestLag)
+                    let midi = Int((69 + 12 * log2(frequency / 440)).rounded())
+                    if (24...108).contains(midi) {
+                        midiCounts[midi, default: 0] += 1
+                        frequencySum[midi, default: 0] += frequency
+                        frameNotes.append(midi)
+                    } else {
+                        frameNotes.append(nil)
+                    }
+                } else {
+                    frameNotes.append(nil)
+                }
+            } else {
+                frameNotes.append(nil)
+            }
+            start += hop
+        }
+        let ranked = midiCounts.sorted { lhs, rhs in
+            lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+        }
+        guard let dominant = ranked.first else { return ([], nil, nil, []) }
+        let threshold = max(2, dominant.value / 5)
+        let selected = Set(ranked.filter { $0.value >= threshold }.prefix(12).map(\.key))
+        let sequence = noteEvents(frameNotes: frameNotes, hopSeconds: Double(hop) / sampleRate)
+        var seen = Set<Int>()
+        let orderedMidi = frameNotes.compactMap { $0 }.filter { selected.contains($0) && seen.insert($0).inserted }
+        let notes = orderedMidi.map(noteName)
+        let dominantHz = frequencySum[dominant.key].map { $0 / Double(dominant.value) }
+        return (notes, estimateKey(midiCounts), dominantHz, sequence)
+    }
+
+    nonisolated private static func noteEvents(frameNotes: [Int?], hopSeconds: Double) -> [DetectedNoteEvent] {
+        // Remove isolated one-frame octave glitches with a three-frame median.
+        var smoothed = frameNotes
+        if frameNotes.count >= 3 {
+            for index in 1..<(frameNotes.count - 1) {
+                let values = [frameNotes[index - 1], frameNotes[index], frameNotes[index + 1]].compactMap { $0 }.sorted()
+                if values.count >= 2 { smoothed[index] = values[values.count / 2] }
+            }
+        }
+        var events: [DetectedNoteEvent] = []
+        var current: Int?, startFrame = 0
+        func appendEvent(note: Int?, endFrame: Int) {
+            guard let note else { return }
+            let duration = Double(endFrame - startFrame) * hopSeconds
+            guard duration >= 0.12 else { return }
+            events.append(.init(note: noteName(note), startSeconds: Double(startFrame) * hopSeconds,
+                                durationSeconds: duration))
+        }
+        for (index, note) in smoothed.enumerated() {
+            if note != current {
+                appendEvent(note: current, endFrame: index)
+                current = note; startFrame = index
+            }
+        }
+        appendEvent(note: current, endFrame: smoothed.count)
+        return Array(events.prefix(64))
+    }
+
+    nonisolated private static func noteName(_ midi: Int) -> String {
+        let names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
+        return names[(midi % 12 + 12) % 12] + String(midi / 12 - 1)
+    }
+
+    nonisolated private static func estimateKey(_ midiCounts: [Int: Int]) -> String? {
+        guard midiCounts.values.reduce(0, +) >= 4 else { return nil }
+        let names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
+        let major = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+        let minor = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+        var histogram = [Double](repeating: 0, count: 12)
+        for (midi, count) in midiCounts { histogram[(midi % 12 + 12) % 12] += Double(count) }
+        var bestRoot = 0, bestIsMinor = false, bestScore = -Double.infinity
+        for root in 0..<12 {
+            for (profile, isMinor) in [(major, false), (minor, true)] {
+                let score = (0..<12).reduce(0.0) { $0 + histogram[($1 + root) % 12] * profile[$1] }
+                if score > bestScore { bestScore = score; bestRoot = root; bestIsMinor = isMinor }
+            }
+        }
+        return names[bestRoot] + (bestIsMinor ? " 小调" : " 大调")
     }
 }
 

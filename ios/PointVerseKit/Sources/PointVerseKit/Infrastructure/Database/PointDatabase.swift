@@ -98,6 +98,17 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 );
                 """)
         }
+        migrator.registerMigration("v7-audio-pitch") { db in
+            try db.alter(table: "audio_understanding") { table in
+                table.add(column: "detected_notes_json", .text).notNull().defaults(to: "[]")
+                table.add(column: "estimated_key", .text)
+            }
+        }
+        migrator.registerMigration("v8-audio-note-sequence") { db in
+            try db.alter(table: "audio_understanding") { table in
+                table.add(column: "note_sequence_json", .text).notNull().defaults(to: "[]")
+            }
+        }
         try migrator.migrate(writer)
         try await writer.write { db in
             let modelID = EmbeddingModelIdentity.multilingualE5Small
@@ -506,9 +517,15 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                                              arguments: [pointID.rawValue.uuidString]) else { return nil }
             let data = Data((row["semantic_tags_json"] as String).utf8)
             let tags = (try? JSONDecoder().decode([String].self, from: data)) ?? []
+            let notesData = Data((row["detected_notes_json"] as String).utf8)
+            let notes = (try? JSONDecoder().decode([String].self, from: notesData)) ?? []
+            let sequenceData = Data((row["note_sequence_json"] as String).utf8)
+            let sequence = (try? JSONDecoder().decode([DetectedNoteEvent].self, from: sequenceData)) ?? []
             return AudioUnderstanding(
                 durationSeconds: row["duration_seconds"], loudnessDB: row["loudness_db"],
                 bpm: row["bpm"], dominantPitchHz: row["dominant_pitch_hz"],
+                detectedNotes: notes, estimatedKey: row["estimated_key"],
+                noteSequence: sequence,
                 rhythmStrength: row["rhythm_strength"], semanticTags: tags,
                 clapModelID: row["clap_model_id"], hasVoice: row["has_voice"],
                 updatedAt: Date(timeIntervalSince1970: row["updated_at"])
@@ -519,22 +536,27 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
     public func saveAudioUnderstanding(pointID: PointID, value: AudioUnderstanding, semanticVector: [Float]?) async throws {
         try await writer.write { db in
             let tags = String(data: try JSONEncoder().encode(value.semanticTags), encoding: .utf8) ?? "[]"
+            let notes = String(data: try JSONEncoder().encode(value.detectedNotes), encoding: .utf8) ?? "[]"
+            let sequence = String(data: try JSONEncoder().encode(value.noteSequence), encoding: .utf8) ?? "[]"
             let vectorData = semanticVector.map(EmbeddingMath.encodeFloat16)
             let timestamp = value.updatedAt.timeIntervalSince1970
             try db.execute(sql: """
                 INSERT INTO audio_understanding
                     (point_id, duration_seconds, loudness_db, bpm, dominant_pitch_hz, rhythm_strength,
-                     semantic_tags_json, clap_model_id, clap_vector, clap_dimension, has_voice, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     semantic_tags_json, detected_notes_json, estimated_key, note_sequence_json,
+                     clap_model_id, clap_vector, clap_dimension, has_voice, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(point_id) DO UPDATE SET
                     duration_seconds=excluded.duration_seconds, loudness_db=excluded.loudness_db,
                     bpm=excluded.bpm, dominant_pitch_hz=excluded.dominant_pitch_hz,
                     rhythm_strength=excluded.rhythm_strength, semantic_tags_json=excluded.semantic_tags_json,
+                    detected_notes_json=excluded.detected_notes_json, estimated_key=excluded.estimated_key,
+                    note_sequence_json=excluded.note_sequence_json,
                     clap_model_id=excluded.clap_model_id, clap_vector=excluded.clap_vector,
                     clap_dimension=excluded.clap_dimension, has_voice=excluded.has_voice,
                     updated_at=excluded.updated_at
                 """, arguments: [pointID.rawValue.uuidString, value.durationSeconds, value.loudnessDB,
-                                   value.bpm, value.dominantPitchHz, value.rhythmStrength, tags,
+                                   value.bpm, value.dominantPitchHz, value.rhythmStrength, tags, notes, value.estimatedKey, sequence,
                                    value.clapModelID, vectorData, semanticVector?.count, value.hasVoice, timestamp])
             try refreshSearch(pointID: pointID, db: db)
             let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
