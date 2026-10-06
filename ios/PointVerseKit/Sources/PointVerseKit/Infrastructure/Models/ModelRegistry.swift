@@ -160,6 +160,18 @@ public struct ModelManifest: Codable, Equatable, Sendable {
         license: "MIT",
         minimumFreeDiskBytes: 500_000_000
     )
+
+    public static let gridshiftCLAPMusicCoreML = ModelManifest(
+        id: "gridshift-clap-music-coreml-int8",
+        revision: "09be8be3b2f711e401ed7378e7d41e3ea1de6928",
+        filename: "GridshiftCLAP.mlpackage.zip",
+        downloadURL: URL(string: "https://huggingface.co/gridshiftstudio/clap-music-coreml/resolve/09be8be3b2f711e401ed7378e7d41e3ea1de6928/GridshiftCLAP.mlpackage.zip?download=true")!,
+        mirrorDownloadURLs: [URL(string: "https://hf-mirror.com/gridshiftstudio/clap-music-coreml/resolve/09be8be3b2f711e401ed7378e7d41e3ea1de6928/GridshiftCLAP.mlpackage.zip?download=true")!],
+        displayByteCount: 63_865_403,
+        sha256: "10cdc58c754e05858b1557f2333c68915a45d2cde997bc0328135d47c1980f0d",
+        license: "Apache-2.0",
+        minimumFreeDiskBytes: 350_000_000
+    )
 }
 
 public enum ModelSelection {
@@ -172,6 +184,7 @@ public enum ModelSelection {
     public static let imageModels: [ModelManifest] = [.stableDiffusion21Base6Bit]
     public static let visionModels: [ModelManifest] = [.qwen3VL2BQ8, .qwen3VL2BProjectorQ8]
     public static let embeddingModels: [ModelManifest] = [.harkMultilingualE5Small]
+    public static let audioUnderstandingModels: [ModelManifest] = [.gridshiftCLAPMusicCoreML]
 
     public static func selectedSpeechModel(defaults: UserDefaults = .standard) -> ModelManifest {
         let id = defaults.string(forKey: speechDefaultsKey) ?? ModelManifest.whisperBaseQ5.id

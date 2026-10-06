@@ -94,6 +94,20 @@ struct ModelSettingsView: View {
                     )
                 }
             } header: { AppText("语义分类") }
+
+            Section {
+                ForEach(container.audioUnderstandingModelManagers, id: \.manifest.id) { manager in
+                    ModelRow(
+                        manager: manager,
+                        name: "CLAP Music · Core ML INT8",
+                        metadata: metadata(manager.manifest),
+                        explanation: "把音乐和现场声音转换为 512 维语义向量，用于声音标签、相似声音和语义星球定位。",
+                        isSelected: true,
+                        onSelect: {},
+                        canSelect: false
+                    )
+                }
+            } header: { AppText("音乐与现场声音") }
         }
         .navigationTitle(AppLocalization.string("本地模型", language: appLanguage))
         .onChange(of: selectedLanguageModelID) { _, _ in regenerateTitles() }

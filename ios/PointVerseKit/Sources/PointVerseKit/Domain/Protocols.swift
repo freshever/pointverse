@@ -47,6 +47,12 @@ public protocol PointRepository: Sendable {
     func updateImageText(id: UUID, recognizedText: String?) async throws
     func deletePoint(id: PointID) async throws -> String?
     func saveUserTranscript(pointID: PointID, userText: String) async throws
+    func transcriptionCandidates(pointID: PointID) async throws -> [TranscriptionCandidate]
+    func saveTranscriptionCandidate(pointID: PointID, text: String, modelID: String, modelSHA256: String, select: Bool) async throws
+    func selectTranscriptionCandidate(pointID: PointID, candidateID: UUID) async throws
+    func editTranscriptionCandidate(pointID: PointID, candidateID: UUID, text: String) async throws
+    func audioUnderstanding(pointID: PointID) async throws -> AudioUnderstanding?
+    func saveAudioUnderstanding(pointID: PointID, value: AudioUnderstanding, semanticVector: [Float]?) async throws
     func failTranscription(pointID: PointID, error: PointVerseError) async throws
     func queuedEmbeddingDocuments(modelID: String) async throws -> [PointSemanticDocument]
     func saveEmbedding(_ record: PointEmbeddingRecord) async throws

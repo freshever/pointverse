@@ -8,13 +8,35 @@ actor TranscriptionService {
     private let repository: any PointRepository
     private let blobStore: any AudioBlobStoring
     private let recognizer: OnDeviceSpeechRecognizer
+    private let whisperRecognizer: WhisperRecognizer
     private let titleGenerator: QwenTitleGenerator
 
-    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: OnDeviceSpeechRecognizer, titleGenerator: QwenTitleGenerator) {
+    init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: OnDeviceSpeechRecognizer, whisperRecognizer: WhisperRecognizer, titleGenerator: QwenTitleGenerator) {
         self.repository = repository
         self.blobStore = blobStore
         self.recognizer = recognizer
+        self.whisperRecognizer = whisperRecognizer
         self.titleGenerator = titleGenerator
+    }
+
+    func transcribeCandidate(pointID: PointID, modelID: String) async throws {
+        let detail = try await repository.pointDetail(id: pointID)
+        guard let audioPath = detail.audioRelativePath else { throw PointVerseError.audioDecodeFailed }
+        let audioURL = try await blobStore.url(for: audioPath)
+        let output: TranscriptionOutput
+        if modelID == "apple-speech-on-device" {
+            let text = try await recognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier)
+            output = TranscriptionOutput(text: text, modelID: modelID, modelSHA256: "system")
+        } else {
+            guard let manifest = ModelSelection.speechModels.first(where: { $0.id == modelID }) else {
+                throw PointVerseError.modelNotInstalled
+            }
+            output = try await whisperRecognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier, manifest: manifest)
+        }
+        try await repository.saveTranscriptionCandidate(pointID: pointID, text: output.text, modelID: output.modelID,
+                                                        modelSHA256: output.modelSHA256, select: true)
+        _ = await deriveTitle(pointID: pointID)
+        await notifyChange(pointID)
     }
 
     func resumePending() async {
@@ -72,16 +94,22 @@ actor TranscriptionService {
     func deriveTitle(pointID: PointID, languageIdentifier: String? = nil) async -> String? {
         do {
             let detail = try await repository.pointDetail(id: pointID)
-            guard let transcript = detail.effectiveTranscript, !transcript.isEmpty else { return nil }
+            let primaryText = detail.modality == "text" ? detail.sourceText : detail.effectiveTranscript
+            let audioUnderstanding = try await repository.audioUnderstanding(pointID: pointID)
+            guard primaryText?.isEmpty == false || audioUnderstanding != nil else { return nil }
             let imageText = try await repository.images(pointID: pointID).enumerated().compactMap { index, image in
                 guard let text = image.recognizedText, !text.isEmpty else { return nil }
                 return "Photo \(index + 1): " + String(text.prefix(300))
             }.joined(separator: "\n")
             let conversation = try await repository.conversationMessages(pointID: pointID)
             let language = Self.titleLanguage(languageIdentifier)
-            let context = imageText.isEmpty
-                ? transcript
-                : "Attached photos:\n\(imageText)\n\nSaved content:\n\(String(transcript.prefix(700)))"
+            let savedText = primaryText ?? ""
+            var context = imageText.isEmpty
+                ? savedText
+                : "Attached photos:\n\(imageText)\n\nSaved content:\n\(String(savedText.prefix(700)))"
+            if let audioUnderstanding {
+                context += "\n\nMusic and sound analysis:\n" + audioUnderstanding.semanticText
+            }
             let title = try await titleGenerator.generateTitle(
                 transcript: context,
                 conversation: conversation,

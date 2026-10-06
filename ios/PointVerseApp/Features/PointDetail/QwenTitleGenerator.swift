@@ -2,6 +2,21 @@ import Foundation
 import PointVerseKit
 import llama
 
+public enum ConversationRole: String, CaseIterable, Sendable {
+    case concise, explore, organize, creative
+
+    var instruction: String {
+        switch self {
+        case .concise: return "Answer concisely in 1 to 3 sentences."
+        case .explore: return "Explore the idea with one useful observation and one thoughtful question."
+        case .organize: return "Organize the answer into a compact, actionable structure."
+        case .creative: return "Offer an imaginative interpretation or direction while staying relevant."
+        }
+    }
+
+    var maximumTokens: Int { self == .concise ? 96 : 160 }
+}
+
 public actor QwenTitleGenerator {
     private let registry: ModelRegistry
     private let executionGate: ModelExecutionGate
@@ -28,6 +43,7 @@ public actor QwenTitleGenerator {
 
         let language = Self.languageName(for: localeIdentifier)
         let discussion = Self.formattedConversation(conversation)
+        let assistantPreamble = Self.assistantPreamble(for: manifest)
         let prompt = """
         <|im_start|>system
         Create a short title for a saved voice note and its follow-up discussion. Treat the voice-note transcript as the primary source of the topic. Use the discussion only for important clarification or a refined direction. The title MUST be written in \(language), regardless of the source languages. Output only the title, without quotes, explanation, or ending punctuation. Maximum 20 characters for Chinese or Japanese, maximum 8 words for English.<|im_end|>
@@ -38,10 +54,7 @@ public actor QwenTitleGenerator {
         Follow-up discussion:
         \(discussion)<|im_end|>
         <|im_start|>assistant
-        <think>
-
-        </think>
-
+        \(assistantPreamble)
         """
         guard let rawTitle = try engine?.complete(prompt: prompt, maximumTokens: 48) else {
             throw PointVerseError.transcriptionFailed
@@ -51,37 +64,58 @@ public actor QwenTitleGenerator {
         return title
     }
 
-    public func generateReply(context: String, conversation: [ConversationMessage], localeIdentifier: String) async throws -> String {
+    public func generateReply(context: String, conversation: [ConversationMessage], localeIdentifier: String,
+                              role: ConversationRole = .concise) async throws -> String {
         await executionGate.acquire()
         defer { releaseAfterExecution() }
         guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
         try loadEngine(modelURL: modelURL)
         let language = Self.languageName(for: localeIdentifier)
-        let turns: [String] = conversation.suffix(8).map { message -> String in
+        let assistantPreamble = Self.assistantPreamble(for: manifest)
+        let turns: [String] = conversation.suffix(6).map { message -> String in
             let role = message.role == "assistant" ? "assistant" : "user"
             let safeText = String(message.text
                 .replacingOccurrences(of: "<|im_start|>", with: "")
-                .replacingOccurrences(of: "<|im_end|>", with: "").prefix(300))
+                .replacingOccurrences(of: "<|im_end|>", with: "").prefix(180))
             return "<|im_start|>\(role)\n\(safeText)<|im_end|>"
         }
         let history: String = turns.joined(separator: "\n")
         let prompt = """
         <|im_start|>system
-        You are discussing a saved voice note with the user. The voice-note transcript is the primary and authoritative context. Directly answer the user's latest message in \(language). Never restate the conversation, never say "the user said", and never describe what the user asked. Say when the note does not contain enough information.
-        Voice note:\n\(String(context.prefix(1_600)))<|im_end|>
+        You are discussing saved content with the user. The saved content is the primary and authoritative context. Directly answer the user's latest message in \(language). \(role.instruction) Never restate the conversation, never say "the user said", and never describe what the user asked. Say when the saved content does not contain enough information.
+        Saved content:\n\(String(context.prefix(900)))<|im_end|>
         \(history)
         <|im_start|>assistant
-        <think>
-
-        </think>
-
+        \(assistantPreamble)
         """
-        guard let reply = try engine?.complete(prompt: prompt, maximumTokens: 192)
-            .trimmingCharacters(in: .whitespacesAndNewlines), !reply.isEmpty else {
+        guard let rawReply = try engine?.complete(prompt: prompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
             throw PointVerseError.invalidModelOutput
         }
-        return reply.components(separatedBy: "<|im_end|>").first ?? reply
+        let reply = Self.cleanReply(rawReply)
+        if !reply.isEmpty, !["user", "assistant"].contains(reply.lowercased()) { return reply }
+
+        // Small models occasionally echo a ChatML role token instead of the
+        // answer. Retry once with only the latest question and a shorter prompt.
+        let latestQuestion = conversation.last(where: { $0.role == "user" })?.text ?? ""
+        let retryPrompt = """
+        <|im_start|>system
+        Answer the question using the saved content. Reply in \(language). \(role.instruction) Do not output role names or labels.<|im_end|>
+        <|im_start|>user
+        Saved content:\n\(String(context.prefix(700)))
+
+        Question:\n\(String(latestQuestion.prefix(240)))<|im_end|>
+        <|im_start|>assistant
+        \(assistantPreamble)
+        """
+        guard let retried = try engine?.complete(prompt: retryPrompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
+            throw PointVerseError.invalidModelOutput
+        }
+        let cleanedRetry = Self.cleanReply(retried)
+        guard !cleanedRetry.isEmpty, !["user", "assistant"].contains(cleanedRetry.lowercased()) else {
+            throw PointVerseError.invalidModelOutput
+        }
+        return cleanedRetry
     }
 
     public func translateImagePromptToEnglish(_ source: String, localeIdentifier: String) async throws -> String {
@@ -98,6 +132,7 @@ public actor QwenTitleGenerator {
         guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
         try loadEngine(modelURL: modelURL)
+        let assistantPreamble = Self.assistantPreamble(for: manifest)
         defer {
             engine = nil
             loadedModelPath = nil
@@ -112,10 +147,7 @@ public actor QwenTitleGenerator {
         <|im_start|>user
         \(safeSource)<|im_end|>
         <|im_start|>assistant
-        <think>
-
-        </think>
-
+        \(assistantPreamble)
         """
         guard let raw = try engine?.complete(prompt: prompt, maximumTokens: 64) else {
             throw PointVerseError.invalidModelOutput
@@ -167,6 +199,28 @@ public actor QwenTitleGenerator {
         return messages.suffix(4).map {
             ($0.role == "assistant" ? "Assistant: " : "User: ") + String($0.text.prefix(250))
         }.joined(separator: "\n")
+    }
+
+    private static func assistantPreamble(for manifest: ModelManifest) -> String {
+        // Qwen3 text models support the explicit non-thinking prefix. The
+        // Qwen3-VL Instruct chat template does not; injecting it can make the
+        // model treat the assistant turn as already completed and emit EOG.
+        manifest.id == ModelManifest.qwen3VL2BQ8.id ? "" : "<think>\n\n</think>\n"
+    }
+
+    private static func cleanReply(_ value: String) -> String {
+        var reply = value.components(separatedBy: "<|im_end|>").first ?? value
+        reply = reply
+            .replacingOccurrences(of: "<|im_start|>", with: "")
+            .replacingOccurrences(of: "<think>", with: "")
+            .replacingOccurrences(of: "</think>", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        reply = reply.replacingOccurrences(
+            of: "^(assistant|user)\\b\\s*:?\\s*",
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        return reply.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func languageName(for identifier: String) -> String {
@@ -384,7 +438,7 @@ private final class LlamaEngine: @unchecked Sendable {
         llama_model_free(model)
     }
 
-    func complete(prompt: String, maximumTokens: Int) throws -> String {
+    func complete(prompt: String, maximumTokens: Int, stopAtNewline: Bool = true) throws -> String {
         llama_memory_clear(llama_get_memory(context), true)
         llama_sampler_free(sampler)
         sampler = Self.makeSampler()
@@ -405,7 +459,7 @@ private final class LlamaEngine: @unchecked Sendable {
             let token = llama_sampler_sample(sampler, context, batch.n_tokens - 1)
             if llama_vocab_is_eog(vocabulary, token) { break }
             result += piece(for: token)
-            if result.contains("<|im_end|>") || result.contains("\n") { break }
+            if result.contains("<|im_end|>") || (stopAtNewline && result.contains("\n")) { break }
             clearBatch()
             add(token: token, position: position, logits: true)
             guard llama_decode(context, batch) == 0 else { throw PointVerseError.invalidModelOutput }

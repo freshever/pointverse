@@ -225,6 +225,7 @@ public struct PointDetail: Equatable, Sendable {
     public let engineText: String?
     public let userText: String?
     public let localeIdentifier: String
+    public let transcriptModelID: String?
 
     public var effectiveTranscript: String? {
         let preferred = userText?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -244,7 +245,8 @@ public struct PointDetail: Equatable, Sendable {
         transcriptErrorCode: String?,
         engineText: String?,
         userText: String?,
-        localeIdentifier: String
+        localeIdentifier: String,
+        transcriptModelID: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -257,6 +259,7 @@ public struct PointDetail: Equatable, Sendable {
         self.engineText = engineText
         self.userText = userText
         self.localeIdentifier = localeIdentifier
+        self.transcriptModelID = transcriptModelID
     }
 }
 
@@ -271,6 +274,59 @@ public struct ConversationMessage: Identifiable, Equatable, Sendable {
         self.role = role
         self.text = text
         self.createdAt = createdAt
+    }
+}
+
+public struct TranscriptionCandidate: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let modelID: String
+    public let engineText: String
+    public let userText: String?
+    public let isSelected: Bool
+    public let updatedAt: Date
+
+    public var effectiveText: String {
+        let edited = userText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return edited?.isEmpty == false ? edited! : engineText
+    }
+
+    public init(id: UUID, modelID: String, engineText: String, userText: String?, isSelected: Bool, updatedAt: Date) {
+        self.id = id; self.modelID = modelID; self.engineText = engineText
+        self.userText = userText; self.isSelected = isSelected; self.updatedAt = updatedAt
+    }
+}
+
+public struct AudioUnderstanding: Equatable, Sendable {
+    public let durationSeconds: Double
+    public let loudnessDB: Double
+    public let bpm: Double?
+    public let dominantPitchHz: Double?
+    public let rhythmStrength: Double
+    public let semanticTags: [String]
+    public let clapModelID: String?
+    public let hasVoice: Bool
+    public let updatedAt: Date
+
+    public init(durationSeconds: Double, loudnessDB: Double, bpm: Double?, dominantPitchHz: Double?,
+                rhythmStrength: Double, semanticTags: [String], clapModelID: String?, hasVoice: Bool,
+                updatedAt: Date = Date()) {
+        self.durationSeconds = durationSeconds
+        self.loudnessDB = loudnessDB
+        self.bpm = bpm
+        self.dominantPitchHz = dominantPitchHz
+        self.rhythmStrength = rhythmStrength
+        self.semanticTags = semanticTags
+        self.clapModelID = clapModelID
+        self.hasVoice = hasVoice
+        self.updatedAt = updatedAt
+    }
+
+    public var semanticText: String {
+        var values = semanticTags
+        if let bpm { values.append("BPM \(Int(bpm.rounded()))") }
+        if let dominantPitchHz { values.append("主音高 \(Int(dominantPitchHz.rounded())) Hz") }
+        values.append(String(format: "响度 %.1f dB", loudnessDB))
+        return values.joined(separator: " · ")
     }
 }
 

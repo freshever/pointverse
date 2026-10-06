@@ -41,6 +41,13 @@
 "修正文字" = "Correct transcript";
 "正在设备端转写" = "Transcribing on device";
 "重新转写" = "Transcribe again";
+"重新理解语音" = "Understand audio again";
+"Apple 系统语音识别（设备端）" = "Apple Speech Recognition (on device)";
+"转写引擎未知" = "Unknown transcription engine";
+"短答" = "Concise";
+"探索" = "Explore";
+"梳理" = "Organize";
+"创意" = "Creative";
 "识别方式" = "Recognition method";
 "使用系统设备端语音识别，不上传录音。支持简体中文、繁体中文、英文和日文。" = "Uses on-device speech recognition without uploading audio. Supports Simplified Chinese, Traditional Chinese, English, and Japanese.";
 "录音语言" = "Recording language";
@@ -98,6 +105,7 @@
 "继续聊聊这个想法" = "Continue discussing this idea";
 "Qwen 正在回复" = "The selected model is replying";
 "回复失败，请确认 Qwen 模型已安装" = "Reply failed. Check that at least one local language model is installed.";
+"回复生成失败，请重试" = "Could not generate a reply. Please try again.";
 "按住语音输入" = "Hold for voice input";
 "松开转为文字" = "Release to transcribe";
 "语音输入识别失败" = "Voice input could not be transcribed";

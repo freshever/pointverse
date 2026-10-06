@@ -14,14 +14,14 @@ public actor WhisperRecognizer {
         self.executionGate = executionGate
     }
 
-    public func transcribe(audioURL: URL, localeIdentifier: String) async throws -> TranscriptionOutput {
+    public func transcribe(audioURL: URL, localeIdentifier: String, manifest requestedManifest: ModelManifest? = nil) async throws -> TranscriptionOutput {
         await executionGate.acquire()
         defer {
             contextHandle = nil
             loadedModelPath = nil
             Task { await executionGate.release() }
         }
-        let manifest = ModelSelection.selectedSpeechModel()
+        let manifest = requestedManifest ?? ModelSelection.selectedSpeechModel()
         guard await registry.isInstalled(manifest) else { throw PointVerseError.modelNotInstalled }
         let modelURL = await registry.installedURL(for: manifest)
         let whisperContext = try loadContext(modelURL: modelURL)

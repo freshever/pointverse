@@ -55,6 +55,49 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 ON point_geography(geography_version, content_revision);
                 """)
         }
+        migrator.registerMigration("v5-transcription-candidates") { db in
+            try db.execute(sql: """
+                CREATE TABLE transcription_candidates (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    asset_id TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
+                    model_id TEXT NOT NULL,
+                    model_sha256 TEXT NOT NULL,
+                    engine_text TEXT NOT NULL,
+                    user_text TEXT,
+                    is_selected INTEGER NOT NULL DEFAULT 0,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    UNIQUE(asset_id, model_id)
+                );
+                CREATE INDEX transcription_candidates_asset ON transcription_candidates(asset_id, is_selected);
+                INSERT INTO transcription_candidates
+                    (id, asset_id, model_id, model_sha256, engine_text, user_text, is_selected, created_at, updated_at)
+                SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
+                       substr(lower(hex(randomblob(2))),2) || '-' ||
+                       substr('89ab',abs(random()) % 4 + 1,1) || substr(lower(hex(randomblob(2))),2) || '-' ||
+                       lower(hex(randomblob(6))),
+                       asset_id, model_id, model_sha256, engine_text, user_text, 1, created_at, updated_at
+                FROM transcripts WHERE state = 'succeeded' AND engine_text IS NOT NULL;
+                """)
+        }
+        migrator.registerMigration("v6-audio-understanding") { db in
+            try db.execute(sql: """
+                CREATE TABLE audio_understanding (
+                    point_id TEXT PRIMARY KEY NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    duration_seconds REAL NOT NULL,
+                    loudness_db REAL NOT NULL,
+                    bpm REAL,
+                    dominant_pitch_hz REAL,
+                    rhythm_strength REAL NOT NULL,
+                    semantic_tags_json TEXT NOT NULL,
+                    clap_model_id TEXT,
+                    clap_vector BLOB,
+                    clap_dimension INTEGER,
+                    has_voice INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL
+                );
+                """)
+        }
         try migrator.migrate(writer)
         try await writer.write { db in
             let modelID = EmbeddingModelIdentity.multilingualE5Small
@@ -225,7 +268,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                        m.modality, m.user_text AS source_text,
                        a.relative_path, a.duration_ms,
                        CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state,
-                       t.engine_text, t.user_text, COALESCE(t.locale, '') AS locale, t.error_code
+                       t.engine_text, t.user_text, COALESCE(t.locale, '') AS locale, t.error_code, t.model_id
                 FROM points p
                 JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 LEFT JOIN audio_assets a ON a.message_id = m.id
@@ -246,7 +289,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 transcriptErrorCode: row["error_code"],
                 engineText: row["engine_text"],
                 userText: row["user_text"],
-                localeIdentifier: row["locale"]
+                localeIdentifier: row["locale"],
+                transcriptModelID: row["model_id"]
             )
         }
     }
@@ -297,6 +341,17 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 UPDATE transcripts SET engine_text = ?, model_id = ?, model_sha256 = ?, state = 'succeeded', error_code = NULL, updated_at = ?
                 WHERE asset_id = (SELECT a.id FROM audio_assets a JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1)
                 """, arguments: [engineText, modelID, modelSHA256, timestamp, pointID.rawValue.uuidString])
+            if let assetID = try String.fetchOne(db, sql: "SELECT a.id FROM audio_assets a JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1", arguments: [pointID.rawValue.uuidString]) {
+                try db.execute(sql: "UPDATE transcription_candidates SET is_selected = 0 WHERE asset_id = ?", arguments: [assetID])
+                try db.execute(sql: """
+                    INSERT INTO transcription_candidates
+                        (id, asset_id, model_id, model_sha256, engine_text, is_selected, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                    ON CONFLICT(asset_id, model_id) DO UPDATE SET
+                        model_sha256=excluded.model_sha256, engine_text=excluded.engine_text,
+                        user_text=NULL, is_selected=1, updated_at=excluded.updated_at
+                    """, arguments: [UUID().uuidString, assetID, modelID, modelSHA256, engineText, timestamp, timestamp])
+            }
             let title = Self.fallbackTitle(from: engineText)
             try db.execute(sql: "DELETE FROM derivations WHERE point_id = ? AND model_id = 'rule-title-v1'", arguments: [pointID.rawValue.uuidString])
             try db.execute(sql: """
@@ -357,6 +412,10 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 INSERT INTO messages (id, operation_id, point_id, sequence, role, modality, user_text, created_at)
                 VALUES (?, ?, ?, ?, ?, 'text', ?, ?)
                 """, arguments: [id.uuidString, "text:" + id.uuidString, pointID.rawValue.uuidString, sequence, role, text, Date().timeIntervalSince1970])
+            let timestamp = Date().timeIntervalSince1970
+            try refreshSearch(pointID: pointID, db: db)
+            let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
+            try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
         }
     }
 
@@ -429,10 +488,125 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 UPDATE transcripts SET user_text = ?, updated_at = ?
                 WHERE asset_id = (SELECT a.id FROM audio_assets a JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1)
                 """, arguments: [userText, timestamp, pointID.rawValue.uuidString])
+            try db.execute(sql: """
+                UPDATE transcription_candidates SET user_text = ?, updated_at = ?
+                WHERE is_selected = 1 AND asset_id = (
+                    SELECT a.id FROM audio_assets a JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1
+                )
+                """, arguments: [userText, timestamp, pointID.rawValue.uuidString])
             try refreshSearch(pointID: pointID, db: db)
             let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
             try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
         }
+    }
+
+    public func audioUnderstanding(pointID: PointID) async throws -> AudioUnderstanding? {
+        try await writer.read { db in
+            guard let row = try Row.fetchOne(db, sql: "SELECT * FROM audio_understanding WHERE point_id = ?",
+                                             arguments: [pointID.rawValue.uuidString]) else { return nil }
+            let data = Data((row["semantic_tags_json"] as String).utf8)
+            let tags = (try? JSONDecoder().decode([String].self, from: data)) ?? []
+            return AudioUnderstanding(
+                durationSeconds: row["duration_seconds"], loudnessDB: row["loudness_db"],
+                bpm: row["bpm"], dominantPitchHz: row["dominant_pitch_hz"],
+                rhythmStrength: row["rhythm_strength"], semanticTags: tags,
+                clapModelID: row["clap_model_id"], hasVoice: row["has_voice"],
+                updatedAt: Date(timeIntervalSince1970: row["updated_at"])
+            )
+        }
+    }
+
+    public func saveAudioUnderstanding(pointID: PointID, value: AudioUnderstanding, semanticVector: [Float]?) async throws {
+        try await writer.write { db in
+            let tags = String(data: try JSONEncoder().encode(value.semanticTags), encoding: .utf8) ?? "[]"
+            let vectorData = semanticVector.map(EmbeddingMath.encodeFloat16)
+            let timestamp = value.updatedAt.timeIntervalSince1970
+            try db.execute(sql: """
+                INSERT INTO audio_understanding
+                    (point_id, duration_seconds, loudness_db, bpm, dominant_pitch_hz, rhythm_strength,
+                     semantic_tags_json, clap_model_id, clap_vector, clap_dimension, has_voice, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(point_id) DO UPDATE SET
+                    duration_seconds=excluded.duration_seconds, loudness_db=excluded.loudness_db,
+                    bpm=excluded.bpm, dominant_pitch_hz=excluded.dominant_pitch_hz,
+                    rhythm_strength=excluded.rhythm_strength, semantic_tags_json=excluded.semantic_tags_json,
+                    clap_model_id=excluded.clap_model_id, clap_vector=excluded.clap_vector,
+                    clap_dimension=excluded.clap_dimension, has_voice=excluded.has_voice,
+                    updated_at=excluded.updated_at
+                """, arguments: [pointID.rawValue.uuidString, value.durationSeconds, value.loudnessDB,
+                                   value.bpm, value.dominantPitchHz, value.rhythmStrength, tags,
+                                   value.clapModelID, vectorData, semanticVector?.count, value.hasVoice, timestamp])
+            try refreshSearch(pointID: pointID, db: db)
+            let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
+            try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
+        }
+    }
+
+    public func transcriptionCandidates(pointID: PointID) async throws -> [TranscriptionCandidate] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT c.id, c.model_id, c.engine_text, c.user_text, c.is_selected, c.updated_at
+                FROM transcription_candidates c
+                JOIN audio_assets a ON a.id = c.asset_id
+                JOIN messages m ON m.id = a.message_id
+                WHERE m.point_id = ? ORDER BY c.is_selected DESC, c.updated_at DESC
+                """, arguments: [pointID.rawValue.uuidString]).compactMap { row in
+                    guard let id = UUID(uuidString: row["id"]) else { return nil }
+                    return TranscriptionCandidate(id: id, modelID: row["model_id"], engineText: row["engine_text"],
+                                                  userText: row["user_text"], isSelected: row["is_selected"],
+                                                  updatedAt: Date(timeIntervalSince1970: row["updated_at"]))
+                }
+        }
+    }
+
+    public func saveTranscriptionCandidate(pointID: PointID, text: String, modelID: String, modelSHA256: String, select: Bool) async throws {
+        try await writer.write { db in
+            guard let assetID = try String.fetchOne(db, sql: "SELECT a.id FROM audio_assets a JOIN messages m ON m.id = a.message_id WHERE m.point_id = ? LIMIT 1", arguments: [pointID.rawValue.uuidString]) else { throw PointVerseError.databaseCommitFailed }
+            let now = Date().timeIntervalSince1970
+            if select { try db.execute(sql: "UPDATE transcription_candidates SET is_selected = 0 WHERE asset_id = ?", arguments: [assetID]) }
+            try db.execute(sql: """
+                INSERT INTO transcription_candidates
+                    (id, asset_id, model_id, model_sha256, engine_text, is_selected, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(asset_id, model_id) DO UPDATE SET model_sha256=excluded.model_sha256,
+                    engine_text=excluded.engine_text, user_text=NULL,
+                    is_selected=excluded.is_selected, updated_at=excluded.updated_at
+                """, arguments: [UUID().uuidString, assetID, modelID, modelSHA256, text, select, now, now])
+            if select { try activateCandidate(assetID: assetID, modelID: modelID, pointID: pointID, db: db, timestamp: now) }
+        }
+    }
+
+    public func selectTranscriptionCandidate(pointID: PointID, candidateID: UUID) async throws {
+        try await writer.write { db in
+            let now = Date().timeIntervalSince1970
+            guard let row = try Row.fetchOne(db, sql: "SELECT asset_id, model_id FROM transcription_candidates WHERE id = ?", arguments: [candidateID.uuidString]) else { throw PointVerseError.databaseCommitFailed }
+            let assetID: String = row["asset_id"], modelID: String = row["model_id"]
+            try db.execute(sql: "UPDATE transcription_candidates SET is_selected = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE asset_id = ?", arguments: [candidateID.uuidString, assetID])
+            try activateCandidate(assetID: assetID, modelID: modelID, pointID: pointID, db: db, timestamp: now)
+        }
+    }
+
+    public func editTranscriptionCandidate(pointID: PointID, candidateID: UUID, text: String) async throws {
+        try await writer.write { db in
+            let now = Date().timeIntervalSince1970
+            try db.execute(sql: "UPDATE transcription_candidates SET user_text = ?, updated_at = ? WHERE id = ?", arguments: [text, now, candidateID.uuidString])
+            guard let row = try Row.fetchOne(db, sql: "SELECT asset_id, model_id, is_selected FROM transcription_candidates WHERE id = ?", arguments: [candidateID.uuidString]) else { return }
+            if (row["is_selected"] as Bool) {
+                try activateCandidate(assetID: row["asset_id"], modelID: row["model_id"], pointID: pointID, db: db, timestamp: now)
+            }
+        }
+    }
+
+    private func activateCandidate(assetID: String, modelID: String, pointID: PointID, db: Database, timestamp: Double) throws {
+        try db.execute(sql: """
+            UPDATE transcripts SET engine_text = (SELECT engine_text FROM transcription_candidates WHERE asset_id=? AND model_id=?),
+                user_text = (SELECT user_text FROM transcription_candidates WHERE asset_id=? AND model_id=?),
+                model_id=?, model_sha256=(SELECT model_sha256 FROM transcription_candidates WHERE asset_id=? AND model_id=?),
+                state='succeeded', error_code=NULL, updated_at=? WHERE asset_id=?
+            """, arguments: [assetID, modelID, assetID, modelID, modelID, assetID, modelID, timestamp, assetID])
+        try refreshSearch(pointID: pointID, db: db)
+        let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
+        try enqueueEmbedding(pointID: pointID, revision: revision, db: db, timestamp: timestamp)
     }
 
     public func queuedEmbeddingDocuments(modelID: String) async throws -> [PointSemanticDocument] {
@@ -441,7 +615,12 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 SELECT p.id, p.head_revision,
                        TRIM(COALESCE(m.user_text, t.user_text, t.engine_text, '') || ' ' ||
                             COALESCE((SELECT GROUP_CONCAT(recognized_text, ' ') FROM point_images
-                                      WHERE point_id = p.id AND recognized_text IS NOT NULL), '')) AS semantic_text,
+                                      WHERE point_id = p.id AND recognized_text IS NOT NULL), '') || ' ' ||
+                            COALESCE((SELECT GROUP_CONCAT(user_text, ' ') FROM messages
+                                      WHERE point_id = p.id AND sequence > 1 AND role = 'user'
+                                        AND user_text IS NOT NULL), '') || ' ' ||
+                            COALESCE((SELECT semantic_tags_json FROM audio_understanding
+                                      WHERE point_id = p.id), '')) AS semantic_text,
                        COALESCE(t.locale, '') AS locale
                 FROM points p
                 LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
@@ -590,10 +769,15 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         try db.execute(sql: "DELETE FROM point_search WHERE point_id = ?", arguments: [pointID.rawValue.uuidString])
         try db.execute(sql: """
             INSERT INTO point_search (point_id, accepted_title, transcript_text, summary, tags)
-            SELECT p.id, COALESCE(p.accepted_title, d.title, ''), COALESCE(m.user_text, t.user_text, t.engine_text, ''),
+            SELECT p.id, COALESCE(p.accepted_title, d.title, ''),
+                   TRIM(COALESCE(m.user_text, t.user_text, t.engine_text, '') || ' ' ||
+                        COALESCE((SELECT GROUP_CONCAT(user_text, ' ') FROM messages
+                                  WHERE point_id = p.id AND sequence > 1 AND user_text IS NOT NULL), '') || ' ' ||
+                        COALESCE((SELECT GROUP_CONCAT(recognized_text, ' ') FROM point_images
+                                  WHERE point_id = p.id AND recognized_text IS NOT NULL), '')),
                    COALESCE(d.summary, ''), COALESCE(d.tags_json, '')
             FROM points p
-            JOIN messages m ON m.point_id = p.id
+            JOIN messages m ON m.point_id = p.id AND m.sequence = 1
             LEFT JOIN audio_assets a ON a.message_id = m.id
             LEFT JOIN transcripts t ON t.asset_id = a.id
             LEFT JOIN derivations d ON d.id = (

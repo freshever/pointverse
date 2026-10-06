@@ -9,6 +9,10 @@
 /* Begin PBXBuildFile section */
 		0403D24A840DB3949141041F /* StableDiffusionXLPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23D9255CEF715935BBCF82D /* StableDiffusionXLPipeline.swift */; };
 		059B1ACD5CA8EC65D212AE49 /* QwenTitleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */; };
+		05C0A8E0499E4C00A2090001 /* ConversationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C0A8E0499E4C00A2090002 /* ConversationService.swift */; };
+		05C0A8E0499E4C00A2090003 /* WhisperRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C0A8E0499E4C00A2090004 /* WhisperRecognizer.swift */; };
+		05C0A8E0499E4C00A2090010 /* AudioUnderstandingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C0A8E0499E4C00A2090011 /* AudioUnderstandingService.swift */; };
+		05C0A8E0499E4C00A2090005 /* whisper in Frameworks */ = {isa = PBXBuildFile; productRef = 05C0A8E0499E4C00A2090007 /* whisper */; };
 		072CFBA7B29727BFF04EBCAE /* Scheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4B951AC0E4E7FD9868D02E /* Scheduler.swift */; };
 		096226125B5039423956E298 /* WatchCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D1A377B368BE083A05CACA /* WatchCaptureStore.swift */; };
 		09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 7A2F90E93A7921822C385A42 /* Tokenizers */; };
@@ -150,6 +154,9 @@
 		39E7F1E746A15F829D7C58B6 /* RandomSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomSource.swift; sourceTree = "<group>"; };
 		3D89E5819041E4CFD5EFC610 /* Unet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Unet.swift; sourceTree = "<group>"; };
 		420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QwenTitleGenerator.swift; sourceTree = "<group>"; };
+		05C0A8E0499E4C00A2090002 /* ConversationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationService.swift; sourceTree = "<group>"; };
+		05C0A8E0499E4C00A2090004 /* WhisperRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperRecognizer.swift; sourceTree = "<group>"; };
+		05C0A8E0499E4C00A2090011 /* AudioUnderstandingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioUnderstandingService.swift; sourceTree = "<group>"; };
 		4BD327E4695085ADD59280A8 /* BPETokenizer+Reading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BPETokenizer+Reading.swift"; sourceTree = "<group>"; };
 		4CAEA797E538F30926794551 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalImageGenerator.swift; sourceTree = "<group>"; };
@@ -223,6 +230,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				05C0A8E0499E4C00A2090005 /* whisper in Frameworks */,
 				57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */,
 				09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */,
 				B605428A4B68511E9FED8AC7 /* QwenAdapter.framework in Frameworks */,
@@ -304,11 +312,14 @@
 		2CC9756829FE102BD437FA02 /* PointDetail */ = {
 			isa = PBXGroup;
 			children = (
+				05C0A8E0499E4C00A2090011 /* AudioUnderstandingService.swift */,
 				D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */,
+				05C0A8E0499E4C00A2090002 /* ConversationService.swift */,
 				A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */,
 				420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */,
 				AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */,
 				57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */,
+				05C0A8E0499E4C00A2090004 /* WhisperRecognizer.swift */,
 			);
 			path = PointDetail;
 			sourceTree = "<group>";
@@ -556,6 +567,7 @@
 			name = PointVerse;
 			packageProductDependencies = (
 				EF1601925276AADCFA77677C /* PointVerseKit */,
+				05C0A8E0499E4C00A2090007 /* whisper */,
 				7A2F90E93A7921822C385A42 /* Tokenizers */,
 				6011DC563607EA13BFF8E848 /* ZIPFoundation */,
 			);
@@ -615,6 +627,7 @@
 				89D6598E16B2F01A7EFB4353 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 				656D84356EA7D603F4E30D96 /* XCLocalSwiftPackageReference "Vendor/LlamaRuntime" */,
+				05C0A8E0499E4C00A2090006 /* XCLocalSwiftPackageReference "Vendor/WhisperRuntime" */,
 				AFD9463716429DBB81244AF7 /* XCLocalSwiftPackageReference "PointVerseKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -734,6 +747,9 @@
 				79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */,
 				40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */,
 				68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */,
+				05C0A8E0499E4C00A2090001 /* ConversationService.swift in Sources */,
+				05C0A8E0499E4C00A2090003 /* WhisperRecognizer.swift in Sources */,
+				05C0A8E0499E4C00A2090010 /* AudioUnderstandingService.swift in Sources */,
 				CCCE03F54AEE4B8EEE36C22A /* E5CoreMLEmbedding.swift in Sources */,
 				D64CEABDB7E54CF6E688457A /* EmbeddingService.swift in Sources */,
 				10C5BEE589506F9103953797 /* GlobeMapView.swift in Sources */,
@@ -813,7 +829,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
@@ -836,7 +852,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
@@ -919,7 +935,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
@@ -967,7 +983,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
@@ -1163,6 +1179,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		05C0A8E0499E4C00A2090006 /* XCLocalSwiftPackageReference "Vendor/WhisperRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/WhisperRuntime;
+		};
 		656D84356EA7D603F4E30D96 /* XCLocalSwiftPackageReference "Vendor/LlamaRuntime" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/LlamaRuntime;
@@ -1193,6 +1213,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		05C0A8E0499E4C00A2090007 /* whisper */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 05C0A8E0499E4C00A2090006 /* XCLocalSwiftPackageReference "Vendor/WhisperRuntime" */;
+			productName = whisper;
+		};
 		6011DC563607EA13BFF8E848 /* ZIPFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;

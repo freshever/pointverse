@@ -25,11 +25,12 @@ struct CaptureView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("输入方式", selection: $inputMode) {
-                Label("语音", systemImage: "waveform").tag("voice")
-                Label("文本", systemImage: "keyboard").tag("text")
+            HStack(spacing: 6) {
+                inputModeButton(value: "voice", title: "语音", systemImage: "waveform")
+                inputModeButton(value: "text", title: "文本", systemImage: "keyboard")
             }
-            .pickerStyle(.segmented)
+            .padding(5)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 20).padding(.vertical, 10)
 
             if inputMode == "text" { textCaptureContent } else { voiceCaptureContent }
@@ -47,6 +48,25 @@ struct CaptureView: View {
                 cameraEnabled = false
             }
         }
+    }
+
+    private func inputModeButton(value: String, title: String, systemImage: String) -> some View {
+        Button {
+            inputMode = value
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: systemImage)
+                AppText(title)
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .contentShape(Rectangle())
+            .background(inputMode == value ? Color(uiColor: .systemBackground) : .clear,
+                        in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(inputMode == value ? .primary : .secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(inputMode == value ? .isSelected : [])
     }
 
     private var voiceCaptureContent: some View {

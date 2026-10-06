@@ -1,4 +1,5 @@
 import PointVerseKit
+import QwenAdapter
 import PencilKit
 import PhotosUI
 import SwiftUI
@@ -14,11 +15,17 @@ struct PointDetailView: View {
     @State private var detail: PointDetail?
     @State private var images: [LoadedPointImage] = []
     @State private var messages: [ConversationMessage] = []
+    @State private var transcriptionCandidates: [TranscriptionCandidate] = []
+    @State private var installedSpeechModelIDs: [String] = ["apple-speech-on-device"]
+    @State private var audioUnderstanding: AudioUnderstanding?
+    @State private var isUnderstandingAudio = false
+    @State private var audioUnderstandingFailed = false
     @State private var relatedPoints: [RelatedPoint] = []
     @State private var relatedLoaded = false
     @State private var editedTranscript = ""
     @State private var isEditing = false
     @State private var isSaving = false
+    @State private var isRetranscribing = false
     @State private var confirmingDelete = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var showingPhotoPicker = false
@@ -32,45 +39,31 @@ struct PointDetailView: View {
     @State private var visionAvailabilityChecked = false
     @State private var photoAnalysisKey: String?
     @State private var showingManifestation = false
+    @State private var messageText = ""
+    @State private var isReplying = false
+    @State private var conversationFailed = false
+    @State private var conversationModelUnavailable = false
+    @AppStorage("conversationRole") private var conversationRoleRaw = ConversationRole.concise.rawValue
+    @FocusState private var messageFieldFocused: Bool
     let point: PointSummary
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if detail?.modality != "text" { audioCard }
+                if detail?.modality != "text" { soundUnderstandingCard }
                 transcriptCard
-                relatedPointsCard
-                ForEach(images) { item in
-                    VStack(alignment: .leading, spacing: 10) {
-                        ZStack(alignment: .topTrailing) {
-                            Image(uiImage: item.image)
-                                .resizable().scaledToFit()
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                            Button(role: .destructive) { removePhoto(item) } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, .black.opacity(0.65))
-                            }
-                            .padding(7).buttonStyle(.plain)
-                        }
-                        if let text = item.asset.recognizedText, !text.isEmpty {
-                            Label { Text(verbatim: text).textSelection(.enabled) } icon: {
-                                Image(systemName: "eye.circle")
-                            }
-                            .font(.subheadline).foregroundStyle(.secondary)
-                        } else if visionAvailable || isAnalyzingPhotos {
-                            HStack(spacing: 7) {
-                                ProgressView().controlSize(.small)
-                                AppText("正在理解这张照片")
-                            }
-                            .font(.subheadline).foregroundStyle(.secondary)
-                        } else {
-                            AppText("尚未理解这张照片")
-                                .font(.subheadline).foregroundStyle(.secondary)
-                        }
+                ForEach(timelineItems) { item in
+                    switch item {
+                    case .photo(let photo): photoMessage(photo)
+                    case .message(let message): conversationMessage(message)
                     }
-                    .padding(12)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 20))
+                }
+                if isReplying { HStack { ProgressView(); AppText("Qwen 正在回复") }.foregroundStyle(.secondary) }
+                if conversationModelUnavailable {
+                    AppText("回复失败，请确认 Qwen 模型已安装").foregroundStyle(.red)
+                } else if conversationFailed {
+                    AppText("回复生成失败，请重试").foregroundStyle(.red)
                 }
                 if isAddingPhotos { HStack { ProgressView(); AppText("正在保存照片") } }
                 if isAnalyzingPhotos { HStack { ProgressView(); AppText("正在理解照片") } }
@@ -80,10 +73,14 @@ struct PointDetailView: View {
                 } else if let photoAnalysisKey {
                     AppText(photoAnalysisKey).foregroundStyle(.secondary)
                 }
+                relatedPointsCard
             }
             .padding()
         }
         .background(Color(uiColor: .systemGroupedBackground))
+        .scrollDismissesKeyboard(.interactively)
+        .onTapGesture { messageFieldFocused = false }
+        .safeAreaInset(edge: .bottom) { conversationComposer }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
@@ -137,7 +134,7 @@ struct PointDetailView: View {
                 Button { showingManifestation = true } label: {
                     Label { AppText("显影") } icon: { Image(systemName: "wand.and.stars") }
                 }
-                .disabled((detail?.effectiveTranscript?.isEmpty != false) && images.isEmpty)
+                .disabled(primaryContent.isEmpty && images.isEmpty)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -151,8 +148,11 @@ struct PointDetailView: View {
                     }
                     Divider()
                     if detail?.transcriptState == "failed" {
-                        Button { retryTranscription() } label: { Label("重新转写", systemImage: "arrow.clockwise") }
+                        Button { retryTranscription() } label: { Label("重新理解语音", systemImage: "arrow.clockwise") }
                     }
+                    Button { understandAudio() } label: {
+                        Label("理解音乐或现场声音", systemImage: "waveform.badge.magnifyingglass")
+                    }.disabled(isUnderstandingAudio)
                     Button(role: .destructive) { confirmingDelete = true } label: { Label("删除", systemImage: "trash") }
                 } label: { Image(systemName: "ellipsis.circle") }
             }
@@ -184,8 +184,33 @@ struct PointDetailView: View {
 
     private var transcriptCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(detail?.modality == "text" ? "文本内容" : "系统语音转写",
+            Label(detail?.modality == "text" ? "文本内容" : "语音转写",
                   systemImage: detail?.modality == "text" ? "text.alignleft" : "text.quote").font(.headline)
+            if detail?.modality != "text" {
+                Menu {
+                    if !transcriptionCandidates.isEmpty {
+                        Section("选择理解文字") {
+                            ForEach(transcriptionCandidates) { candidate in
+                                Button { selectTranscription(candidate) } label: {
+                                    Label(transcriptionEngineName(candidate.modelID),
+                                          systemImage: candidate.isSelected ? "checkmark.circle.fill" : "circle")
+                                }
+                            }
+                        }
+                    }
+                    Section("使用引擎重新理解") {
+                        ForEach(installedSpeechModelIDs, id: \.self) { modelID in
+                            Button { generateTranscription(using: modelID) } label: {
+                                Label(transcriptionEngineName(modelID), systemImage: "waveform")
+                            }
+                        }
+                    }
+                } label: {
+                    Label(transcriptionEngineName, systemImage: "cpu")
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .disabled(isRetranscribing)
+            }
             if let detail {
                 if detail.modality == "text" {
                     Text(verbatim: detail.sourceText ?? "").textSelection(.enabled)
@@ -197,7 +222,25 @@ struct PointDetailView: View {
                             .buttonStyle(.borderedProminent).disabled(isSaving || editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     } else {
                         Text(verbatim: detail.effectiveTranscript ?? "没有识别到文字").textSelection(.enabled)
-                        Button("修正文字") { editedTranscript = detail.effectiveTranscript ?? ""; isEditing = true }.font(.footnote)
+                        HStack(spacing: 16) {
+                            Button("修正文字") { editedTranscript = detail.effectiveTranscript ?? ""; isEditing = true }
+                            Menu {
+                                ForEach(installedSpeechModelIDs, id: \.self) { modelID in
+                                    Button { generateTranscription(using: modelID) } label: {
+                                        Text(verbatim: transcriptionEngineName(modelID))
+                                    }
+                                }
+                            } label: {
+                                Label {
+                                    AppText("重新理解语音")
+                                } icon: {
+                                    if isRetranscribing { ProgressView().controlSize(.small) }
+                                    else { Image(systemName: "waveform") }
+                                }
+                            }
+                            .disabled(isRetranscribing)
+                        }
+                        .font(.footnote)
                     }
                 case "running", "queued":
                     HStack { ProgressView(); Text("正在设备端转写") }.foregroundStyle(.secondary)
@@ -205,7 +248,19 @@ struct PointDetailView: View {
                     Text(detail.transcriptErrorCode == PointVerseError.onDeviceRecognitionUnavailable.rawValue
                          ? "当前设备或语言不支持设备端转写，原音仍已保存。" : "转写失败，原音仍已保存。")
                         .foregroundStyle(.secondary)
-                    Button("重新转写") { retryTranscription() }
+                    Menu {
+                        ForEach(installedSpeechModelIDs, id: \.self) { modelID in
+                            Button { generateTranscription(using: modelID) } label: {
+                                Text(verbatim: transcriptionEngineName(modelID))
+                            }
+                        }
+                    } label: {
+                        Label { AppText("重新理解语音") } icon: {
+                            if isRetranscribing { ProgressView().controlSize(.small) }
+                            else { Image(systemName: "waveform") }
+                        }
+                    }
+                    .disabled(isRetranscribing)
                 default: Text("等待转写").foregroundStyle(.secondary)
                 }
                 }
@@ -213,6 +268,124 @@ struct PointDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private var soundUnderstandingCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("音乐与现场声音", systemImage: "music.note.list").font(.headline)
+                Spacer()
+                Button(audioUnderstanding == nil ? "开始理解" : "重新理解") { understandAudio() }
+                    .font(.footnote).disabled(isUnderstandingAudio)
+            }
+            if isUnderstandingAudio {
+                HStack { ProgressView(); Text("正在提取声音特征、歌词与中心思想") }
+                    .font(.subheadline).foregroundStyle(.secondary)
+            } else if let value = audioUnderstanding {
+                Text(value.semanticTags.joined(separator: " · ")).font(.subheadline)
+                HStack(spacing: 14) {
+                    Text(String(format: "%.1f dB", value.loudnessDB))
+                    if let bpm = value.bpm { Text("\(Int(bpm.rounded())) BPM") }
+                    if let pitch = value.dominantPitchHz { Text("\(Int(pitch.rounded())) Hz") }
+                }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                if value.clapModelID == nil {
+                    Text("基础声学分析已完成；安装 CLAP 后可补充语义向量与更准确标签。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                Text("提取响度、BPM、音高和节奏；有人声时会用 Whisper 识别歌词。")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            if audioUnderstandingFailed { Text("声音理解失败，请重试").font(.caption).foregroundStyle(.red) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private var timelineItems: [DetailTimelineItem] {
+        (images.map(DetailTimelineItem.photo) + messages.map(DetailTimelineItem.message))
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private func photoMessage(_ item: LoadedPointImage) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: item.image)
+                    .resizable().scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                Button(role: .destructive) { removePhoto(item) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .black.opacity(0.65))
+                }
+                .padding(7).buttonStyle(.plain)
+            }
+            if let text = item.asset.recognizedText, !text.isEmpty {
+                Label { Text(verbatim: text).textSelection(.enabled) } icon: {
+                    Image(systemName: "eye.circle")
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
+            } else if isAnalyzingPhotos {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small)
+                    AppText("正在理解这张照片")
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                AppText("尚未理解这张照片")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func conversationMessage(_ message: ConversationMessage) -> some View {
+        HStack {
+            if message.role == "user" { Spacer(minLength: 42) }
+            Text(verbatim: message.text)
+                .textSelection(.enabled)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(message.role == "user" ? Color.indigo : Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 18))
+                .foregroundStyle(message.role == "user" ? .white : .primary)
+            if message.role != "user" { Spacer(minLength: 42) }
+        }
+    }
+
+    private var conversationComposer: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            Menu {
+                Button { showingCamera = true } label: { Label("拍照", systemImage: "camera") }
+                    .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                Button { showingPhotoPicker = true } label: { Label("从相册选择", systemImage: "photo.on.rectangle") }
+                Button { showingDoodle = true } label: { Label("涂鸦", systemImage: "pencil.tip.crop.circle") }
+            } label: {
+                Image(systemName: "viewfinder.circle.fill").font(.title2)
+            }
+            Menu {
+                ForEach(ConversationRole.allCases, id: \.rawValue) { role in
+                    Button { conversationRoleRaw = role.rawValue } label: {
+                        Label(conversationRoleName(role),
+                              systemImage: role.rawValue == conversationRoleRaw ? "checkmark.circle.fill" : "circle")
+                    }
+                }
+            } label: {
+                Image(systemName: "person.crop.circle").font(.title2)
+            }
+            TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText, axis: .vertical)
+                .lineLimit(1...5)
+                .focused($messageFieldFocused)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+                .onSubmit(sendMessage)
+            Button(action: sendMessage) {
+                Image(systemName: "arrow.up.circle.fill").font(.title2)
+            }
+            .disabled(isReplying || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(.ultraThinMaterial)
     }
 
     private var relatedPointsCard: some View {
@@ -265,6 +438,28 @@ struct PointDetailView: View {
         return value.isEmpty ? "语音想法" : value
     }
 
+    private var primaryContent: String {
+        let value = detail?.modality == "text" ? detail?.sourceText : detail?.effectiveTranscript
+        return value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private var transcriptionEngineName: String {
+        guard let modelID = detail?.transcriptModelID, !modelID.isEmpty else {
+            return AppLocalization.string("转写引擎未知", language: appLanguage)
+        }
+        return transcriptionEngineName(modelID)
+    }
+
+    private func transcriptionEngineName(_ modelID: String) -> String {
+        if modelID == "apple-speech-on-device" {
+            return AppLocalization.string("Apple 系统语音识别（设备端）", language: appLanguage)
+        }
+        if modelID.lowercased().contains("whisper") {
+            return "Whisper · " + modelID.replacingOccurrences(of: "whisper-", with: "")
+        }
+        return modelID
+    }
+
     private func reload() async {
         relatedLoaded = false
         async let related = container.database.relatedPoints(
@@ -273,7 +468,12 @@ struct PointDetailView: View {
         )
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded
-        messages = (try? await container.database.conversationMessages(pointID: point.id)) ?? []
+        messages = ((try? await container.database.conversationMessages(pointID: point.id)) ?? []).filter {
+            !($0.role == "assistant" && ["user", "assistant"].contains($0.text.lowercased()))
+        }
+        transcriptionCandidates = (try? await container.database.transcriptionCandidates(pointID: point.id)) ?? []
+        audioUnderstanding = try? await container.database.audioUnderstanding(pointID: point.id)
+        installedSpeechModelIDs = await container.installedSpeechModelIDs()
         if let path = loaded.audioRelativePath,
            let url = try? await container.blobStore.url(for: path) { player.prepare(url: url) }
         let assets = (try? await container.database.images(pointID: point.id)) ?? []
@@ -298,8 +498,8 @@ struct PointDetailView: View {
 
     private var manifestationContext: String {
         var parts: [String] = []
-        if let transcript = detail?.effectiveTranscript, !transcript.isEmpty {
-            parts.append("Voice note: " + String(transcript.prefix(700)))
+        if !primaryContent.isEmpty {
+            parts.append("Saved content: " + String(primaryContent.prefix(700)))
         }
         let photoContext = images.compactMap(\.asset.recognizedText).prefix(3).joined(separator: "\n")
         if !photoContext.isEmpty { parts.append("Photo context:\n" + String(photoContext.prefix(600))) }
@@ -308,6 +508,39 @@ struct PointDetailView: View {
         }.joined(separator: "\n")
         if !discussion.isEmpty { parts.append("Discussion:\n" + discussion) }
         return parts.joined(separator: "\n\n")
+    }
+
+    private func sendMessage() {
+        let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isReplying else { return }
+        messageText = ""
+        messageFieldFocused = false
+        isReplying = true
+        conversationFailed = false
+        conversationModelUnavailable = false
+        Task {
+            let result = await container.conversationService.send(
+                pointID: point.id,
+                text: text,
+                languageIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage,
+                role: ConversationRole(rawValue: conversationRoleRaw) ?? .concise
+            )
+            _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
+            container.refreshEmbeddings()
+            isReplying = false
+            conversationFailed = result != .succeeded
+            conversationModelUnavailable = result == .modelUnavailable
+            await reload()
+        }
+    }
+
+    private func conversationRoleName(_ role: ConversationRole) -> String {
+        switch role {
+        case .concise: return AppLocalization.string("短答", language: appLanguage)
+        case .explore: return AppLocalization.string("探索", language: appLanguage)
+        case .organize: return AppLocalization.string("梳理", language: appLanguage)
+        case .creative: return AppLocalization.string("创意", language: appLanguage)
+        }
     }
 
     private func prepareCrop(_ item: PhotosPickerItem?) {
@@ -353,6 +586,7 @@ struct PointDetailView: View {
             } catch { photoError = true }
             await container.visionGenerator.releaseResources()
             isAddingPhotos = false
+            _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
             container.refreshEmbeddings()
             await reload()
         }
@@ -362,6 +596,7 @@ struct PointDetailView: View {
         Task {
             guard let path = try? await container.database.removeImage(id: item.id) else { return }
             try? await container.imageBlobStore.delete(relativePath: path)
+            _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
             container.refreshEmbeddings()
             await reload()
         }
@@ -395,6 +630,9 @@ struct PointDetailView: View {
             await container.visionGenerator.releaseResources()
             photoAnalysisKey = successCount > 0 ? "照片理解完成，已更新点子上下文" : "照片理解失败"
             isAnalyzingPhotos = false
+            if successCount > 0 {
+                _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
+            }
             container.refreshEmbeddings()
             await reload()
         }
@@ -428,15 +666,55 @@ struct PointDetailView: View {
     private func saveCorrection() {
         isSaving = true
         Task {
-            try? await container.database.saveUserTranscript(pointID: point.id, userText: editedTranscript)
+            if let selected = transcriptionCandidates.first(where: \.isSelected) {
+                try? await container.database.editTranscriptionCandidate(pointID: point.id, candidateID: selected.id, text: editedTranscript)
+            } else {
+                try? await container.database.saveUserTranscript(pointID: point.id, userText: editedTranscript)
+            }
+            _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
             container.refreshEmbeddings()
             isSaving = false; isEditing = false; await reload()
         }
     }
 
     private func retryTranscription() {
+        generateTranscription(using: "apple-speech-on-device")
+    }
+
+    private func understandAudio() {
+        guard !isUnderstandingAudio else { return }
+        isUnderstandingAudio = true; audioUnderstandingFailed = false
         Task {
-            await container.transcriptionService.transcribe(pointID: point.id)
+            do {
+                try await container.audioUnderstandingService.understand(
+                    pointID: point.id,
+                    languageIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
+                )
+                container.refreshEmbeddings()
+            } catch {
+                audioUnderstandingFailed = true
+            }
+            isUnderstandingAudio = false
+            await reload()
+        }
+    }
+
+    private func generateTranscription(using modelID: String) {
+        guard !isRetranscribing else { return }
+        isRetranscribing = true
+        Task {
+            try? await container.transcriptionService.transcribeCandidate(pointID: point.id, modelID: modelID)
+            container.refreshEmbeddings()
+            await reload()
+            isRetranscribing = false
+        }
+    }
+
+    private func selectTranscription(_ candidate: TranscriptionCandidate) {
+        guard !candidate.isSelected else { return }
+        Task {
+            try? await container.database.selectTranscriptionCandidate(pointID: point.id, candidateID: candidate.id)
+            _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
             container.refreshEmbeddings()
             await reload()
         }
@@ -452,6 +730,25 @@ private struct LoadedPointImage: Identifiable {
     var id: UUID { asset.id }
     let asset: PointImage
     let image: UIImage
+}
+
+private enum DetailTimelineItem: Identifiable {
+    case photo(LoadedPointImage)
+    case message(ConversationMessage)
+
+    var id: String {
+        switch self {
+        case .photo(let value): return "photo-" + value.id.uuidString
+        case .message(let value): return "message-" + value.id.uuidString
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .photo(let value): return value.asset.createdAt
+        case .message(let value): return value.createdAt
+        }
+    }
 }
 
 private struct PhotoCropSource: Identifiable {
@@ -663,6 +960,7 @@ private struct PointManifestationView: View {
                                                       recognizedText: generatedPrompt)
                 NotificationCenter.default.post(name: Notification.Name("PointVersePointImagesDidChange"),
                                                 object: pointID.rawValue.uuidString)
+                _ = await container.transcriptionService.deriveTitle(pointID: pointID, languageIdentifier: appLanguage)
                 container.refreshEmbeddings()
                 onSaved()
             } catch { errorKey = "显影图片保存失败" }

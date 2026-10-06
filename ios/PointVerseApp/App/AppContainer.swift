@@ -11,11 +11,14 @@ final class AppContainer: ObservableObject {
     let imageBlobStore: ImageBlobStore
     let captureUseCase: CaptureUseCase
     let transcriptionService: TranscriptionService
+    let audioUnderstandingService: AudioUnderstandingService
+    let conversationService: ConversationService
     let speechModelManagers: [ModelDownloadManager]
     let languageModelManagers: [ModelDownloadManager]
     let imageModelManagers: [ModelDownloadManager]
     let visionModelManagers: [ModelDownloadManager]
     let embeddingModelManagers: [ModelDownloadManager]
+    let audioUnderstandingModelManagers: [ModelDownloadManager]
     let imageGenerator: LocalImageGenerator
     let visionGenerator: QwenVisionGenerator
     let promptTranslator: QwenTitleGenerator
@@ -47,22 +50,38 @@ final class AppContainer: ObservableObject {
             )
             self.promptTranslator = qwenGenerator
             self.visionGenerator = QwenVisionGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
+            let whisperRecognizer = WhisperRecognizer(registry: modelRegistry, executionGate: modelExecutionGate)
             self.transcriptionService = TranscriptionService(
                 repository: database,
                 blobStore: blobStore,
                 recognizer: OnDeviceSpeechRecognizer(),
+                whisperRecognizer: whisperRecognizer,
                 titleGenerator: qwenGenerator
             )
+            self.audioUnderstandingService = AudioUnderstandingService(
+                repository: database, blobStore: blobStore, transcriptionService: self.transcriptionService,
+                registry: modelRegistry, rootURL: root, executionGate: modelExecutionGate
+            )
+            self.conversationService = ConversationService(repository: database, generator: qwenGenerator)
             self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: root, executionGate: modelExecutionGate)
             self.speechModelManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.languageModelManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.imageModelManagers = ModelSelection.imageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.visionModelManagers = ModelSelection.visionModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.embeddingModelManagers = ModelSelection.embeddingModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
+            self.audioUnderstandingModelManagers = ModelSelection.audioUnderstandingModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.embeddingService = nil
         } catch {
             fatalError("PointVerse storage could not be initialized: \(error)")
         }
+    }
+
+    func installedSpeechModelIDs() async -> [String] {
+        var result = ["apple-speech-on-device"]
+        for manifest in ModelSelection.speechModels where await modelRegistry.isInstalled(manifest) {
+            result.append(manifest.id)
+        }
+        return result
     }
 
     func deletePoint(_ id: PointID) async throws {
