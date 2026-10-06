@@ -33,7 +33,7 @@ private struct RootView: View {
             NavigationStack { StarMapView() }
                 .tabItem { Label { AppText("星图") } icon: { Image(systemName: "sparkles") } }
             NavigationStack { GlobeMapView() }
-                .tabItem { Label { AppText("地球") } icon: { Image(systemName: "globe.asia.australia.fill") } }
+                .tabItem { Label { AppText("星球") } icon: { Image(systemName: "globe.asia.australia.fill") } }
             NavigationStack { PointListView() }
                 .tabItem { Label { AppText("想法") } icon: { Image(systemName: "circle.grid.2x2.fill") } }
             NavigationStack { ImageGenerationView() }

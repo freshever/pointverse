@@ -85,7 +85,7 @@ struct ModelSettingsView: View {
                         manager: manager,
                         name: "Multilingual E5 Small · Hark INT8",
                         metadata: metadata(manager.manifest),
-                        explanation: "把转写文字转换成多语言语义坐标，用于地球上的内容聚类。首次安装后会在设备上编译一次。",
+                        explanation: "把转写文字转换成多语言语义坐标，用于星球上的内容聚类。首次安装后会在设备上编译一次。",
                         isSelected: true,
                         onSelect: {},
                         onInstalled: { Task { await container.prepareEmbeddingService() } },

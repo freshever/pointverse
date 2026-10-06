@@ -6,6 +6,7 @@ import SwiftUI
 /// preserving latitude, longitude, rotation and back-face occlusion.
 struct GlobeMapView: View {
     @EnvironmentObject private var container: AppContainer
+    @Environment(\.appLanguage) private var appLanguage
     @State private var layout = StarLayout(nodes: [], links: [], embeddingCount: 0)
     @State private var geographies: [PointID: PointGeographyRecord] = [:]
     @State private var contentByPointID: [PointID: String] = [:]
@@ -33,7 +34,7 @@ struct GlobeMapView: View {
                     } else {
                         Text(pendingSemanticCount > 0
                              ? "\(pendingSemanticCount) 条内容正在等待转写或语义分析。"
-                             : "保存想法后，它会出现在语义地球上。")
+                             : AppLocalization.string("保存想法后，它会出现在语义星球上。", language: appLanguage))
                     }
                 }
                 .foregroundStyle(.white)
@@ -41,7 +42,7 @@ struct GlobeMapView: View {
                 SemanticGlobe(layout: layout, geographies: geographies, contentByPointID: contentByPointID) { selected = $0 }
             }
         }
-        .navigationTitle("语义地球")
+        .navigationTitle(AppLocalization.string("语义星球", language: appLanguage))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color(red: 0.02, green: 0.08, blue: 0.16), for: .navigationBar)
@@ -76,7 +77,9 @@ struct GlobeMapView: View {
                 .environmentObject(container)
                 .presentationDetents([.medium, .large])
         }
-        .alert("无法读取语义地球", isPresented: $loadFailed) { Button("好") {} }
+        .alert(AppLocalization.string("无法读取语义星球", language: appLanguage), isPresented: $loadFailed) {
+            Button(AppLocalization.string("好", language: appLanguage)) {}
+        }
         .sheet(isPresented: $showingDemo) {
             NavigationStack { PlanetDistributionDemoView() }
         }

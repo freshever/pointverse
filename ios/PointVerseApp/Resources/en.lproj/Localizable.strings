@@ -161,4 +161,8 @@
 "显影失败" = "Visualization failed";
 "显影图片保存失败" = "Could not save visualization";
 "语义分类" = "Semantic Classification";
-"把转写文字转换成多语言语义坐标，用于地球上的内容聚类。首次安装后会在设备上编译一次。" = "Turns transcripts into multilingual semantic coordinates for clustering on the globe. The model is compiled once after installation.";
+"星球" = "Planet";
+"语义星球" = "Semantic Planet";
+"保存想法后，它会出现在语义星球上。" = "Save a thought and it will appear on your semantic planet.";
+"无法读取语义星球" = "Could not load the semantic planet";
+"把转写文字转换成多语言语义坐标，用于星球上的内容聚类。首次安装后会在设备上编译一次。" = "Turns transcripts into multilingual semantic coordinates for clustering on the planet. The model is compiled once after installation.";

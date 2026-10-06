@@ -1,6 +1,9 @@
 import PointVerseKit
+import PhotosUI
 import SwiftUI
 import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 
 struct PointDetailView: View {
     @EnvironmentObject private var container: AppContainer
@@ -9,12 +12,24 @@ struct PointDetailView: View {
     @StateObject private var player = AudioPlayerViewModel()
     @State private var detail: PointDetail?
     @State private var images: [LoadedPointImage] = []
+    @State private var messages: [ConversationMessage] = []
     @State private var relatedPoints: [RelatedPoint] = []
     @State private var relatedLoaded = false
     @State private var editedTranscript = ""
     @State private var isEditing = false
     @State private var isSaving = false
     @State private var confirmingDelete = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var showingPhotoPicker = false
+    @State private var showingCamera = false
+    @State private var cropSource: PhotoCropSource?
+    @State private var isAddingPhotos = false
+    @State private var photoError = false
+    @State private var isAnalyzingPhotos = false
+    @State private var visionAvailable = false
+    @State private var visionAvailabilityChecked = false
+    @State private var photoAnalysisKey: String?
+    @State private var showingManifestation = false
     let point: PointSummary
 
     var body: some View {
@@ -25,18 +40,43 @@ struct PointDetailView: View {
                 relatedPointsCard
                 ForEach(images) { item in
                     VStack(alignment: .leading, spacing: 10) {
-                        Image(uiImage: item.image)
-                            .resizable().scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: item.image)
+                                .resizable().scaledToFit()
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                            Button(role: .destructive) { removePhoto(item) } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .symbolRenderingMode(.palette)
+                                    .foregroundStyle(.white, .black.opacity(0.65))
+                            }
+                            .padding(7).buttonStyle(.plain)
+                        }
                         if let text = item.asset.recognizedText, !text.isEmpty {
                             Label { Text(verbatim: text).textSelection(.enabled) } icon: {
-                                Image(systemName: "text.viewfinder")
+                                Image(systemName: "eye.circle")
                             }
                             .font(.subheadline).foregroundStyle(.secondary)
+                        } else if visionAvailable || isAnalyzingPhotos {
+                            HStack(spacing: 7) {
+                                ProgressView().controlSize(.small)
+                                AppText("正在理解这张照片")
+                            }
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        } else {
+                            AppText("尚未理解这张照片")
+                                .font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                     .padding(12)
                     .background(.background, in: RoundedRectangle(cornerRadius: 20))
+                }
+                if isAddingPhotos { HStack { ProgressView(); AppText("正在保存照片") } }
+                if isAnalyzingPhotos { HStack { ProgressView(); AppText("正在理解照片") } }
+                if photoError { AppText("照片保存失败").foregroundStyle(.red) }
+                if !images.isEmpty && visionAvailabilityChecked && !visionAvailable {
+                    AppText("请先安装完整的 Qwen3-VL 和视觉投影模型").foregroundStyle(.orange)
+                } else if let photoAnalysisKey {
+                    AppText(photoAnalysisKey).foregroundStyle(.secondary)
                 }
             }
             .padding()
@@ -45,6 +85,31 @@ struct PointDetailView: View {
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
+        .onChange(of: selectedPhotos) { _, items in prepareCrop(items.first) }
+        .photosPicker(isPresented: $showingPhotoPicker, selection: $selectedPhotos,
+                      maxSelectionCount: 1, matching: .images)
+        .sheet(item: $cropSource) { source in
+            SquarePhotoCropView(image: source.preview, onCancel: {
+                cropSource = nil; selectedPhotos = []
+            }, onConfirm: { analysisData in
+                cropSource = nil; selectedPhotos = []
+                addPhoto(sourceData: source.originalData, analysisData: analysisData)
+            })
+        }
+        .fullScreenCover(isPresented: $showingCamera) {
+            CameraCaptureView { image in
+                showingCamera = false
+                prepareCapturedPhoto(image)
+            } onCancel: { showingCamera = false }
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingManifestation) {
+            PointManifestationView(pointID: point.id, sourceContext: manifestationContext) {
+                showingManifestation = false
+                Task { await reload() }
+            }
+            .environmentObject(container)
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PointVersePointImagesDidChange"))) { note in
             guard note.object as? String == point.id.rawValue.uuidString else { return }
             Task { await reload() }
@@ -55,7 +120,21 @@ struct PointDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button { showingManifestation = true } label: {
+                    Label { AppText("显影") } icon: { Image(systemName: "wand.and.stars") }
+                }
+                .disabled((detail?.effectiveTranscript?.isEmpty != false) && images.isEmpty)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button { showingCamera = true } label: { Label("拍照", systemImage: "camera") }
+                        .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                    Button { showingPhotoPicker = true } label: { Label("从相册选择", systemImage: "photo.on.rectangle") }
+                    if !images.isEmpty {
+                        Button(action: analyzePhotos) { Label("重新理解照片", systemImage: "eye.circle") }
+                            .disabled(isAnalyzingPhotos || !visionAvailable)
+                    }
+                    Divider()
                     if detail?.transcriptState == "failed" {
                         Button { retryTranscription() } label: { Label("重新转写", systemImage: "arrow.clockwise") }
                     }
@@ -179,6 +258,7 @@ struct PointDetailView: View {
         )
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded
+        messages = (try? await container.database.conversationMessages(pointID: point.id)) ?? []
         if let path = loaded.audioRelativePath,
            let url = try? await container.blobStore.url(for: path) { player.prepare(url: url) }
         let assets = (try? await container.database.images(pointID: point.id)) ?? []
@@ -186,7 +266,8 @@ struct PointDetailView: View {
             for asset in assets {
                 group.addTask {
                     guard let url = try? await container.imageBlobStore.url(for: asset.relativePath),
-                          let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
+                          let data = try? Data(contentsOf: url),
+                          let image = Self.thumbnail(from: data, maxPixelSize: 800) else { return nil }
                     return LoadedPointImage(asset: asset, image: image)
                 }
             }
@@ -195,7 +276,138 @@ struct PointDetailView: View {
             return result.sorted { $0.asset.createdAt < $1.asset.createdAt }
         }
         relatedPoints = (try? await related) ?? []
+        visionAvailable = await container.visionGenerator.isAvailable()
+        visionAvailabilityChecked = true
         relatedLoaded = true
+    }
+
+    private var manifestationContext: String {
+        var parts: [String] = []
+        if let transcript = detail?.effectiveTranscript, !transcript.isEmpty {
+            parts.append("Voice note: " + String(transcript.prefix(700)))
+        }
+        let photoContext = images.compactMap(\.asset.recognizedText).prefix(3).joined(separator: "\n")
+        if !photoContext.isEmpty { parts.append("Photo context:\n" + String(photoContext.prefix(600))) }
+        let discussion = messages.suffix(4).map {
+            ($0.role == "user" ? "User: " : "Assistant: ") + String($0.text.prefix(180))
+        }.joined(separator: "\n")
+        if !discussion.isEmpty { parts.append("Discussion:\n" + discussion) }
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func prepareCrop(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let preview = Self.thumbnail(from: data, maxPixelSize: 2_048) else {
+                photoError = true; selectedPhotos = []; return
+            }
+            cropSource = PhotoCropSource(originalData: data, preview: preview)
+        }
+    }
+
+    private func prepareCapturedPhoto(_ image: UIImage) {
+        guard let data = image.jpegData(compressionQuality: 0.95),
+              let preview = Self.thumbnail(from: data, maxPixelSize: 2_048) else { photoError = true; return }
+        cropSource = PhotoCropSource(originalData: data, preview: preview)
+    }
+
+    private func addPhoto(sourceData source: Data, analysisData: Data) {
+        isAddingPhotos = true; photoError = false
+        Task {
+            do {
+                await container.promptTranslator.releaseResources()
+                guard let data = Self.compressedJPEG(from: source) else { throw PointVerseError.invalidModelOutput }
+                let id = UUID()
+                let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
+                let ocr = try? await container.imageTextRecognizer.recognize(data: data, language: appLanguage)
+                let visual = try? await container.visionGenerator.describe(
+                    imageData: analysisData,
+                    localeIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
+                )
+                let context = [visual, ocr].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }.joined(separator: "\n")
+                do {
+                    try await container.database.addImage(pointID: point.id, id: id, relativePath: stored.relativePath,
+                                                          sha256: stored.sha256, byteCount: stored.byteCount,
+                                                          recognizedText: context.isEmpty ? nil : context)
+                } catch {
+                    try? await container.imageBlobStore.delete(relativePath: stored.relativePath); throw error
+                }
+                if visual == nil { photoAnalysisKey = "照片已保存，图片理解暂时不可用" }
+            } catch { photoError = true }
+            await container.visionGenerator.releaseResources()
+            isAddingPhotos = false
+            container.refreshEmbeddings()
+            await reload()
+        }
+    }
+
+    private func removePhoto(_ item: LoadedPointImage) {
+        Task {
+            guard let path = try? await container.database.removeImage(id: item.id) else { return }
+            try? await container.imageBlobStore.delete(relativePath: path)
+            container.refreshEmbeddings()
+            await reload()
+        }
+    }
+
+    private func analyzePhotos() {
+        guard visionAvailable, !images.isEmpty else { return }
+        isAnalyzingPhotos = true; photoAnalysisKey = nil
+        Task {
+            await container.promptTranslator.releaseResources()
+            var successCount = 0
+            for item in images {
+                do {
+                    let url = try await container.imageBlobStore.url(for: item.asset.relativePath)
+                    let data = try Data(contentsOf: url)
+                    guard let analysisData = Self.analysisJPEG(from: data) else { continue }
+                    let description = try await container.visionGenerator.describe(
+                        imageData: analysisData,
+                        localeIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage
+                    )
+                    let ocr = try? await container.imageTextRecognizer.recognize(data: data, language: appLanguage)
+                    let context = [description, ocr].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }.joined(separator: "\n")
+                    try await container.database.updateImageText(id: item.id, recognizedText: context)
+                    successCount += 1
+                } catch {
+                    let value = error as NSError
+                    PointVerseLog.storage.error("Photo analysis failed: domain=\(value.domain, privacy: .public) code=\(value.code, privacy: .public)")
+                }
+            }
+            await container.visionGenerator.releaseResources()
+            photoAnalysisKey = successCount > 0 ? "照片理解完成，已更新点子上下文" : "照片理解失败"
+            isAnalyzingPhotos = false
+            container.refreshEmbeddings()
+            await reload()
+        }
+    }
+
+    nonisolated private static func compressedJPEG(from data: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImageFromSource(destination, source, 0,
+                                             [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        return CGImageDestinationFinalize(destination) ? output as Data : nil
+    }
+
+    nonisolated private static func analysisJPEG(from data: Data) -> Data? {
+        guard let image = thumbnail(from: data, maxPixelSize: 512) else { return nil }
+        return autoreleasepool { image.jpegData(compressionQuality: 0.85) }
+    }
+
+    nonisolated private static func thumbnail(from data: Data, maxPixelSize: Int) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                kCGImageSourceShouldCacheImmediately: false
+              ] as CFDictionary) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     private func saveCorrection() {
@@ -225,4 +437,135 @@ private struct LoadedPointImage: Identifiable {
     var id: UUID { asset.id }
     let asset: PointImage
     let image: UIImage
+}
+
+private struct PhotoCropSource: Identifiable {
+    let id = UUID()
+    let originalData: Data
+    let preview: UIImage
+}
+
+private struct CameraCaptureView: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraCaptureView
+        init(parent: CameraCaptureView) { self.parent = parent }
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            guard let image = info[.originalImage] as? UIImage else { parent.onCancel(); return }
+            parent.onCapture(image)
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.onCancel() }
+    }
+}
+
+private struct PointManifestationView: View {
+    @EnvironmentObject private var container: AppContainer
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appLanguage) private var appLanguage
+    let pointID: PointID
+    let sourceContext: String
+    let onSaved: () -> Void
+    @State private var generatedImage: UIImage?
+    @State private var generatedPrompt = ""
+    @State private var isGenerating = false
+    @State private var diffusionStarted = false
+    @State private var progress = 0.0
+    @State private var errorKey: String?
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                if let generatedImage {
+                    Image(uiImage: generatedImage).resizable().scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    Button(action: saveToTimeline) {
+                        Label { AppText("加入想法") } icon: { Image(systemName: "checkmark.circle.fill") }
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else if isGenerating {
+                    Spacer()
+                    if diffusionStarted {
+                        ProgressView(value: progress)
+                        Text(verbatim: "\(Int(progress * 100))%")
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                        AppText("正在整理想法并加载图片模型").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                } else {
+                    Spacer()
+                    Image(systemName: "wand.and.stars").font(.system(size: 52)).foregroundStyle(.indigo)
+                    AppText("把这条想法显影成图片").font(.title3.weight(.semibold))
+                    AppText("将使用原音转写、照片和对话作为上下文")
+                        .foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button(action: generate) { AppText("开始显影") }.buttonStyle(.borderedProminent)
+                    Spacer()
+                }
+                if let errorKey { AppText(errorKey).foregroundStyle(.red) }
+            }
+            .padding()
+            .navigationTitle(AppLocalization.string("显影", language: appLanguage))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: { AppText("取消") }
+                }
+            }
+        }
+    }
+
+    private func generate() {
+        guard !sourceContext.isEmpty else { return }
+        isGenerating = true; diffusionStarted = false; progress = 0; errorKey = nil
+        Task {
+            do {
+                let locale = appLanguage == "system" ? Locale.current.identifier : appLanguage
+                generatedPrompt = try await container.promptTranslator.translateImagePromptToEnglish(
+                    "Create one coherent visual interpretation of this saved idea. " + sourceContext,
+                    localeIdentifier: locale
+                )
+                let url = try await container.imageGenerator.generate(prompt: generatedPrompt) { value in
+                    Task { @MainActor in diffusionStarted = true; progress = value }
+                }
+                generatedImage = UIImage(contentsOfFile: url.path)
+                progress = 1
+            } catch PointVerseError.modelNotInstalled {
+                errorKey = "请先安装语言模型和图片模型"
+            } catch {
+                errorKey = "显影失败"
+            }
+            isGenerating = false
+        }
+    }
+
+    private func saveToTimeline() {
+        guard let data = generatedImage?.jpegData(compressionQuality: 0.9) else { return }
+        Task {
+            do {
+                let id = UUID()
+                let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
+                try await container.database.addImage(pointID: pointID, id: id, relativePath: stored.relativePath,
+                                                      sha256: stored.sha256, byteCount: stored.byteCount,
+                                                      recognizedText: generatedPrompt)
+                NotificationCenter.default.post(name: Notification.Name("PointVersePointImagesDidChange"),
+                                                object: pointID.rawValue.uuidString)
+                container.refreshEmbeddings()
+                onSaved()
+            } catch { errorKey = "显影图片保存失败" }
+        }
+    }
 }
