@@ -1,4 +1,5 @@
 import PointVerseKit
+import PencilKit
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -22,6 +23,7 @@ struct PointDetailView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var showingPhotoPicker = false
     @State private var showingCamera = false
+    @State private var showingDoodle = false
     @State private var cropSource: PhotoCropSource?
     @State private var isAddingPhotos = false
     @State private var photoError = false
@@ -103,6 +105,18 @@ struct PointDetailView: View {
             } onCancel: { showingCamera = false }
             .ignoresSafeArea()
         }
+        .fullScreenCover(isPresented: $showingDoodle) {
+            DoodleCaptureView { data in
+                showingDoodle = false
+                guard let analysisData = Self.analysisJPEG(from: data) else {
+                    photoError = true
+                    return
+                }
+                addPhoto(sourceData: data, analysisData: analysisData)
+            } onCancel: {
+                showingDoodle = false
+            }
+        }
         .sheet(isPresented: $showingManifestation) {
             PointManifestationView(pointID: point.id, sourceContext: manifestationContext) {
                 showingManifestation = false
@@ -130,6 +144,7 @@ struct PointDetailView: View {
                     Button { showingCamera = true } label: { Label("拍照", systemImage: "camera") }
                         .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
                     Button { showingPhotoPicker = true } label: { Label("从相册选择", systemImage: "photo.on.rectangle") }
+                    Button { showingDoodle = true } label: { Label("涂鸦", systemImage: "pencil.tip.crop.circle") }
                     if !images.isEmpty {
                         Button(action: analyzePhotos) { Label("重新理解照片", systemImage: "eye.circle") }
                             .disabled(isAnalyzingPhotos || !visionAvailable)
@@ -443,6 +458,91 @@ private struct PhotoCropSource: Identifiable {
     let id = UUID()
     let originalData: Data
     let preview: UIImage
+}
+
+private struct DoodleCaptureView: View {
+    @Environment(\.appLanguage) private var appLanguage
+    @State private var drawing = PKDrawing()
+    @State private var canvasSize: CGSize = .zero
+    let onSave: (Data) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { proxy in
+                DoodleCanvas(drawing: $drawing)
+                    .background(Color.white)
+                    .onAppear { canvasSize = proxy.size }
+                    .onChange(of: proxy.size) { _, value in canvasSize = value }
+            }
+            .ignoresSafeArea(edges: .bottom)
+            .navigationTitle(AppLocalization.string("涂鸦", language: appLanguage))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: onCancel) { AppText("取消") }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { drawing = PKDrawing() } label: { AppText("清空") }
+                        .disabled(drawing.strokes.isEmpty)
+                    Button {
+                        if let data = renderedJPEG() { onSave(data) }
+                    } label: { AppText("完成") }
+                    .fontWeight(.semibold)
+                    .disabled(drawing.strokes.isEmpty || canvasSize.width < 1 || canvasSize.height < 1)
+                }
+            }
+        }
+    }
+
+    private func renderedJPEG() -> Data? {
+        let sourceBounds = CGRect(origin: .zero, size: canvasSize)
+        let targetWidth: CGFloat = 1_024
+        let targetSize = CGSize(width: targetWidth, height: targetWidth * canvasSize.height / canvasSize.width)
+        let sketch = drawing.image(from: sourceBounds, scale: targetWidth / canvasSize.width)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: targetSize, format: format).jpegData(withCompressionQuality: 0.9) { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+            sketch.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+    }
+}
+
+private struct DoodleCanvas: UIViewRepresentable {
+    @Binding var drawing: PKDrawing
+
+    func makeCoordinator() -> Coordinator { Coordinator(drawing: $drawing) }
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        let canvas = PKCanvasView()
+        canvas.delegate = context.coordinator
+        canvas.drawing = drawing
+        canvas.drawingPolicy = .anyInput
+        canvas.backgroundColor = .white
+        canvas.isOpaque = true
+        canvas.tool = PKInkingTool(.pen, color: .black, width: 5)
+        DispatchQueue.main.async {
+            context.coordinator.toolPicker.setVisible(true, forFirstResponder: canvas)
+            context.coordinator.toolPicker.addObserver(canvas)
+            canvas.becomeFirstResponder()
+        }
+        return canvas
+    }
+
+    func updateUIView(_ canvas: PKCanvasView, context: Context) {
+        if canvas.drawing != drawing { canvas.drawing = drawing }
+    }
+
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
+        @Binding var drawing: PKDrawing
+        let toolPicker = PKToolPicker()
+
+        init(drawing: Binding<PKDrawing>) { _drawing = drawing }
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) { drawing = canvasView.drawing }
+    }
 }
 
 private struct CameraCaptureView: UIViewControllerRepresentable {
