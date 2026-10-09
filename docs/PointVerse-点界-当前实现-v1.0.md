@@ -1,184 +1,326 @@
 # 点界 PointVerse 当前实现状态
 
-> 版本：v1.0
-> 日期：2026-09-13
-> 范围：`ios/` 原生工程（截至提交 `0b0c7db`）
-> 目的：如实记录代码库已经落地的能力，与《核心语音POC v0.9》《技术方案 v0.9》两份设计文档做对照，标注简化、扩展与未实现项。本文不代表产品方向的最终结论，只反映工程现状。
+> 文档版本：v1.1
+>
+> 更新日期：2026-10-09
+>
+> 代码基线：`6235e0b`（`10 build revision`）
+>
+> 范围：`ios/` 原生 iPhone、Designed for iPhone on Mac 与 Apple Watch 工程
+>
+> 性质：本文记录代码库已经落地的能力和已知边界，不代表所有设计方向都已完成。
 
-> 2026-09-15 精简版更新：iPhone 已移除 Whisper、Qwen、Qwen-VL、Stable Diffusion 的构建与运行时依赖，语音转写统一使用 Apple Speech 强制端侧模式，图片文字使用 Vision OCR，标题使用转写首句规则生成。新增 SceneKit 3D 星图作为 Point 浏览入口；当前连线仅为视觉布局提示，尚未持久化关系语义。
+## 0. 结论摘要
 
-## 0 结论摘要
-
-工程已经超出 POC 文档定义的"录音 → 转写 → 单一标题"范围，长成了一个多模态本地优先应用：语音捕获、拍照/相册配图、图片生成（显影）、逐点对话（Chat）、四语言界面切换均已实现并可运行。但在"结构化整理"和"可靠任务调度"两处核心设计上，实现比文档设想的简单：
-
-- LLM 只产出**标题**一个字段，POC 设计的 `summary/tags/nextQuestion` 结构化输出留在类型定义里，从未被真正生成过。
-- `durable_tasks` 表按文档设计写入，但没有任何代码读取它做重试/续租；真实的"任务队列"是启动时扫描一遍未完成转写并重跑一次。
-- FTS5 全文索引表持续维护写入，但搜索查询实际走的是 `LIKE` 模糊匹配，索引表是写而不读的死代码路径。
-
-同时，图片生成（Stable Diffusion 2.1 本地推理）、点内拍照与视觉理解（Qwen3-VL）、逐点对话、四语言本地化系统，均是两份设计文档完全没有提及的新增能力。
-
-## 1 总体架构
+当前工程已经从“录音并转写”的语音 POC，发展成一个本地优先的多模态 Point 系统。主要闭环包括：
 
 ```text
-PointVerseApp (SwiftUI, iOS 17+)
-├── Features/Capture          录音、拍照采样、语言选择
-├── Features/PointDetail      转写、对话、显影、照片管理
-├── Features/PointList        列表与搜索
-├── Features/ModelSettings    模型下载/校验/卸载
-├── Features/ImageGeneration  独立文生图/图片取字工具
-└── App                       多语言容器、后台下载事件
-
-PointVerseKit (Swift Package)
-├── Domain        值类型 DTO：PointID/StoredAudio/PointImage/PointDraft…
-├── Infrastructure
-│   ├── Database  GRDB + SQLite，两次迁移 v1/v2
-│   ├── Storage   AudioBlobStore / ImageBlobStore（内容寻址、路径穿越防护）
-│   └── Models    ModelRegistry + ModelExecutionGate（全局单模型互斥锁）
-└── UseCases      CaptureUseCase（actor，串行化一次录音生命周期）
-
-Vendor
-├── WhisperRuntime   whisper.cpp 静态 XCFramework
-└── LlamaRuntime     llama.cpp 静态 XCFramework（含 mtmd 多模态 API）
-
-外部依赖（project.yml）
-├── ml-stable-diffusion（Apple）→ Core ML Stable Diffusion 2.1 Base
-└── ZIPFoundation → 解压图生成模型包
+语音／文本／照片
+       ↓
+原始内容可靠保存
+       ↓
+系统 Speech 或 Whisper 转写
+       ↓
+Qwen 标题、对话与内容整理
+       ↓
+multilingual-e5-small 语义向量
+       ↓
+关联候选、伪 3D 星图、语义星球
+       ↓
+照片理解、声音理解、图片显影
 ```
 
-四个 Tab：记录（Capture）、想法（PointList）、模型（ModelSettings）、图片（ImageGeneration）。
+当前已经实现：
 
-## 2 领域模型（与 POC 设计的差异）
+- iPhone 文本与语音捕获，保存后进入 Point 详情。
+- Apple Watch 独立录音、离线暂存及通过 WatchConnectivity 传输到 iPhone。
+- Apple Speech 与本地 Whisper 多候选转写，用户可以选择和修正结果。
+- Qwen 本地标题、Point 内对话和生图提示词整理。
+- Vision OCR 与 Qwen3-VL 照片理解。
+- `multilingual-e5-small` Core ML INT8 权重按需下载、Float32 推理、384 维向量和跨语言关联。
+- 伪 3D 星图和带经纬度、行政区域、缩放层级的语义星球。
+- Stable Diffusion 2.1 Core ML 本地文生图，以及从 Point 详情发起的“显影”。
+- 本地声音理解：响度、节奏、BPM、音高、音符、调性、旋律序列和 CLAP 音乐语义标签。
+- 中文简体、中文繁体、英文和日文界面切换。
+- 模型后台下载、断点续传、校验、镜像回退和卸载。
 
-`PointVerseKit/Sources/PointVerseKit/Domain/Models.swift` 是一组 `Sendable` 值类型，不是 ORM 对象图。
+尚未形成完整闭环的主要部分：
 
-| 类型 | 说明 |
+- 语义星球的局部近邻保持仍需优化；1024 Point 实验的 `Neighbor Recall@5` 只有 `0.108`。
+- 省／市／区名称目前主要由确定性关键词规则生成并允许手工修改，尚未接入完整的本地模型命名流程。
+- 关系主要来自 E5 相似度候选；支持、反驳、延伸等 Local Judge 关系类型尚未可靠实现。
+- `durable_tasks` 仍不是完整的后台租约、退避和重试调度器。
+- 跨设备资料库同步、备份恢复、导出和端到端加密尚未完成。
+
+## 1. 平台与工程结构
+
+最低系统版本：
+
+- iOS 17.0+
+- watchOS 10.0+
+- Xcode 26+
+- Apple Silicon Mac 可用 “Designed for iPhone” 运行 iOS App；E5 不再被代码主动禁用。
+
+当前主要模块：
+
+```text
+ios/
+├── PointVerseApp                 iPhone / iPad 兼容应用
+│   ├── App                       容器、启动、语言和后台下载
+│   └── Features
+│       ├── Capture               语音、文本、相机帧捕获
+│       ├── Embedding             E5 Core ML 与语义索引
+│       ├── PointDetail           转写、对话、照片、声音理解、显影
+│       ├── PointList             列表与搜索
+│       ├── StarMap               伪 3D 星图与语义星球
+│       ├── ImageGeneration       Stable Diffusion 与 OCR
+│       └── ModelSettings         模型下载和选择
+├── PointVerseKit                 领域模型、数据库、存储和布局算法
+├── PointVerseWatchApp            Watch 录音、暂存和传输
+└── Vendor
+    ├── LlamaRuntime              llama.cpp / 多模态运行时
+    └── StableDiffusionRuntime    本地图片生成运行时
+```
+
+主应用有 6 个 Tab：记录、星图、星球、想法、图片和模型。
+
+## 2. 捕获与 Point 生命周期
+
+### 2.1 iPhone
+
+记录页支持语音和文本两种模式。语音路径为：
+
+```text
+开始录音
+  ↓
+AAC / M4A 原音写入本地
+  ↓
+SQLite 事务创建 Point、Message、AudioAsset、Transcript 与任务
+  ↓
+立即进入详情
+  ↓
+后台转写、标题和 Embedding
+```
+
+录音过程中可以启用相机采样，结束后选择保留的画面。文本模式直接创建 Point，不要求麦克风，因此适合模拟器和 My Mac 调试。
+
+`CaptureUseCase` 是 actor，串行化一次录音的 `start → finish/cancel` 生命周期。`messages.operation_id` 有唯一约束，同一操作重复提交会返回已有 Point，避免同一会话内重复落库。
+
+### 2.2 Apple Watch
+
+Watch App 已作为独立 target 存在，当前链路为：
+
+```text
+Watch 录音
+  ↓
+本地 WatchCaptureStore 暂存
+  ↓
+WatchConnectivity 文件传输
+  ↓
+iPhone PhoneWatchTransferReceiver 接收
+  ↓
+进入与 iPhone 录音相同的数据库和转写流程
+```
+
+传输失败或手机暂时不可达时，Watch 保留待发送录音，后续继续尝试。Watch 不在手表端运行 Whisper、E5、Qwen 或图片模型。
+
+## 3. 转写、标题与对话
+
+### 3.1 转写
+
+默认可以使用系统 `SFSpeechRecognizer`，并要求端侧识别。安装 Whisper 后可以用本地 whisper.cpp 生成另一份转写候选。
+
+数据库从 v5 开始保存 `transcription_candidates`：
+
+- 同一段原音可保留多个引擎结果。
+- 用户可在详情页切换当前采用的候选。
+- 用户修正写入 `user_text`，不会覆盖引擎原文。
+- 切换候选或修正内容会递增 Point revision，并触发 Embedding 重算。
+
+### 3.2 标题与对话
+
+Qwen 本地语言模型目前承担：
+
+- 根据 Point 内容生成标题。
+- 在 Point 详情中根据原文和最近上下文回复。
+- 按不同对话角色生成简洁或探索式回答。
+- 将中文、日文等请求整理为 Stable Diffusion 使用的英文提示词。
+
+模型不可用时，标题使用规则式首句／截断结果；Point 保存、原音播放和文字编辑不会被模型失败阻塞。
+
+## 4. 图片、OCR、视觉理解与显影
+
+图片可以来自录音期间的相机采样、详情页拍照、相册、涂鸦或本地生成。
+
+图片处理由两层能力组成：
+
+- Vision OCR：快速提取图片文字，不需要额外模型。
+- Qwen3-VL：结合 OCR 描述物体、场景和可能含义，需要语言模型与视觉投影模型。
+
+识别结果写入 `point_images.recognized_text`，并进入 Point 的语义文本，使照片内容可以参与 E5 关联和星球布局。
+
+“显影”流程已经位于 Point 详情页：
+
+1. 汇总当前 Point 的转写、图片说明和对话上下文。
+2. Qwen 整理英文画面提示词。
+3. Stable Diffusion 2.1 Core ML 生成 512×512 候选图。
+4. 用户确认后将图片保存回当前 Point 时间线。
+
+当前主要是 text-to-image，不保证保持输入照片的结构；图生图、局部重绘和 ControlNet 尚未接入。
+
+## 5. E5 Embedding 与关联
+
+实际模型已经由早期文档中的 `bge-small-zh-v1.5` 改为：
+
+```text
+模型：intfloat/multilingual-e5-small 的 Hark Core ML 转换
+模型 ID：hark-multilingual-e5-small-coreml-int8
+权重：INT8，约 118 MB
+计算：Float32
+输出：384 维，L2 normalize
+存储：Float16 little-endian BLOB
+运行：Core ML，当前配置优先 CPU 稳定性
+```
+
+模型按需下载。App 内置 tokenizer；权重下载完成后，会下载并校验 Core ML descriptor，在 Application Support 中组装 `.mlpackage`，然后由系统编译为 `.mlmodelc`。
+
+参与 Embedding 的语义证据包括：
+
+- 文本 Point 原文；
+- 用户修正或当前选中的转写；
+- 图片 OCR／视觉说明；
+- 后续用户对话；
+- 声音理解的语义标签。
+
+向量与 `pointID + contentRevision + modelID` 绑定。正文或派生语义发生变化时，旧向量失效并重新排队。
+
+当前关联先从用户资料库的向量中减去公共质心，再用残差向量计算“相对关联度”，避免 multilingual E5 偏高且区间狭窄的原始余弦值让无关 Point 互相连接。详情页和星图使用相同口径；星图每个 Point 最多显示 3 条突出候选边。相对关联度只是“在当前资料库中可能相关”，不是百分比，也不是重复、支持或因果关系。
+
+## 6. 星图与语义星球
+
+### 6.1 星图
+
+`StarMapView` 使用 SwiftUI Canvas 构建伪 3D 空间，不再依赖 SceneKit。支持单点进入、拖动、缩放、相关连线、相似度显示，以及缩放时的节点聚合与展开。
+
+### 6.2 语义星球
+
+`GlobeMapView` 将持久化的经纬度投影到可旋转球面。当前实现包含：
+
+- 经纬网和南北极语义标识；
+- E5 社区颜色；
+- 球面旋转、平移感和更大范围缩放；
+- 与相机旋转解耦的固定聚合关系；
+- 大陆／行政区域视觉层；
+- 省、市、区三级名称和名称编辑器；
+- 1024 条实验 Point 的独立 Demo 页面；
+- 不同比例尺下逐级显示区域、聚合和叶子 Point。
+
+`SemanticGeographyEngine` 使用稳定的 `point_geography` 记录保存坐标、community、版本、置信度和 pinned 状态。已有坐标优先保留，新 Point 根据 E5 邻居落位，避免每次启动或旋转造成集合变化。
+
+当前使用的布局身份仍是 `relativeSemanticV6`。设计文档提出的 `semantic-atlas-v7`、稳定层级社区树和更强局部近邻保持属于下一阶段，不应写成已完成。
+
+## 7. 声音与音乐理解
+
+数据库 v6～v8 增加了 `audio_understanding`、音高字段和旋律序列字段。详情页可以主动运行声音理解，当前输出包括：
+
+- 时长和响度；
+- BPM 与节奏强度；
+- 主导音高；
+- 检测到的音符；
+- 估计调性；
+- 带开始时间和时长的音符序列；
+- 是否包含人声；
+- 本地规则标签以及可选 CLAP 音乐语义标签。
+
+基础音频特征和单音旋律检测由本地 DSP 完成。可选的 `GridshiftCLAP` Core ML INT8 模型约 64 MB，用于补充音乐语义向量／标签。
+
+界面支持用 `AVAudioEngine` 合成本地预览音，按识别出的音符或时间序列回放旋律。这是分析结果试听，不是对原音的重制或高保真乐谱转录；多声部和复杂伴奏准确率仍有限。
+
+## 8. 数据库现状
+
+SQLite 使用 GRDB，当前迁移到 v8：
+
+| 迁移 | 主要内容 |
 | --- | --- |
-| `VoiceCaptureCommand` | 携带 `operationID`，是幂等机制的入口 |
-| `StoredAudio` | 落盘后的音频元数据（路径、sha256、时长、编码） |
-| `PointImage` | **新增概念**：点上挂载的一张图片，含 `recognizedText`（OCR 或生成 prompt） |
-| `ConversationMessage` | **新增概念**：点内的对话消息（用户/模型） |
-| `PointDraft` | POC 设想的结构化产出（title/summary/tags/nextQuestion），**只在测试中被构造过，生产代码从未使用** |
+| v1 | Point、消息、音频、转写、派生结果、任务和全文索引 |
+| v2 | Point 图片 |
+| v3 | Embedding、关系候选与用户确认关系 |
+| v4 | 持久化语义地理坐标 |
+| v5 | 多转写候选 |
+| v6 | 声音理解与 CLAP 向量 |
+| v7 | 音符与调性 |
+| v8 | 带时间信息的音符序列 |
 
-结论：POC 文档"标题 + 摘要 + 标签 + 下一问"的结构化整理契约，在实现里被简化为**只生成标题**。`derivations` 表里的 `summary/tags_json/next_question/raw_json` 列仍在 schema 中，但没有任何 INSERT 语句写入过。
+重要数据原则：
 
-## 3 数据库
+- 原始录音、引擎转写和用户修正分开保存。
+- Point 删除通过外键级联清理数据库记录，并尝试删除音频与图片文件。
+- Embedding、地理坐标、模型标题和声音理解是可重建派生数据。
+- 用户原文和用户确认关系不能被模型升级静默覆盖。
 
-GRDB + SQLite，`DatabaseMigrator` 两次迁移：`v1`（POC 设计的核心表）、`v2-point-images`（新增图片表）。
+目前仍需关注：
 
-### v1（基本照抄 POC 设计）
+- `durable_tasks` 会记录任务状态，但还没有完整的 lease、指数退避和后台执行器。
+- FTS5 表被维护，但列表搜索仍应继续核实是否已完全切换到 FTS 查询路径。
+- 资产已有 `committing/available/quarantined` 类型，但实际隔离和恢复流程仍不完整。
 
-`points`、`messages`（`operation_id` 唯一约束承担幂等）、`audio_assets`、`transcripts`、`derivations`、`durable_tasks`、`point_search`（FTS5, `unicode61`）— 表结构与 POC 文档第 7.1 节几乎一致。
+## 9. 本地模型与资源管理
 
-### v2 新增
+当前模型清单：
 
-```sql
-CREATE TABLE point_images (
-  id TEXT PRIMARY KEY NOT NULL,
-  point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
-  relative_path TEXT NOT NULL UNIQUE,
-  sha256 TEXT NOT NULL,
-  byte_count INTEGER NOT NULL,
-  recognized_text TEXT,
-  created_at REAL NOT NULL
-);
-```
+| 类别 | 模型 |
+| --- | --- |
+| 语音 | Whisper tiny/base/small Q5_1；Apple Speech 无需下载 |
+| 语言 | Qwen3 0.6B Q8、Qwen3 1.7B Q8、Qwen3-VL 2B Q8 |
+| 视觉 | Qwen3-VL 2B + mmproj |
+| Embedding | Hark multilingual-e5-small Core ML INT8 |
+| 图片 | Stable Diffusion 2.1 Base Core ML 6-bit |
+| 音乐 | Gridshift CLAP Music Core ML INT8 |
 
-### 三处"写了但没真正用"的死代码路径
+`ModelDownloadManager` 支持后台 URLSession、断点续传、多下载源、磁盘空间检查、SHA-256 校验、原子安装和卸载。`ModelExecutionGate` 串行化重型模型，降低同时加载 Whisper、Qwen、视觉和扩散模型导致的内存峰值。
 
-1. **`durable_tasks`**：`commitVoiceCapture` 插入一行 `transcribe` 任务，`saveTranscript`/`failTranscription` 会更新它的状态，但没有任何调度器读取 `next_run_at`/`lease_until` 做重试或续租。真正驱动转写的是 `TranscriptionService.resumePending()`：启动时查一遍 `transcripts.state IN ('queued','running')` 的点，逐个重跑一次——没有退避、没有次数上限、没有崩溃后基于 `operationID` 的重放。
-2. **`point_search` FTS5 表**：每次转写/标题/图片 OCR 完成都会 `refreshSearch` 重建索引，但 `listPoints(matching:)` 实际用的是对 `accepted_title`/`user_text`/`engine_text`/`summary`/`tags_json`/`point_images.recognized_text` 做 `LIKE '%...%' ESCAPE '\'` 扫描，从未查询过 `point_search`。
-3. **`AssetState.committing`/`.quarantined`**：类型和 CHECK 约束都在，但所有音频资产都直接以 `'available'` 状态写入，没有分阶段提交/隔离审查流程。
+模型默认不随 App 打包，用户按需下载。删除模型不会删除 Point 原始内容，但会让对应派生功能暂时不可用。
 
-幂等机制是真实生效的：`messages.operation_id` 唯一约束 + 插入前查重（`PointDatabase.commitVoiceCapture`），同一 `operationID` 重复提交返回同一个 `PointID`。但这个 ID 只存活在 `CaptureUseCase` actor 的内存里，进程被杀后不会持久化重放——保护的是同一会话内的重复点击/竞态，而不是 POC 设想的"崩溃后凭 operationId 重放"。
+## 10. 本地化和交互状态
 
-## 4 语音捕获与转写
+应用提供简体中文、繁体中文、英文和日文资源，并允许在 App 内即时切换。当前使用自建 `AppLocalization`／`AppText`，不是完全依赖 SwiftUI 的 `LocalizedStringKey`。
 
-`CaptureUseCase`（`PointVerseKit`）是一个 actor，串行化 `start → finish/cancel` 一次录音的生命周期，`finish` 失败会尝试删除已落盘的音频文件做回滚。`SystemAudioRecorder`（app 层）封装 `AVAudioRecorder`，AAC/M4A、24kHz 单声道；踩过一个坑：`.spokenAudio` 音频模式在真机上触发 `paramErr -50`，改用 `.default` 模式（代码注释有记录）。
+最新录音页面会根据可用高度和宽度进入 compact 布局，缩小日期、间距和录音按钮，改善小屏设备与横向可用空间。
 
-转写走 `HybridSpeechRecognizer`：
+### 10.1 应用级测试模式
 
-- 已安装本地 Whisper 模型 → 用 `WhisperRecognizer`（直接调用 whisper.cpp C API），语言只做 zh/ja/en 三选一 + auto 的桶分类，不支持任意 locale 直通；每次转写后销毁 context，不做常驻模型。
-- 未安装 → 回退到系统 `SFSpeechRecognizer`（`requiresOnDeviceRecognition = true`）；**模拟器上直接抛错**，提示"请使用真机测试"。
+星图工具栏提供“测试模式”入口。进入后整个应用的 6 个 Tab 都会切换到独立的测试容器，而不只是打开一个演示页面：
 
-转写成功后立即：写入基于规则的兜底标题（`fallbackTitle`，字符截断+省略号），再异步尝试 LLM 标题生成（`QwenTitleGenerator.generateTitle`）——LLM 只输出纯文本标题，不是 JSON，靠字符串后处理（去除 ChatML 标记、取首行、按语言截断）清洗；失败不重试，直接保留规则标题。
+- 正式数据库：`pointverse.sqlite`
+- 测试数据库：`test-mode/pointverse-test.sqlite`
+- 测试录音和图片也写入独立的 `test-mode` 数据目录。
+- 已下载的 Whisper、Qwen、E5、Stable Diffusion 和 CLAP 模型由两个模式共享，避免重复占用空间。
+- WatchConnectivity 始终连接正式容器，手表记录不会误入测试库。
+- 顶部紫色状态栏持续显示当前处于测试模式，并提供“+100”和“退出”。
+- 每次点击“+100”向测试库追加 100 条跨技术、烹饪、园艺、天文、运动、艺术、金融、旅行、情绪和历史主题的纯文本 Point。
+- E5 可用时，新测试文本会在测试库内单独生成 Embedding；不可用时仍可使用系统语义降级查看。
 
-标题的 `model_id` 会拼接界面语言（如 `qwen3-0.6b-q8_0-title-zh-hans`），因此**切换界面语言会让所有点的标题重新生成一遍**。
+退出测试模式只切换回正式容器，不删除测试数据；下次进入可以继续追加，用于观察 100、200、1000 条数据下的关联、聚合和布局表现。
 
-## 5 本地大模型的实际用途
+## 11. 测试、构建与发布状态
 
-`QwenTitleGenerator`（llama.cpp 封装）承担三件事，全部是纯文本 prompt + 字符串解析，没有 JSON schema/grammar 约束：
+`PointVerseKit` 目前有 `PointDatabaseTests` 和 `ModelRegistryTests`，主要覆盖数据库、幂等、搜索／级联处理，以及模型校验和下载状态。App UI、WatchConnectivity、Core ML 真机推理、声音分析和图片生成仍缺少系统化自动测试。
 
-1. 生成标题（见上）。
-2. `generateReply`：驱动点内对话功能，把最近 8 轮对话 + 语音转写作为上下文。
-3. `translateImagePromptToEnglish`：把中/日文的文生图请求翻译成英文 prompt（因为本地 Stable Diffusion 模型只认英文）。
+当前工程配置：
 
-`QwenVisionGenerator`（同文件内另一个 actor）用 Qwen3-VL + mmproj 投影模型，通过 llama.cpp 的 `mtmd_*` 多模态 API 做图片理解/描述，是转写之外的第二条本地模型链路，POC 文档完全未提及。
+- 主 App：`org.dianjie.pv`
+- Watch App：`org.dianjie.pv.watchkitapp`
+- Marketing Version：`0.1.0`
+- 生成后的 Xcode 工程 Build：`10`
+- TestFlight 导出配置：`ios/ExportOptions-TestFlight.plist`
 
-全局用一个 `ModelExecutionGate` actor（互斥锁 + FIFO 等待队列）确保 whisper/llama/vision/diffusion 任一时刻只有一个模型在跑——这是工程上应对大模型内存压力的必要设计，两份文档都没写。
+注意：`ios/project.yml` 中部分 build number 仍是 `1`，而当前 `PointVerse.xcodeproj` 已是 `10`。再次运行 XcodeGen 可能覆盖生成工程中的版本号，发布前应先统一两个来源。
 
-## 6 图片生成与拍照能力（全新功能，两份设计文档均未涉及）
+## 12. 下一阶段建议
 
-- **文生图**：Apple `ml-stable-diffusion` 包运行 Core ML 版 Stable Diffusion 2.1 Base（6-bit 量化），40 步 DPM-Solver++，针对人物/动物主体做了手工的正向/负向 prompt 增强（对抗多肢体、融合爪子等 SD2.1 常见畸变）。
-- **图片取字**：Vision 框架 `VNRecognizeTextRequest`，纯系统能力，无需下载模型。
-- **拍照/相册配图**：录音过程中可选开启摄像头帧采样（每 1.2 秒一帧，最多 12 帧，事后从中挑最多 5 张保留），或在点详情页手动拍照/选相册图片，统一走正方形裁剪 UI 后存入 `point_images`。
-- **"显影"（Manifestation）**：点详情页内的功能，把该点的语音转写 + 已有照片描述 + 最近对话拼成上下文，翻译成英文后调用本地文生图，生成结果可选择"加入想法"存回同一个点的时间线。
-
-拍照配图与文生图共用同一张 `point_images` 表——无论来源是相机、相册还是本地生成，落到数据库里都是同一种记录，只是 `recognized_text` 字段含义不同（OCR 文本 vs 生成用的 prompt）。
-
-## 7 模型管理
-
-`ModelRegistry` 内置 8 个模型清单（3 个 Whisper 量化档位、2 个 Qwen3 语言模型、1 个 Stable Diffusion、2 个 Qwen3-VL 视觉模型+投影模型），每个都带 SHA-256、体积、所需磁盘空间、License、下载镜像。
-
-`ModelDownloadManager` 的实现比两份文档设想的更完整：
-
-- 用后台 `URLSession`（`background` 配置）下载，配合 `AppDelegate` 的 `handleEventsForBackgroundURLSession`，App 被系统挂起后下载不中断。
-- 支持断点续传（`resumeData` 落盘复用）。
-- 多镜像回退：官方源失败或校验失败自动换镜像（`hf-mirror.com`/`modelscope.cn`，照顾国内网络环境）。
-- 安装即校验：SHA-256 通过后才原子改名为正式文件，不一致会自动换源重试。
-- **卸载功能已实现**（删除已装/部分下载/续传文件，压缩包类模型连解压目录一起清理）。
-
-## 8 界面与交互
-
-- **CaptureView**：长按录音，可选同步拍照，录音时可临时切换语言；保存后立即跳转详情页，转写在后台异步进行（不阻塞导航）。
-- **PointListView**：可搜索列表（走上文提到的 LIKE 查询）、滑动删除、下拉刷新。
-- **PointDetailView**：播放原音、转写文字可编辑修正（只写 `user_text`，不覆盖 `engine_text`，符合"源数据不可覆盖"的原则）、失败可重试转写、照片+对话混排的时间线、文字/语音两种方式发消息、"显影"入口、删除点。
-- **ModelSettingsView**：界面语言切换 + 各类模型的下载/选择/卸载。
-- **ImageGenerationView**：独立的文生图与图片取字工具。
-
-## 9 本地化
-
-`Resources/{en,ja,zh-Hans,zh-Hant}.lproj` 四套语言资源，但**不是**依赖 SwiftUI 原生的 `LocalizedStringKey`/系统 locale——而是自建了一套 `AppLocalization` + `AppText`，通过 `@AppStorage("appLanguage")` 驱动运行时手动查表，允许应用内切换语言立即生效、无需重启系统设置。这套机制两份设计文档完全没有提到。
-
-## 10 与设计文档的偏差一览
-
-**比文档简化的部分**
-
-- 结构化 LLM 产出（title/summary/tags/nextQuestion）→ 只剩标题。
-- DurableTask 调度（lease/重试/退避）→ 启动时扫一遍未完成任务重跑一次，无持久化重放。
-- FTS5 全文索引 → 写入维护，但搜索走 LIKE，索引未被查询使用。
-- 音频资产的 `committing/quarantined` 阶段状态 → 直接落地为 `available`，无隔离审查流程。
-- Whisper 多语言支持 → 只桶分为 zh/ja/en/auto 四类。
-
-**文档之外新增的能力**
-
-- 本地文生图（Stable Diffusion 2.1 Core ML）+ "显影"功能。
-- 点内拍照/相册配图 + Qwen3-VL 视觉理解。
-- 点内对话（Chat）能力，语音/文字均可发消息。
-- 四语言、应用内实时切换的自建本地化系统。
-- 更完整的模型生命周期管理：后台下载、断点续传、多镜像、卸载。
-- 全局 `ModelExecutionGate`，保证本地模型互斥执行。
-- 无 Whisper 模型时自动回退系统 `SFSpeechRecognizer`。
-
-**文档规划但未实现的部分**
-
-- 跨设备同步、Apple Watch、3D 点图、关系推荐——两份文档中属于更远期范围的内容，代码中完全没有涉及，符合预期（未提前建设）。
-
-## 11 测试覆盖
-
-`PointVerseKit` 包内两个测试文件，覆盖数据库幂等/搜索/级联删除/转写状态机（`PointDatabaseTests`）和模型校验/断点续传（`ModelRegistryTests`）。App 层（转写编排、LLM 生成、图片生成、UI）目前没有自动化测试覆盖。
-
-## 12 建议关注点（供后续讨论，非结论）
-
-1. `durable_tasks` 和 `point_search` 目前是写入但不消费的表，要么补上真正的调度/检索逻辑，要么考虑简化掉以减少认知负担和维护成本。
-2. `PointDraft` 类型已经与实际产出脱节，如果确认不做结构化整理，可以考虑清理测试和类型定义，避免误导后来者。
-3. 图片生成、点内对话、拍照配图这几项已是产品的实际组成部分，建议尽快补一份面向这些新能力的设计说明，让 backlog（`docs/backlog.md`）和技术方案与实现同步。
+1. 用人工相关性样本校准 E5 阈值、Recall@K 和跨语言结果，避免把 85% 直接解释成强关系。
+2. 为星球布局增加社区内部局部降维或邻域保持，提升叶子层的语义可信度。
+3. 将省／市／区主题命名接入受约束的本地 Qwen 输出，同时保留用户编辑和稳定 ID。
+4. 将候选关系与用户确认关系在界面和数据库中彻底分离，再实现可解释 Local Judge。
+5. 补齐任务调度、模型失败恢复、Watch 传输、真机 Core ML 和数据导出测试。
+6. 统一 `project.yml` 与 `.xcodeproj` 的版本和 target 配置，避免 XcodeGen 引入发布回归。

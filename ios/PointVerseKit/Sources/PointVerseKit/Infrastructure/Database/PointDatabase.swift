@@ -751,12 +751,12 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
     public func relatedPoints(
         to pointID: PointID,
         modelID: String,
-        minimumScore: Float = 0.85,
+        minimumScore: Float = 0.38,
         limit: Int = 5
     ) async throws -> [RelatedPoint] {
         let records = try await embeddings(modelID: modelID)
-        guard let source = records.first(where: { $0.pointID == pointID }) else { return [] }
-        let hits = EmbeddingMath.topK(query: source.vector, records: records, excluding: pointID, limit: max(limit * 3, limit))
+        guard records.contains(where: { $0.pointID == pointID }) else { return [] }
+        let hits = EmbeddingMath.relativeTopK(records: records, query: pointID, limit: max(limit * 3, limit))
             .filter { $0.score >= minimumScore }
             .prefix(limit)
         let entries = try await pointMapEntries()

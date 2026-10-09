@@ -4,8 +4,16 @@ import CryptoKit
 import PointVerseKit
 import QwenAdapter
 
+enum AppStorageMode: Equatable {
+    case production
+    case test
+}
+
 @MainActor
 final class AppContainer: ObservableObject {
+    static let enterTestMode = Notification.Name("PointVerseEnterTestMode")
+    static let testDataDidChange = Notification.Name("PointVerseTestDataDidChange")
+    let storageMode: AppStorageMode
     let database: PointDatabase
     let blobStore: AudioBlobStore
     let imageBlobStore: ImageBlobStore
@@ -23,26 +31,34 @@ final class AppContainer: ObservableObject {
     let visionGenerator: QwenVisionGenerator
     let promptTranslator: QwenTitleGenerator
     private(set) var embeddingService: EmbeddingService?
+    private var embeddingProvider: (any PointEmbedding)?
     private let modelRegistry: ModelRegistry
     private let applicationSupportRoot: URL
     let imageTextRecognizer = ImageTextRecognizer()
     @Published private(set) var startupError: String?
     @Published private(set) var embeddingStartupError: String?
 
-    init() {
+    init(storageMode: AppStorageMode = .production) {
+        self.storageMode = storageMode
         do {
-            let root = try AudioBlobStore.applicationSupportRoot()
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let database = try PointDatabase(path: root.appending(path: "pointverse.sqlite").path)
-            let blobStore = AudioBlobStore(rootURL: root)
-            let modelRegistry = ModelRegistry(rootURL: root)
+            let sharedRoot = try AudioBlobStore.applicationSupportRoot()
+            let dataRoot = storageMode == .test
+                ? sharedRoot.appending(path: "test-mode", directoryHint: .isDirectory)
+                : sharedRoot
+            try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
+            let databaseName = storageMode == .test ? "pointverse-test.sqlite" : "pointverse.sqlite"
+            let database = try PointDatabase(path: dataRoot.appending(path: databaseName).path)
+            let blobStore = AudioBlobStore(rootURL: dataRoot)
+            // Downloaded models are read-only runtime assets and are shared by
+            // both modes; user content and SQLite files remain fully isolated.
+            let modelRegistry = ModelRegistry(rootURL: sharedRoot)
             self.modelRegistry = modelRegistry
-            self.applicationSupportRoot = root
+            self.applicationSupportRoot = sharedRoot
             let modelExecutionGate = ModelExecutionGate()
             let qwenGenerator = QwenTitleGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
             self.database = database
             self.blobStore = blobStore
-            self.imageBlobStore = ImageBlobStore(rootURL: root)
+            self.imageBlobStore = ImageBlobStore(rootURL: dataRoot)
             self.captureUseCase = CaptureUseCase(
                 recorder: SystemAudioRecorder(),
                 blobStore: blobStore,
@@ -60,10 +76,10 @@ final class AppContainer: ObservableObject {
             )
             self.audioUnderstandingService = AudioUnderstandingService(
                 repository: database, blobStore: blobStore, transcriptionService: self.transcriptionService,
-                registry: modelRegistry, rootURL: root, executionGate: modelExecutionGate
+                registry: modelRegistry, rootURL: sharedRoot, executionGate: modelExecutionGate
             )
             self.conversationService = ConversationService(repository: database, generator: qwenGenerator)
-            self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: root, executionGate: modelExecutionGate)
+            self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: sharedRoot, executionGate: modelExecutionGate)
             self.speechModelManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.languageModelManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.imageModelManagers = ModelSelection.imageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
@@ -151,6 +167,7 @@ final class AppContainer: ObservableObject {
         do {
             PointVerseLog.embedding.info("Loading downloaded Hark E5 model and bundled tokenizer")
             let provider = try await E5CoreMLEmbedding.load(modelURL: compiledURL, tokenizerFolder: tokenizerJSON.deletingLastPathComponent())
+            embeddingProvider = provider
             embeddingService = EmbeddingService(repository: database, provider: provider)
             embeddingStartupError = nil
             PointVerseLog.embedding.info("E5 embedding service is ready")
@@ -162,9 +179,41 @@ final class AppContainer: ObservableObject {
 
     func removeEmbeddingArtifacts() {
         embeddingService = nil
+        embeddingProvider = nil
         try? FileManager.default.removeItem(at: embeddingCompiledURL)
         try? FileManager.default.removeItem(at: embeddingPackageURL)
         embeddingStartupError = "请先在本地模型中下载语义分类模型"
+    }
+
+    func makeTestModeDatabase() async throws -> PointDatabase {
+        let directory = applicationSupportRoot.appending(path: "test-mode", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var excludedDirectory = directory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try excludedDirectory.setResourceValues(values)
+        let database = try PointDatabase(path: directory.appending(path: "pointverse-test.sqlite").path)
+        try await database.migrate()
+        return database
+    }
+
+    func refreshTestModeEmbeddings(in database: PointDatabase) async -> Bool {
+        guard let embeddingProvider else { return false }
+        let service = EmbeddingService(repository: database, provider: embeddingProvider)
+        await service.resumePending()
+        return true
+    }
+
+    func appendGeneratedTestTexts(count: Int = 100) async throws -> Int {
+        guard storageMode == .test else { return 0 }
+        let existing = try await database.listPoints(matching: "").count
+        for text in TestTextFactory.make(count: count, startingAt: existing) {
+            _ = try await database.commitTextPoint(text: text)
+        }
+        await embeddingService?.resumePending()
+        let total = try await database.listPoints(matching: "").count
+        NotificationCenter.default.post(name: Self.testDataDidChange, object: total)
+        return total
     }
 
     private var embeddingPackageURL: URL {

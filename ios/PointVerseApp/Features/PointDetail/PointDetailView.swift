@@ -458,7 +458,7 @@ struct PointDetailView: View {
     }
 
     private func relationColor(_ score: Float) -> Color {
-        score >= 0.94 ? .mint : score >= 0.89 ? .cyan : .indigo
+        score >= 0.75 ? .mint : score >= 0.55 ? .cyan : .indigo
     }
 
     private var displayTitle: String {
@@ -492,7 +492,7 @@ struct PointDetailView: View {
         relatedLoaded = false
         async let related = container.database.relatedPoints(
             to: point.id, modelID: EmbeddingModelIdentity.multilingualE5Small,
-            minimumScore: 0.85, limit: 5
+            minimumScore: 0.38, limit: 5
         )
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded

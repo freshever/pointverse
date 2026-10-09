@@ -64,4 +64,41 @@ public enum EmbeddingMath {
         .prefix(limit)
         .map { $0 }
     }
+
+    /// Ranks neighbors after removing the collection's shared embedding
+    /// component. This is intentionally collection-relative: multilingual E5
+    /// raw cosines have a high, narrow baseline that otherwise makes unrelated
+    /// Points look connected. With fewer than three vectors there is not enough
+    /// context to estimate a centroid, so the legacy calibrated score is used.
+    public static func relativeTopK(
+        records: [PointEmbeddingRecord],
+        query pointID: PointID,
+        limit: Int
+    ) -> [SimilarityHit] {
+        guard limit > 0,
+              let queryRecord = records.first(where: { $0.pointID == pointID }) else { return [] }
+        guard records.count >= 3, let dimension = records.first?.vector.count, dimension > 0,
+              records.allSatisfy({ $0.vector.count == dimension }) else {
+            return topK(query: queryRecord.vector, records: records, excluding: pointID, limit: limit)
+                .map { SimilarityHit(pointID: $0.pointID, score: calibratedE5Score($0.score)) }
+        }
+
+        var centroid = Array(repeating: Float.zero, count: dimension)
+        for record in records {
+            for index in 0..<dimension { centroid[index] += record.vector[index] }
+        }
+        centroid = centroid.map { $0 / Float(records.count) }
+        let residuals = Dictionary(uniqueKeysWithValues: records.map { record in
+            (record.pointID, normalize(zip(record.vector, centroid).map { $0.0 - $0.1 }))
+        })
+        guard let query = residuals[pointID] else { return [] }
+        return records.compactMap { record -> SimilarityHit? in
+            guard record.pointID != pointID, let candidate = residuals[record.pointID],
+                  let score = cosine(query, candidate) else { return nil }
+            return SimilarityHit(pointID: record.pointID, score: max(0, score))
+        }
+        .sorted { $0.score > $1.score }
+        .prefix(limit)
+        .map { $0 }
+    }
 }

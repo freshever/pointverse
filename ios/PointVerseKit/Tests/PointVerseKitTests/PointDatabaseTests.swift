@@ -141,6 +141,20 @@ import Testing
     #expect(EmbeddingMath.calibratedE5Score(0.91) > 0.999)
 }
 
+@Test func relativeSimilarityRemovesSharedE5Baseline() {
+    let source = PointID(), close = PointID(), unrelated = PointID(), background = PointID()
+    let records = [
+        PointEmbeddingRecord(pointID: source, revision: 1, modelID: "test", vector: [1.10, 1.00, 1.00]),
+        PointEmbeddingRecord(pointID: close, revision: 1, modelID: "test", vector: [1.09, 1.00, 1.00]),
+        PointEmbeddingRecord(pointID: unrelated, revision: 1, modelID: "test", vector: [1.00, 1.10, 1.00]),
+        PointEmbeddingRecord(pointID: background, revision: 1, modelID: "test", vector: [1.00, 1.00, 1.10]),
+    ]
+    let hits = EmbeddingMath.relativeTopK(records: records, query: source, limit: 3)
+    #expect(hits.first?.pointID == close)
+    #expect((hits.first?.score ?? 0) > 0.8)
+    #expect(hits.filter { $0.pointID == unrelated }.allSatisfy { $0.score < 0.38 })
+}
+
 @Test func relatedPointsReturnContentAndCoefficientInOrder() async throws {
     let database = try PointDatabase(inMemory: true)
     try await database.migrate()
@@ -206,17 +220,25 @@ import Testing
 
 @Test func distributedGeographySpreadsUnrelatedGroupsAcrossSphere() {
     let modelID = EmbeddingModelIdentity.multilingualE5Small
-    let records = (0..<24).map { index in
-        PointEmbeddingRecord(
-            pointID: PointID(rawValue: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!),
+    var records: [PointEmbeddingRecord] = []
+    for index in 0..<24 {
+        let identifier = String(format: "00000000-0000-0000-0000-%012d", index + 1)
+        let vector: [Float] = [
+            index == 0 ? 1 : 0,
+            index == 1 ? 1 : 0,
+            index >= 2 ? 1 : 0,
+        ]
+        records.append(PointEmbeddingRecord(
+            pointID: PointID(rawValue: UUID(uuidString: identifier)!),
             revision: 1,
             modelID: modelID,
-            vector: [Float(index == 0 ? 1 : 0), Float(index == 1 ? 1 : 0), Float(index >= 2 ? 1 : 0)]
-        )
+            vector: vector
+        ))
     }
     let geography = SemanticGeographyEngine.make(embeddings: records, previous: [])
     #expect(geography.count == records.count)
-    #expect(Set(geography.compactMap(\.communityID)).count >= 2)
+    let communityIDs = geography.compactMap { $0.communityID }
+    #expect(Set(communityIDs).count >= 2)
     #expect(geography.contains { $0.latitude > 20 })
     #expect(geography.contains { $0.latitude < -20 })
 }

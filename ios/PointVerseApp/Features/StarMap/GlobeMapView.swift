@@ -919,7 +919,7 @@ private struct SemanticGlobe: View {
     }
 
     private func linkColor(_ score: CGFloat) -> Color {
-        score >= 0.94 ? .mint : score >= 0.89 ? .cyan : .indigo
+        score >= 0.75 ? .mint : score >= 0.55 ? .cyan : .indigo
     }
 
     private static func topicColor(_ topic: String) -> Color {
@@ -1351,8 +1351,8 @@ private enum SphericalLayoutEngine {
                     forces[j] = forces[j] - towardI * repulsion
 
                     guard let strength = linkByPair[pairKey(i, j)] else { continue }
-                    let normalizedStrength = min(1, max(0, (strength - 0.85) / 0.15))
-                    // 0.85 similarity ≈ 29°, 1.0 similarity ≈ 5°.
+                    let normalizedStrength = min(1, max(0, (strength - 0.38) / 0.62))
+                    // Relative relevance, not raw E5 cosine, controls distance.
                     let targetAngle = 0.50 - normalizedStrength * 0.41
                     let attraction = (angle - targetAngle) * (0.018 + normalizedStrength * 0.034)
                     forces[i] = forces[i] + towardJ * attraction

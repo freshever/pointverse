@@ -55,7 +55,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "31ED093F9AE5C346B3D48763"
             BuildableName = "&#x70b9;&#x754c; Watch.app"
-            BlueprintName = "PointVerseWatch"
             ReferencedContainer = "container:PointVerse.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -72,7 +71,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "31ED093F9AE5C346B3D48763"
             BuildableName = "&#x70b9;&#x754c; Watch.app"
-            BlueprintName = "PointVerseWatch"
             ReferencedContainer = "container:PointVerse.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
