@@ -179,6 +179,7 @@ public enum ModelSelection {
     public static let languageDefaultsKey = "selectedLanguageModelID"
     public static let imageDefaultsKey = "selectedImageModelID"
     public static let disabledLanguageModelID = "disabled"
+    public static let edge0LanguageModelID = "edge0-8b-a1b-preview"
     public static let speechModels: [ModelManifest] = [.whisperTinyQ5, .whisperBaseQ5, .whisperSmallQ5]
     public static let languageModels: [ModelManifest] = [.qwen3_0_6BQ8, .qwen3_1_7BQ8, .qwen3VL2BQ8]
     public static let imageModels: [ModelManifest] = [.stableDiffusion21Base6Bit]
@@ -193,14 +194,47 @@ public enum ModelSelection {
 
     public static func selectedLanguageModel(defaults: UserDefaults = .standard) -> ModelManifest? {
         let id = defaults.string(forKey: languageDefaultsKey) ?? ModelManifest.qwen3_0_6BQ8.id
-        guard id != disabledLanguageModelID else { return nil }
+        guard id != disabledLanguageModelID, id != edge0LanguageModelID else { return nil }
         return languageModels.first(where: { $0.id == id }) ?? .qwen3_0_6BQ8
+    }
+
+    public static func selectedLanguageModelID(defaults: UserDefaults = .standard) -> String {
+        defaults.string(forKey: languageDefaultsKey) ?? ModelManifest.qwen3_0_6BQ8.id
     }
 
     public static func selectedImageModel(defaults: UserDefaults = .standard) -> ModelManifest {
         let id = defaults.string(forKey: imageDefaultsKey) ?? ModelManifest.stableDiffusion21Base6Bit.id
         return imageModels.first(where: { $0.id == id }) ?? .stableDiffusion21Base6Bit
     }
+}
+
+public struct Edge0ModelComponent: Sendable, Equatable {
+    public let filename: String
+    public let byteCount: Int64
+    public let sha256: String
+
+    public init(filename: String, byteCount: Int64, sha256: String) {
+        self.filename = filename
+        self.byteCount = byteCount
+        self.sha256 = sha256
+    }
+
+    public var downloadURL: URL {
+        URL(string: "https://huggingface.co/Edge0/Edge0-8B-A1B-preview/resolve/269b9a2c4a69d897c50e9f4e125328481d7c0fcf/\(filename)?download=true")!
+    }
+}
+
+public enum Edge0Model8B {
+    public static let id = ModelSelection.edge0LanguageModelID
+    public static let folderName = "Edge0-8B-A1B-preview"
+    public static let totalByteCount: Int64 = 4_576_122_089
+    public static let components: [Edge0ModelComponent] = [
+        .init(filename: "config.json", byteCount: 3_069, sha256: "5790c795d490d7b90eb04b269f5db4faad08bcc560f8da6e30b61057b1606340"),
+        .init(filename: "tokenizer.json", byteCount: 12_205_732, sha256: "40fb9d7d7795b8bd305aeff39ce9963f3f450915b9553f2938e009be9a1fed60"),
+        .init(filename: "lora_edge0_8b.safetensors", byteCount: 16_413_656, sha256: "a32ff07ba3d3b3c9811146c43a3f0e96af4ec2960ebc5072910f9a6663dc2e2e"),
+        .init(filename: "prerouter_edge0_8b.safetensors", byteCount: 38_802_304, sha256: "5f05d25e52ce18103d0867e5a0c79ec4e3334ad8c8906c22ec6266a95db2047c"),
+        .init(filename: "model.safetensors", byteCount: 4_508_697_328, sha256: "5bcde14438cfe13a547965573471e8ddc830de3a047dd2dfd38a0eb2b390d2b6"),
+    ]
 }
 
 public actor ModelRegistry {
@@ -221,6 +255,47 @@ public actor ModelRegistry {
     public func resolveInstalledModel(preferred: ModelManifest, candidates: [ModelManifest]) -> ModelManifest? {
         if isInstalled(preferred) { return preferred }
         return candidates.first(where: { isInstalled($0) })
+    }
+
+    public func edge0Directory() -> URL {
+        modelsDirectory.appending(path: Edge0Model8B.folderName, directoryHint: .isDirectory)
+    }
+
+    public func isEdge0Installed() -> Bool {
+        let root = edge0Directory()
+        return Edge0Model8B.components.allSatisfy { component in
+            let url = root.appending(path: component.filename)
+            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return false }
+            return Int64(size) == component.byteCount
+        }
+    }
+
+    public func prepareEdge0Download() throws -> URL {
+        try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+        let capacity = try modelsDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
+        guard capacity >= Edge0Model8B.totalByteCount + 1_000_000_000 else { throw PointVerseError.insufficientDiskSpace }
+        let root = edge0Directory()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var excludedRoot = root
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try excludedRoot.setResourceValues(values)
+        return root
+    }
+
+    public func installEdge0Component(_ component: Edge0ModelComponent, downloadedURL: URL) throws {
+        guard try sha256(of: downloadedURL) == component.sha256 else {
+            throw PointVerseError.modelChecksumMismatch
+        }
+        let root = try prepareEdge0Download()
+        let destination = root.appending(path: component.filename)
+        if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+        try FileManager.default.moveItem(at: downloadedURL, to: destination)
+    }
+
+    public func removeEdge0() throws {
+        let root = edge0Directory()
+        if FileManager.default.fileExists(atPath: root.path) { try FileManager.default.removeItem(at: root) }
     }
 
     public func partialURL(for manifest: ModelManifest) -> URL {

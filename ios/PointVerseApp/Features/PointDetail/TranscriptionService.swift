@@ -1,6 +1,7 @@
 import Foundation
 import PointVerseKit
 import QwenAdapter
+import WhisperAdapter
 import Speech
 
 actor TranscriptionService {

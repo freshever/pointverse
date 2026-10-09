@@ -3,6 +3,7 @@ import CoreML
 import CryptoKit
 import PointVerseKit
 import QwenAdapter
+import WhisperAdapter
 
 enum AppStorageMode: Equatable {
     case production
@@ -23,6 +24,7 @@ final class AppContainer: ObservableObject {
     let conversationService: ConversationService
     let speechModelManagers: [ModelDownloadManager]
     let languageModelManagers: [ModelDownloadManager]
+    let edge0ModelManager: Edge0DownloadManager
     let imageModelManagers: [ModelDownloadManager]
     let visionModelManagers: [ModelDownloadManager]
     let embeddingModelManagers: [ModelDownloadManager]
@@ -82,6 +84,7 @@ final class AppContainer: ObservableObject {
             self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: sharedRoot, executionGate: modelExecutionGate)
             self.speechModelManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.languageModelManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
+            self.edge0ModelManager = Edge0DownloadManager(registry: modelRegistry)
             self.imageModelManagers = ModelSelection.imageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.visionModelManagers = ModelSelection.visionModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.embeddingModelManagers = ModelSelection.embeddingModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
@@ -207,7 +210,17 @@ final class AppContainer: ObservableObject {
     func appendGeneratedTestTexts(count: Int = 100) async throws -> Int {
         guard storageMode == .test else { return 0 }
         let existing = try await database.listPoints(matching: "").count
-        for text in TestTextFactory.make(count: count, startingAt: existing) {
+        let texts: [String]
+        do {
+            texts = try await promptTranslator.generateTestTexts(count: count, startingAt: existing)
+            PointVerseLog.storage.info("Local language model generated \(texts.count, privacy: .public) test texts")
+        } catch {
+            // Test mode must remain usable before a language model is
+            // installed, or when a small model emits malformed JSON.
+            texts = TestTextFactory.make(count: count, startingAt: existing)
+            PointVerseLog.storage.notice("Falling back to deterministic test corpus: \(String(describing: error), privacy: .public)")
+        }
+        for text in texts {
             _ = try await database.commitTextPoint(text: text)
         }
         await embeddingService?.resumePending()

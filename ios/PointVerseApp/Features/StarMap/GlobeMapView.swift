@@ -110,10 +110,19 @@ struct GlobeMapView: View {
             let semanticEntries = loadedEntries.filter { embeddedPointIDs.contains($0.id) }
             pendingSemanticCount = loadedEntries.count - semanticEntries.count
             let previous = discardingSavedCoordinates ? [] : try await storedGeographies
-            let generated = SemanticGeographyEngine.make(embeddings: loadedEmbeddings, previous: previous)
+            let generated = await Task.detached(priority: .userInitiated) {
+                SemanticGeographyEngine.make(embeddings: loadedEmbeddings, previous: previous)
+            }.value
             PointVerseLog.embedding.info("Globe reload entries=\(loadedEntries.count, privacy: .public) embeddings=\(loadedEmbeddings.count, privacy: .public) pending=\(pendingSemanticCount, privacy: .public) communities=\(Set(generated.compactMap(\.communityID)).count, privacy: .public)")
-            try await container.database.saveGeographies(generated)
-            layout = StarLayoutEngine.make(entries: semanticEntries, embeddings: loadedEmbeddings)
+            let previousByID = Dictionary(uniqueKeysWithValues: previous.map { ($0.pointID, $0) })
+            let generatedByID = Dictionary(uniqueKeysWithValues: generated.map { ($0.pointID, $0) })
+            if previousByID != generatedByID {
+                try await container.database.saveGeographies(generated)
+            }
+            layout = StarLayoutEngine.makeGlobe(
+                entries: semanticEntries,
+                embeddedPointIDs: embeddedPointIDs
+            )
             geographies = Dictionary(uniqueKeysWithValues: generated.map { ($0.pointID, $0) })
             contentByPointID = Dictionary(uniqueKeysWithValues: semanticEntries.map { ($0.id, $0.content) })
         } catch {
@@ -846,19 +855,10 @@ private struct SemanticGlobe: View {
     /// before camera rotation, so dragging the globe never changes a cluster.
     /// Zoom is the only input that controls when a cluster expands into leaves.
     private func displayClusters(projected: [GlobeNode], geometry: GlobeGeometry) -> [GlobeCluster] {
-        guard zoom < 1.75 else {
-            return projected.filter(\.visible).map {
-                GlobeCluster(id: $0.index, nodeIndices: [$0.index], point: $0.point, depth: $0.depth)
-            }
-        }
-
-        let angularDistance: CGFloat
-        switch zoom {
-        case ..<0.82: angularDistance = 0.17
-        case ..<1.08: angularDistance = 0.12
-        case ..<1.38: angularDistance = 0.08
-        default: angularDistance = 0.045
-        }
+        // Keep clustering at every zoom level. The threshold represents a
+        // stable minimum screen separation, so leaves appear only when there
+        // is enough room instead of all being exposed at one magic zoom value.
+        let angularDistance = max(0.002, 30 / max(geometry.radius, 1))
         var remaining = Set(layout.nodes.indices)
         var result: [GlobeCluster] = []
 

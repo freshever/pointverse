@@ -230,6 +230,11 @@ private struct StarMapTestModeView: View {
 }
 
 enum TestTextFactory {
+    private static let perspectives = [
+        "我想先理解它背后的原理", "下一步需要设计一个小实验", "可以从实际使用场景继续观察", "这件事值得记录长期变化",
+        "我还需要寻找一个相反的例子", "也许可以和另一个领域建立联系", "先列出最重要的限制条件", "需要区分短期现象和长期趋势",
+        "可以向有经验的人验证这个判断", "以后回看时要保留当时的背景"
+    ]
     private static let topics: [[String]] = [
         ["Transformer 的注意力机制如何保留长文本上下文", "给本地模型设计低内存推理管线", "Swift 并发中的 actor 可以隔离可变状态", "向量数据库需要评估召回率和延迟", "Core ML 模型量化会影响精度与功耗", "软件架构应该保持模块边界清晰", "为语义搜索建立可靠的人工评测集", "离线 AI 应优先保护用户隐私", "调试神经网络输出需要保存中间张量", "代码审查要重点检查状态竞争"],
         ["番茄炖牛肉需要控制火候和水量", "尝试用低温烘焙保留面包的水分", "咖啡豆研磨粗细会改变萃取速度", "晚餐准备一道清淡的时蔬汤", "发酵面团要观察温度与时间", "记录不同产区茶叶的香气变化", "煎鱼前擦干表面可以减少粘锅", "研究香料在咖喱中的层次组合", "早餐增加蛋白质会更有饱腹感", "周末学习制作手工意大利面"],
@@ -248,7 +253,8 @@ enum TestTextFactory {
         return (start..<(start + count)).map { index in
             let topic = index % topics.count
             let variant = (index / topics.count) % topics[topic].count
-            return topics[topic][variant] + "（测试样本 \(index + 1)）"
+            let perspective = perspectives[(index / (topics.count * topics[topic].count)) % perspectives.count]
+            return topics[topic][variant] + "，" + perspective
         }
     }
 }
@@ -715,6 +721,23 @@ enum StarLayoutEngine {
             },
             links: links,
             embeddingCount: stored.count
+        )
+    }
+
+    /// The globe gets positions from persisted geography and draws no star-map
+    /// links. Building its view model must therefore stay O(N), without an
+    /// unused N×N similarity matrix or a second force-directed layout.
+    static func makeGlobe(entries: [PointMapEntry], embeddedPointIDs: Set<PointID>) -> StarLayout {
+        StarLayout(
+            nodes: entries.map {
+                .init(
+                    point: $0.point,
+                    position: Point3D(x: 0, y: 0, z: 1),
+                    isEmbedded: embeddedPointIDs.contains($0.id)
+                )
+            },
+            links: [],
+            embeddingCount: embeddedPointIDs.count
         )
     }
 

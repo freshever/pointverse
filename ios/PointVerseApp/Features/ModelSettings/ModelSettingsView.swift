@@ -40,6 +40,7 @@ struct ModelSettingsView: View {
                     ForEach(ModelSelection.languageModels, id: \.id) { manifest in
                         Text(verbatim: languageName(manifest)).tag(manifest.id)
                     }
+                    Text(verbatim: "Edge0 8B A1B · Experimental").tag(ModelSelection.edge0LanguageModelID)
                 } label: { AppText("当前模型") }
 
                 ForEach(container.languageModelManagers, id: \.manifest.id) { manager in
@@ -47,6 +48,12 @@ struct ModelSettingsView: View {
                         selectedLanguageModelID = manager.manifest.id
                     }, onInstalled: regenerateTitles)
                 }
+
+                Edge0ModelRow(
+                    manager: container.edge0ModelManager,
+                    isSelected: selectedLanguageModelID == ModelSelection.edge0LanguageModelID,
+                    onSelect: { selectedLanguageModelID = ModelSelection.edge0LanguageModelID }
+                )
             } header: { AppText("本地整理") }
 
             Section {
@@ -155,6 +162,64 @@ struct ModelSettingsView: View {
 
     private func regenerateTitles() {
         Task { await container.transcriptionService.deriveMissingTitles(languageIdentifier: appLanguage) }
+    }
+}
+
+private struct Edge0ModelRow: View {
+    @ObservedObject var manager: Edge0DownloadManager
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(verbatim: "Edge0 8B A1B · Experimental")
+                    Text(verbatim: ByteCountFormatter.string(fromByteCount: Edge0Model8B.totalByteCount, countStyle: .file) + " · Apache-2.0")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                status
+            }
+            switch manager.state {
+            case .checking, .verifying:
+                ProgressView().controlSize(.small)
+            case .notInstalled, .failed:
+                Button("下载模型") { manager.download() }
+            case .downloading(let progress):
+                ProgressView(value: progress)
+                HStack {
+                    Text(progress, format: .percent.precision(.fractionLength(0))).font(.caption).monospacedDigit()
+                    Spacer()
+                    Button("暂停") { manager.cancel() }.buttonStyle(.borderless)
+                }
+            case .installed:
+                HStack {
+                    if isSelected {
+                        Label("使用中", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Button("使用此模型", action: onSelect).buttonStyle(.borderless)
+                    }
+                    Spacer()
+                    Button("卸载模型", role: .destructive) { manager.remove() }.buttonStyle(.borderless)
+                }
+            }
+            Text("高质量本地理解实验后端，用于标题、对话和测试文本。约 4.6 GB，仅支持真机 Metal；不替代 E5 语义向量模型。")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .task { await manager.refresh() }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch manager.state {
+        case .checking: Text("检查中")
+        case .notInstalled: Text("未安装")
+        case .downloading: Text("下载中")
+        case .verifying: Text("正在校验")
+        case .installed: Text("已安装").foregroundStyle(.green)
+        case .failed(let error):
+            Text(error == .modelChecksumMismatch ? "校验失败" : error == .insufficientDiskSpace ? "空间不足" : "下载失败").foregroundStyle(.red)
+        }
     }
 }
 

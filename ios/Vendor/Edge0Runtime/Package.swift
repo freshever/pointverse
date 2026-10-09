@@ -1,0 +1,28 @@
+// swift-tools-version: 6.1
+import PackageDescription
+
+let package = Package(
+    name: "Edge0Runtime",
+    platforms: [
+        .macOS(.v14),
+        .iOS(.v17),
+    ],
+    products: [
+        .library(name: "Edge0Core", targets: ["Edge0Core"]),
+        .library(name: "Edge0MLX", targets: ["Edge0MLX"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.6"),
+    ],
+    targets: [
+        .target(name: "Edge0Core"),
+        .target(
+            name: "Edge0MLX",
+            dependencies: [
+                "Edge0Core",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXFast", package: "mlx-swift"),
+            ]
+        ),
+    ]
+)

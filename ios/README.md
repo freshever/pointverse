@@ -22,6 +22,8 @@
 - Stable Diffusion runtime 以 Apple 官方源码的本地 vendor package 接入，并统一使用 `swift-transformers 1.3.0`，避免旧 revision 失效和依赖版本冲突。
 - Qwen 与 Stable Diffusion 共用 `ModelExecutionGate`，禁止两个大模型同时占用内存。
 - 图片模型首次下载约 1.14 GB，解压与 Core ML 首次编译还需要额外磁盘空间。
+- Edge0 8B A1B 已作为实验性本地整理后端接入。模型页会按固定 revision 分别下载并校验配置、tokenizer、LoRA、预路由器和约 4.51 GB 主权重，总计约 4.58 GB；模型保存在 Application Support，不进入 App 包，也不替代 E5 Embedding。
+- Edge0 使用官方 MLX Swift 0.31.6 运行时，只在 iPhone 真机使用 Metal。首次构建前若 Xcode 报缺少 Metal 编译器，执行 `xcodebuild -downloadComponent MetalToolchain`。
 
 尚未完成的 P0 工作是 staging 崩溃恢复与真机杀进程验收。省市区的生成式批量命名仍需在现有 Qwen runtime 上增加缓存与版本化任务；当前地图继续使用可解释命名器作为即时缺省值。
 

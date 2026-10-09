@@ -1,4 +1,5 @@
 import Foundation
+import Edge0MLX
 import PointVerseKit
 import llama
 
@@ -21,6 +22,7 @@ public actor QwenTitleGenerator {
     private let registry: ModelRegistry
     private let executionGate: ModelExecutionGate
     private var engine: LlamaEngine?
+    private var edge0Engine: Edge0ChatEngine?
     private var loadedModelPath: String?
 
     public init(registry: ModelRegistry, executionGate: ModelExecutionGate) {
@@ -30,6 +32,7 @@ public actor QwenTitleGenerator {
 
     public func releaseResources() {
         engine = nil
+        edge0Engine = nil
         loadedModelPath = nil
         PointVerseLog.storage.info("Language model resources released")
     }
@@ -37,13 +40,11 @@ public actor QwenTitleGenerator {
     public func generateTitle(transcript: String, conversation: [ConversationMessage], localeIdentifier: String) async throws -> String {
         await executionGate.acquire()
         defer { releaseAfterExecution() }
-        guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
-        let modelURL = await registry.installedURL(for: manifest)
-        try loadEngine(modelURL: modelURL)
+        let manifest = try await prepareSelectedEngine()
 
         let language = Self.languageName(for: localeIdentifier)
         let discussion = Self.formattedConversation(conversation)
-        let assistantPreamble = Self.assistantPreamble(for: manifest)
+        let assistantPreamble = manifest.map(Self.assistantPreamble(for:)) ?? ""
         let prompt = """
         <|im_start|>system
         Create a short title for a saved voice note and its follow-up discussion. Treat the voice-note transcript as the primary source of the topic. Use the discussion only for important clarification or a refined direction. The title MUST be written in \(language), regardless of the source languages. Output only the title, without quotes, explanation, or ending punctuation. Maximum 20 characters for Chinese or Japanese, maximum 8 words for English.<|im_end|>
@@ -56,7 +57,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let rawTitle = try engine?.complete(prompt: prompt, maximumTokens: 48) else {
+        guard let rawTitle = try complete(prompt: prompt, maximumTokens: 48) else {
             throw PointVerseError.transcriptionFailed
         }
         let title = Self.clean(rawTitle, localeIdentifier: localeIdentifier)
@@ -68,11 +69,9 @@ public actor QwenTitleGenerator {
                               role: ConversationRole = .concise) async throws -> String {
         await executionGate.acquire()
         defer { releaseAfterExecution() }
-        guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
-        let modelURL = await registry.installedURL(for: manifest)
-        try loadEngine(modelURL: modelURL)
+        let manifest = try await prepareSelectedEngine()
         let language = Self.languageName(for: localeIdentifier)
-        let assistantPreamble = Self.assistantPreamble(for: manifest)
+        let assistantPreamble = manifest.map(Self.assistantPreamble(for:)) ?? ""
         let turns: [String] = conversation.suffix(6).map { message -> String in
             let role = message.role == "assistant" ? "assistant" : "user"
             let safeText = String(message.text
@@ -89,7 +88,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let rawReply = try engine?.complete(prompt: prompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
+        guard let rawReply = try complete(prompt: prompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
             throw PointVerseError.invalidModelOutput
         }
         let reply = Self.cleanReply(rawReply)
@@ -108,7 +107,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let retried = try engine?.complete(prompt: retryPrompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
+        guard let retried = try complete(prompt: retryPrompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
             throw PointVerseError.invalidModelOutput
         }
         let cleanedRetry = Self.cleanReply(retried)
@@ -118,6 +117,37 @@ public actor QwenTitleGenerator {
         return cleanedRetry
     }
 
+    /// Generates diverse, text-only records for the isolated test database.
+    /// Small local models are more reliable with compact batches, so a +100
+    /// request is split internally while the model remains behind the shared
+    /// execution gate.
+    public func generateTestTexts(count: Int, startingAt start: Int) async throws -> [String] {
+        guard count > 0 else { return [] }
+        await executionGate.acquire()
+        defer { releaseAfterExecution() }
+        let manifest = try await prepareSelectedEngine()
+
+        var result: [String] = []
+        while result.count < count {
+            let batchCount = min(10, count - result.count)
+            let batchNumber = start + result.count
+            let prompt = """
+            <|im_start|>system
+            Generate exactly \(batchCount) distinct short notes for testing a multilingual semantic map. Cover clearly different subjects such as technology, food, nature, astronomy, exercise, art, finance, travel, emotions, and history. Include some Chinese and some English. Do not use sample numbers, labels, explanations, markdown, or duplicate ideas. Return only a valid JSON array of \(batchCount) strings.<|im_end|>
+            <|im_start|>user
+            Create test batch \(batchNumber / 10 + 1). Use ideas different from ordinary examples in earlier batches.<|im_end|>
+            <|im_start|>assistant
+            \(manifest.map(Self.assistantPreamble(for:)) ?? "")
+            """
+            guard let raw = try complete(prompt: prompt, maximumTokens: 640, stopAtNewline: false),
+                  let batch = Self.parseTestTextArray(raw, expectedCount: batchCount) else {
+                throw PointVerseError.invalidModelOutput
+            }
+            result.append(contentsOf: batch)
+        }
+        return Array(result.prefix(count))
+    }
+
     public func translateImagePromptToEnglish(_ source: String, localeIdentifier: String) async throws -> String {
         await executionGate.acquire()
         defer { releaseAfterExecution() }
@@ -125,16 +155,16 @@ public actor QwenTitleGenerator {
         // Drop any title/chat model cached by earlier operations before deciding
         // whether this prompt needs translation.
         engine = nil
+        edge0Engine = nil
         loadedModelPath = nil
         let compactSource = Self.compactImagePrompt(source)
         let normalizedLocale = localeIdentifier.lowercased()
         if normalizedLocale.hasPrefix("en"), compactSource.unicodeScalars.allSatisfy({ $0.isASCII }) { return compactSource }
-        guard let manifest = await resolveInstalledModel() else { throw PointVerseError.modelNotInstalled }
-        let modelURL = await registry.installedURL(for: manifest)
-        try loadEngine(modelURL: modelURL)
-        let assistantPreamble = Self.assistantPreamble(for: manifest)
+        let manifest = try await prepareSelectedEngine()
+        let assistantPreamble = manifest.map(Self.assistantPreamble(for:)) ?? ""
         defer {
             engine = nil
+            edge0Engine = nil
             loadedModelPath = nil
             PointVerseLog.storage.info("Language model released before image pipeline load")
         }
@@ -149,7 +179,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let raw = try engine?.complete(prompt: prompt, maximumTokens: 64) else {
+        guard let raw = try complete(prompt: prompt, maximumTokens: 64) else {
             throw PointVerseError.invalidModelOutput
         }
         let translated = (raw.components(separatedBy: "<|im_end|>").first ?? raw)
@@ -167,23 +197,67 @@ public actor QwenTitleGenerator {
         return String(oneLine.prefix(280))
     }
 
+    private static func parseTestTextArray(_ raw: String, expectedCount: Int) -> [String]? {
+        guard let start = raw.firstIndex(of: "["), let end = raw.lastIndex(of: "]"), start <= end else { return nil }
+        let payload = Data(raw[start...end].utf8)
+        guard let decoded = try? JSONDecoder().decode([String].self, from: payload) else { return nil }
+        let cleaned = decoded.map {
+            $0.replacingOccurrences(of: "<|im_start|>", with: "")
+                .replacingOccurrences(of: "<|im_end|>", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty && $0.count <= 240 }
+        var seen = Set<String>()
+        let unique = cleaned.filter { seen.insert($0.lowercased()).inserted }
+        return unique.count == expectedCount ? unique : nil
+    }
+
     private func loadEngine(modelURL: URL) throws {
         guard loadedModelPath != modelURL.path || engine == nil else { return }
+        edge0Engine = nil
         engine = try LlamaEngine(modelURL: modelURL)
         loadedModelPath = modelURL.path
     }
 
+    private func loadEdge0Engine(modelURL: URL) throws {
+        guard loadedModelPath != modelURL.path || edge0Engine == nil else { return }
+        engine = nil
+        edge0Engine = try Edge0ChatEngine(modelURL: modelURL) { message in
+            PointVerseLog.storage.info("Edge0: \(message, privacy: .public)")
+        }
+        loadedModelPath = modelURL.path
+    }
+
+    private func complete(prompt: String, maximumTokens: Int, stopAtNewline: Bool = true) throws -> String? {
+        if let edge0Engine {
+            // PointVerse requests are independent jobs. Resetting avoids leaking
+            // one Point's context into the next title, judge, or prompt task.
+            edge0Engine.reset()
+            let result = try edge0Engine.reply(to: prompt, maxTokens: maximumTokens, thinking: false)
+            return stopAtNewline ? result.text.components(separatedBy: .newlines).first : result.text
+        }
+        return try engine?.complete(prompt: prompt, maximumTokens: maximumTokens, stopAtNewline: stopAtNewline)
+    }
+
     private func releaseAfterExecution() {
         engine = nil
+        edge0Engine = nil
         loadedModelPath = nil
         Task { await executionGate.release() }
     }
 
-    private func resolveInstalledModel() async -> ModelManifest? {
-        guard let preferred = ModelSelection.selectedLanguageModel() else { return nil }
+    private func prepareSelectedEngine() async throws -> ModelManifest? {
+        let selectedID = ModelSelection.selectedLanguageModelID()
+        guard selectedID != ModelSelection.disabledLanguageModelID else { throw PointVerseError.modelNotInstalled }
+        if selectedID == ModelSelection.edge0LanguageModelID {
+            guard await registry.isEdge0Installed() else { throw PointVerseError.modelNotInstalled }
+            let modelURL = await registry.edge0Directory()
+            try loadEdge0Engine(modelURL: modelURL)
+            return nil
+        }
+        guard let preferred = ModelSelection.selectedLanguageModel() else { throw PointVerseError.modelNotInstalled }
         guard let resolved = await registry.resolveInstalledModel(preferred: preferred, candidates: ModelSelection.languageModels) else {
             PointVerseLog.transcription.error("No installed language model found; preferred=\(preferred.id, privacy: .public)")
-            return nil
+            throw PointVerseError.modelNotInstalled
         }
         if resolved.id != preferred.id {
             UserDefaults.standard.set(resolved.id, forKey: ModelSelection.languageDefaultsKey)
@@ -191,6 +265,8 @@ public actor QwenTitleGenerator {
         } else {
             PointVerseLog.transcription.info("Selected installed language model=\(resolved.id, privacy: .public)")
         }
+        let modelURL = await registry.installedURL(for: resolved)
+        try loadEngine(modelURL: modelURL)
         return resolved
     }
 

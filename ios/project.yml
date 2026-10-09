@@ -12,6 +12,10 @@ packages:
     exactVersion: 1.3.0
   LlamaRuntime:
     path: Vendor/LlamaRuntime
+  WhisperRuntime:
+    path: Vendor/WhisperRuntime
+  Edge0Runtime:
+    path: Vendor/Edge0Runtime
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation.git
     exactVersion: 0.9.20
@@ -47,13 +51,13 @@ targets:
           - Info.plist
           - Features/PointDetail/WhisperRecognizer.swift
           - Features/PointDetail/QwenTitleGenerator.swift
-          - Features/PointDetail/ConversationService.swift
     dependencies:
       - target: PointVerseWatch
       - package: PointVerseKit
       - package: SwiftTransformers
         product: Tokenizers
       - target: QwenAdapter
+      - target: WhisperAdapter
       - target: StableDiffusion
       - package: ZIPFoundation
         product: ZIPFoundation
@@ -70,6 +74,19 @@ targets:
           ditto "${BUILT_PRODUCTS_DIR}/llama.framework" "${destination}/llama.framework"
           if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
             /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier "${destination}/llama.framework"
+          fi
+      - name: Embed whisper runtime
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/whisper.framework/whisper
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/whisper.framework/whisper
+        script: |
+          set -e
+          destination="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          mkdir -p "${destination}"
+          ditto "${BUILT_PRODUCTS_DIR}/whisper.framework" "${destination}/whisper.framework"
+          if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier "${destination}/whisper.framework"
           fi
     settings:
       base:
@@ -93,9 +110,27 @@ targets:
       - package: PointVerseKit
       - package: LlamaRuntime
         product: llama
+      - package: Edge0Runtime
+        product: Edge0MLX
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.qwen-adapter
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 11
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+  WhisperAdapter:
+    type: framework
+    platform: iOS
+    sources:
+      - path: PointVerseApp/Features/PointDetail/WhisperRecognizer.swift
+    dependencies:
+      - package: PointVerseKit
+      - package: WhisperRuntime
+        product: whisper
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.whisper-adapter
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 11
         SWIFT_VERSION: "6.0"
