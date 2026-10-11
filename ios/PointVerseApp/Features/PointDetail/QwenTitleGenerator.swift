@@ -1,7 +1,238 @@
 import Foundation
 import Edge0MLX
 import PointVerseKit
+import Security
 import llama
+
+public enum ExternalModelAPIKeyStore {
+    private static let service = "org.dianjie.pv.external-model"
+
+    public static func save(_ value: String, modelID: UUID) throws {
+        let account = modelID.uuidString
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: service, kSecAttrAccount as String: account]
+        SecItemDelete(query as CFDictionary)
+        guard !value.isEmpty else { return }
+        var item = query
+        item[kSecValueData as String] = Data(value.utf8)
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw PointVerseError.databaseCommitFailed }
+    }
+
+    public static func load(modelID: UUID) -> String? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: service,
+                                    kSecAttrAccount as String: modelID.uuidString,
+                                    kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    public static func remove(modelID: UUID) {
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                       kSecAttrService as String: service,
+                       kSecAttrAccount as String: modelID.uuidString] as CFDictionary)
+    }
+}
+
+public struct LanguageModelRequest: Sendable {
+    public struct Message: Sendable {
+        public let role: String
+        public let content: String
+
+        public init(role: String, content: String) {
+            self.role = role
+            self.content = content
+        }
+    }
+
+    public let prompt: String
+    public let messages: [Message]?
+    public let maximumTokens: Int
+    public let temperature: Double
+
+    public init(prompt: String, messages: [Message]? = nil, maximumTokens: Int, temperature: Double = 0.3) {
+        self.prompt = prompt
+        self.messages = messages
+        self.maximumTokens = maximumTokens
+        self.temperature = temperature
+    }
+}
+
+public protocol LanguageModelProvider: Sendable {
+    var displayName: String { get }
+    func complete(_ request: LanguageModelRequest) async throws -> String
+}
+
+public enum ExternalModelConnectionError: LocalizedError {
+    case invalidConfiguration
+    case privacyApprovalRequired
+    case server(status: Int, message: String)
+    case invalidResponse
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidConfiguration: return "模型地址或模型名称无效。"
+        case .privacyApprovalRequired: return "请先确认允许将内容发送到这个网络模型。"
+        case .server(let status, let message): return "服务器返回 \(status)：\(message)"
+        case .invalidResponse: return "服务器返回了无法识别的内容。"
+        }
+    }
+}
+
+public struct OpenAICompatibleProvider: LanguageModelProvider {
+    public let model: ExternalLanguageModel
+    private let apiKeyOverride: String?
+    private let requiresPrivacyApproval: Bool
+    public var displayName: String { model.name }
+
+    public init(model: ExternalLanguageModel, apiKeyOverride: String? = nil, requiresPrivacyApproval: Bool = true) {
+        self.model = model
+        self.apiKeyOverride = apiKeyOverride
+        self.requiresPrivacyApproval = requiresPrivacyApproval
+    }
+
+    public func complete(_ input: LanguageModelRequest) async throws -> String {
+        guard let baseURL = URL(string: model.baseURL ?? ""),
+              let remoteModel = model.remoteModel?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !remoteModel.isEmpty else { throw ExternalModelConnectionError.invalidConfiguration }
+        guard !requiresPrivacyApproval || ExternalModelPrivacyApprovalStore.isApproved(model.id) else {
+            throw ExternalModelConnectionError.privacyApprovalRequired
+        }
+
+        let endpoint: URL
+        if baseURL.path.hasSuffix("/chat/completions") {
+            endpoint = baseURL
+        } else {
+            endpoint = baseURL.appending(path: "chat/completions")
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 120
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let key = apiKeyOverride ?? ExternalModelAPIKeyStore.load(modelID: model.id), !key.isEmpty {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        if model.provider == .openRouter {
+            request.setValue("PointVerse", forHTTPHeaderField: "X-Title")
+        }
+        let messages = input.messages ?? [.init(role: "user", content: input.prompt)]
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": remoteModel,
+            "messages": messages.map { ["role": $0.role, "content": $0.content] },
+            "max_tokens": input.maximumTokens,
+            "temperature": input.temperature,
+        ])
+        let (data, response) = try await Self.performWithTransientRetry(request)
+        guard let http = response as? HTTPURLResponse else { throw ExternalModelConnectionError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let error = object?["error"] as? [String: Any]
+            let message = (error?["message"] as? String) ?? String(data: data, encoding: .utf8) ?? "未知错误"
+            throw ExternalModelConnectionError.server(status: http.statusCode, message: String(message.prefix(240)))
+        }
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ExternalModelConnectionError.invalidResponse
+        }
+        if let error = object["error"] as? [String: Any] {
+            throw ExternalModelConnectionError.server(
+                status: http.statusCode,
+                message: String((error["message"] as? String ?? "未知错误").prefix(240))
+            )
+        }
+        guard let choices = object["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = Self.textContent(from: message["content"]),
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ExternalModelConnectionError.invalidResponse
+        }
+        return content
+    }
+
+    private static func performWithTransientRetry(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        let retryDelays: [Duration] = [.milliseconds(400), .milliseconds(1_200)]
+        var attempt = 0
+        while true {
+            do {
+                return try await URLSession.shared.data(for: request)
+            } catch let error as URLError where isTransient(error.code) && attempt < retryDelays.count {
+                let delay = retryDelays[attempt]
+                attempt += 1
+                PointVerseLog.transcription.notice(
+                    "Network model connection interrupted; retry=\(attempt, privacy: .public) code=\(error.code.rawValue, privacy: .public)"
+                )
+                try await Task.sleep(for: delay)
+            }
+        }
+    }
+
+    private static func isTransient(_ code: URLError.Code) -> Bool {
+        switch code {
+        case .networkConnectionLost, .timedOut, .cannotConnectToHost,
+             .cannotFindHost, .dnsLookupFailed, .resourceUnavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func textContent(from value: Any?) -> String? {
+        if let text = value as? String { return text }
+        guard let parts = value as? [[String: Any]] else { return nil }
+        let text = parts.compactMap { part -> String? in
+            if let value = part["text"] as? String { return value }
+            if let value = part["content"] as? String { return value }
+            return nil
+        }.joined()
+        return text.isEmpty ? nil : text
+    }
+}
+
+public enum ExternalModelConnectionTester {
+    public static func test(model: ExternalLanguageModel, apiKey: String? = nil) async throws -> String {
+        let provider = OpenAICompatibleProvider(model: model, apiKeyOverride: apiKey, requiresPrivacyApproval: false)
+        let reply = try await provider.complete(.init(
+            prompt: "Reply with exactly: PointVerse OK",
+            maximumTokens: 16,
+            temperature: 0
+        ))
+        return String(reply.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+    }
+}
+
+public enum LanguageModelRoute: Sendable {
+    case disabled
+    case builtIn(ModelManifest)
+    case edge0
+    case localGGUF(ExternalLanguageModel)
+    case network(OpenAICompatibleProvider)
+}
+
+public enum LanguageModelRouter {
+    /// Resolves only the model explicitly chosen by the user. In particular,
+    /// this never falls back from a local model to a network provider.
+    public static func selectedRoute(defaults: UserDefaults = .standard) throws -> LanguageModelRoute {
+        let selectedID = ModelSelection.selectedLanguageModelID(defaults: defaults)
+        if selectedID == ModelSelection.disabledLanguageModelID { return .disabled }
+        if let external = ExternalLanguageModelStore.selected(defaults: defaults) {
+            switch external.kind {
+            case .localGGUF: return .localGGUF(external)
+            case .openAICompatible:
+                guard ExternalModelPrivacyApprovalStore.isApproved(external.id, defaults: defaults) else {
+                    throw ExternalModelConnectionError.privacyApprovalRequired
+                }
+                return .network(OpenAICompatibleProvider(model: external))
+            }
+        }
+        if selectedID == ModelSelection.edge0LanguageModelID { return .edge0 }
+        guard let manifest = ModelSelection.languageModels.first(where: { $0.id == selectedID }) else {
+            return .disabled
+        }
+        return .builtIn(manifest)
+    }
+}
 
 public enum ConversationRole: String, CaseIterable, Sendable {
     case concise, explore, organize, creative
@@ -24,6 +255,7 @@ public actor QwenTitleGenerator {
     private var engine: LlamaEngine?
     private var edge0Engine: Edge0ChatEngine?
     private var loadedModelPath: String?
+    private var networkModel: ExternalLanguageModel?
 
     public init(registry: ModelRegistry, executionGate: ModelExecutionGate) {
         self.registry = registry
@@ -34,6 +266,7 @@ public actor QwenTitleGenerator {
         engine = nil
         edge0Engine = nil
         loadedModelPath = nil
+        networkModel = nil
         PointVerseLog.storage.info("Language model resources released")
     }
 
@@ -57,7 +290,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let rawTitle = try complete(prompt: prompt, maximumTokens: 48) else {
+        guard let rawTitle = try await complete(prompt: prompt, maximumTokens: 48) else {
             throw PointVerseError.transcriptionFailed
         }
         let title = Self.clean(rawTitle, localeIdentifier: localeIdentifier)
@@ -71,6 +304,23 @@ public actor QwenTitleGenerator {
         defer { releaseAfterExecution() }
         let manifest = try await prepareSelectedEngine()
         let language = Self.languageName(for: localeIdentifier)
+        if let networkModel {
+            let messages: [LanguageModelRequest.Message] = [
+                .init(
+                    role: "system",
+                    content: "You are discussing saved content with the user. The saved content is authoritative. Reply in \(language). \(role.instruction) Do not restate the conversation. Say when the saved content is insufficient."
+                ),
+                .init(role: "system", content: "Saved content:\n\(String(context.prefix(1_200)))"),
+            ] + conversation.suffix(8).map {
+                .init(role: $0.role == "assistant" ? "assistant" : "user", content: String($0.text.prefix(600)))
+            }
+            let rawReply = try await OpenAICompatibleProvider(model: networkModel).complete(
+                .init(prompt: "", messages: messages, maximumTokens: role.maximumTokens)
+            )
+            let reply = Self.cleanReply(rawReply)
+            guard !reply.isEmpty else { throw PointVerseError.invalidModelOutput }
+            return reply
+        }
         let assistantPreamble = manifest.map(Self.assistantPreamble(for:)) ?? ""
         let turns: [String] = conversation.suffix(6).map { message -> String in
             let role = message.role == "assistant" ? "assistant" : "user"
@@ -88,7 +338,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let rawReply = try complete(prompt: prompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
+        guard let rawReply = try await complete(prompt: prompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
             throw PointVerseError.invalidModelOutput
         }
         let reply = Self.cleanReply(rawReply)
@@ -107,7 +357,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let retried = try complete(prompt: retryPrompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
+        guard let retried = try await complete(prompt: retryPrompt, maximumTokens: role.maximumTokens, stopAtNewline: false) else {
             throw PointVerseError.invalidModelOutput
         }
         let cleanedRetry = Self.cleanReply(retried)
@@ -139,7 +389,7 @@ public actor QwenTitleGenerator {
             <|im_start|>assistant
             \(manifest.map(Self.assistantPreamble(for:)) ?? "")
             """
-            guard let raw = try complete(prompt: prompt, maximumTokens: 640, stopAtNewline: false),
+            guard let raw = try await complete(prompt: prompt, maximumTokens: 640, stopAtNewline: false),
                   let batch = Self.parseTestTextArray(raw, expectedCount: batchCount) else {
                 throw PointVerseError.invalidModelOutput
             }
@@ -179,7 +429,7 @@ public actor QwenTitleGenerator {
         <|im_start|>assistant
         \(assistantPreamble)
         """
-        guard let raw = try complete(prompt: prompt, maximumTokens: 64) else {
+        guard let raw = try await complete(prompt: prompt, maximumTokens: 64) else {
             throw PointVerseError.invalidModelOutput
         }
         let translated = (raw.components(separatedBy: "<|im_end|>").first ?? raw)
@@ -227,7 +477,8 @@ public actor QwenTitleGenerator {
         loadedModelPath = modelURL.path
     }
 
-    private func complete(prompt: String, maximumTokens: Int, stopAtNewline: Bool = true) throws -> String? {
+    private func complete(prompt: String, maximumTokens: Int, stopAtNewline: Bool = true) async throws -> String? {
+        if let networkModel { return try await completeRemotely(prompt: prompt, maximumTokens: maximumTokens, model: networkModel) }
         if let edge0Engine {
             // PointVerse requests are independent jobs. Resetting avoids leaking
             // one Point's context into the next title, judge, or prompt task.
@@ -242,19 +493,37 @@ public actor QwenTitleGenerator {
         engine = nil
         edge0Engine = nil
         loadedModelPath = nil
+        networkModel = nil
         Task { await executionGate.release() }
     }
 
     private func prepareSelectedEngine() async throws -> ModelManifest? {
-        let selectedID = ModelSelection.selectedLanguageModelID()
-        guard selectedID != ModelSelection.disabledLanguageModelID else { throw PointVerseError.modelNotInstalled }
-        if selectedID == ModelSelection.edge0LanguageModelID {
+        let route = try LanguageModelRouter.selectedRoute()
+        switch route {
+        case .disabled:
+            throw PointVerseError.modelNotInstalled
+        case .network(let provider):
+            let external = provider.model
+                guard URL(string: external.baseURL ?? "") != nil, !(external.remoteModel ?? "").isEmpty else {
+                    throw PointVerseError.modelNotInstalled
+                }
+            engine = nil
+            edge0Engine = nil
+            networkModel = external
+            return nil
+        case .localGGUF(let external):
+            guard let path = external.localPath, FileManager.default.fileExists(atPath: path) else {
+                throw PointVerseError.modelNotInstalled
+            }
+            networkModel = nil
+            try loadEngine(modelURL: URL(fileURLWithPath: path))
+            return nil
+        case .edge0:
             guard await registry.isEdge0Installed() else { throw PointVerseError.modelNotInstalled }
             let modelURL = await registry.edge0Directory()
             try loadEdge0Engine(modelURL: modelURL)
             return nil
-        }
-        guard let preferred = ModelSelection.selectedLanguageModel() else { throw PointVerseError.modelNotInstalled }
+        case .builtIn(let preferred):
         guard let resolved = await registry.resolveInstalledModel(preferred: preferred, candidates: ModelSelection.languageModels) else {
             PointVerseLog.transcription.error("No installed language model found; preferred=\(preferred.id, privacy: .public)")
             throw PointVerseError.modelNotInstalled
@@ -268,6 +537,13 @@ public actor QwenTitleGenerator {
         let modelURL = await registry.installedURL(for: resolved)
         try loadEngine(modelURL: modelURL)
         return resolved
+        }
+    }
+
+    private func completeRemotely(prompt: String, maximumTokens: Int, model: ExternalLanguageModel) async throws -> String {
+        try await OpenAICompatibleProvider(model: model).complete(
+            .init(prompt: prompt, maximumTokens: maximumTokens)
+        )
     }
 
     private static func formattedConversation(_ messages: [ConversationMessage]) -> String {

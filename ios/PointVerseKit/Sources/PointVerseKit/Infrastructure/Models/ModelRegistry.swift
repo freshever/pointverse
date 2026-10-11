@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 /// A process-wide permit that prevents two local ML runtimes from executing at
@@ -284,6 +285,10 @@ public actor ModelRegistry {
     }
 
     public func installEdge0Component(_ component: Edge0ModelComponent, downloadedURL: URL) throws {
+        let downloadedSize = try downloadedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        guard Int64(downloadedSize ?? 0) == component.byteCount else {
+            throw PointVerseError.modelChecksumMismatch
+        }
         guard try sha256(of: downloadedURL) == component.sha256 else {
             throw PointVerseError.modelChecksumMismatch
         }
@@ -356,11 +361,23 @@ public actor ModelRegistry {
     private func sha256(of url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
+        // A sequential checksum of Edge0's 4.5 GB checkpoint should not fill
+        // the process/kernel file cache on a memory-constrained phone.
+        // F_NOCACHE is advisory, so checksum correctness is unchanged if the
+        // filesystem ignores it.
+        _ = fcntl(handle.fileDescriptor, F_NOCACHE, 1)
         var hasher = SHA256()
+        var reachedEnd = false
         while true {
-            let chunk = try handle.read(upToCount: 4 * 1_024 * 1_024) ?? Data()
-            if chunk.isEmpty { break }
-            hasher.update(data: chunk)
+            try autoreleasepool {
+                let chunk = try handle.read(upToCount: 512 * 1_024) ?? Data()
+                if chunk.isEmpty {
+                    reachedEnd = true
+                    return
+                }
+                hasher.update(data: chunk)
+            }
+            if reachedEnd { break }
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }

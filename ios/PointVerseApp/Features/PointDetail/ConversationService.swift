@@ -40,7 +40,7 @@ actor ConversationService {
             return .modelUnavailable
         } catch {
             let nsError = error as NSError
-            PointVerseLog.transcription.error("Local-model conversation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+            PointVerseLog.transcription.error("Language-model conversation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) message=\(nsError.localizedDescription, privacy: .public)")
             return .failed
         }
     }

@@ -32,12 +32,20 @@ private final class Edge0PartialWriter: @unchecked Sendable {
     private let lock = NSLock()
     private var handle: FileHandle?
     private var persistedBytes: Int64
+    private var lastReportedBytes: Int64
+    private var lastReportedAt = ContinuousClock.now
+
+    struct AppendResult: Sendable {
+        let persistedBytes: Int64
+        let shouldReportProgress: Bool
+    }
 
     init(component: Edge0ModelComponent, partialURL: URL, requestedOffset: Int64) {
         self.component = component
         self.partialURL = partialURL
         self.requestedOffset = requestedOffset
         persistedBytes = requestedOffset
+        lastReportedBytes = requestedOffset
     }
 
     func prepare(for response: HTTPURLResponse) throws {
@@ -75,13 +83,25 @@ private final class Edge0PartialWriter: @unchecked Sendable {
         handle = output
     }
 
-    func append(_ data: Data) throws -> Int64 {
+    func append(_ data: Data) throws -> AppendResult {
         lock.lock()
         defer { lock.unlock() }
         guard let handle else { throw CocoaError(.fileWriteUnknown) }
         try handle.write(contentsOf: data)
         persistedBytes += Int64(data.count)
-        return persistedBytes
+        // URLSession may deliver tens of thousands of small chunks for the
+        // 4.5 GB checkpoint. Enqueuing one MainActor task per chunk retains a
+        // large backlog and can make the app jetsam exactly when verification
+        // begins. Report at most every 16 MiB or 250 ms instead.
+        let now = ContinuousClock.now
+        let bytesAdvanced = persistedBytes - lastReportedBytes
+        let enoughTimePassed = lastReportedAt.duration(to: now) >= .milliseconds(250)
+        let shouldReport = bytesAdvanced >= 16 * 1_024 * 1_024 || enoughTimePassed
+        if shouldReport {
+            lastReportedBytes = persistedBytes
+            lastReportedAt = now
+        }
+        return AppendResult(persistedBytes: persistedBytes, shouldReportProgress: shouldReport)
     }
 
     func close() {
@@ -269,8 +289,10 @@ extension Edge0DownloadManager: URLSessionDataDelegate {
     nonisolated func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         guard let writer = transferState.writer(for: dataTask.taskIdentifier) else { return }
         do {
-            let bytes = try writer.append(data)
-            Task { @MainActor in self.updateProgress(componentBytes: bytes) }
+            let result = try writer.append(data)
+            if result.shouldReportProgress {
+                Task { @MainActor in self.updateProgress(componentBytes: result.persistedBytes) }
+            }
         } catch {
             dataTask.cancel()
         }

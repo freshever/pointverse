@@ -1,5 +1,7 @@
 import PointVerseKit
+import QwenAdapter
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ModelSettingsView: View {
     @AppStorage("appLanguage") private var appLanguage = "system"
@@ -7,6 +9,15 @@ struct ModelSettingsView: View {
     @AppStorage(ModelSelection.languageDefaultsKey) private var selectedLanguageModelID = ModelManifest.qwen3_0_6BQ8.id
     @AppStorage(ModelSelection.imageDefaultsKey) private var selectedImageModelID = ModelManifest.stableDiffusion21Base6Bit.id
     @EnvironmentObject private var container: AppContainer
+    @State private var externalModels = ExternalLanguageModelStore.load()
+    @State private var showingNetworkModelEditor = false
+    @State private var showingGGUFImporter = false
+    @State private var isImportingGGUF = false
+    @State private var externalModelError: String?
+    @State private var pendingNetworkModel: ExternalLanguageModel?
+    @State private var showingNetworkPrivacyConfirmation = false
+    @State private var testingModelID: UUID?
+    @State private var connectionResult: String?
 
     var body: some View {
         List {
@@ -35,12 +46,13 @@ struct ModelSettingsView: View {
             } header: { AppText("语音转写") }
 
             Section {
-                Picker(selection: $selectedLanguageModelID) {
+                Picker(selection: Binding(get: { selectedLanguageModelID }, set: selectLanguageModel)) {
                     AppText("关闭本地整理").tag(ModelSelection.disabledLanguageModelID)
                     ForEach(ModelSelection.languageModels, id: \.id) { manifest in
                         Text(verbatim: languageName(manifest)).tag(manifest.id)
                     }
                     Text(verbatim: "Edge0 8B A1B · Experimental").tag(ModelSelection.edge0LanguageModelID)
+                    ForEach(externalModels) { model in Text(verbatim: model.name).tag(model.selectionID) }
                 } label: { AppText("当前模型") }
 
                 ForEach(container.languageModelManagers, id: \.manifest.id) { manager in
@@ -55,6 +67,49 @@ struct ModelSettingsView: View {
                     onSelect: { selectedLanguageModelID = ModelSelection.edge0LanguageModelID }
                 )
             } header: { AppText("本地整理") }
+
+            Section {
+                Button { showingNetworkModelEditor = true } label: {
+                    Label("添加网络模型", systemImage: "network")
+                }
+                Button { showingGGUFImporter = true } label: {
+                    Label("导入本地 GGUF", systemImage: "square.and.arrow.down")
+                }.disabled(isImportingGGUF)
+                if isImportingGGUF { HStack { ProgressView(); Text("正在复制本地模型…") } }
+                ForEach(externalModels) { model in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(verbatim: model.name)
+                            Text(model.kind == .openAICompatible
+                                 ? "\(model.provider?.displayName ?? "OpenAI-compatible") · \(model.remoteModel ?? "")"
+                                 : "本地 GGUF")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if selectedLanguageModelID == model.selectionID {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        } else {
+                            Button("使用") { selectLanguageModel(model.selectionID) }.buttonStyle(.borderless)
+                        }
+                        if model.kind == .openAICompatible {
+                            Button {
+                                testConnection(model)
+                            } label: {
+                                if testingModelID == model.id { ProgressView().controlSize(.small) }
+                                else { Image(systemName: "bolt.horizontal.circle") }
+                            }
+                            .disabled(testingModelID != nil)
+                            .buttonStyle(.borderless)
+                        }
+                        Button(role: .destructive) { removeExternalModel(model) } label: {
+                            Image(systemName: "trash")
+                        }.buttonStyle(.borderless)
+                    }
+                }
+                if let connectionResult { Text(verbatim: connectionResult).font(.footnote).foregroundStyle(.secondary) }
+                if let externalModelError { Text(verbatim: externalModelError).font(.footnote).foregroundStyle(.red) }
+            } header: { AppText("外部语言模型") }
+              footer: { Text("网络模型的内容会发送到你配置的服务；API Key 仅保存在本机 Keychain。本地 GGUF 会复制到点界的模型目录。") }
 
             Section {
                 ForEach(container.imageModelManagers, id: \.manifest.id) { manager in
@@ -119,6 +174,29 @@ struct ModelSettingsView: View {
         .navigationTitle(AppLocalization.string("本地模型", language: appLanguage))
         .onChange(of: selectedLanguageModelID) { _, _ in regenerateTitles() }
         .onChange(of: appLanguage) { _, _ in regenerateTitles() }
+        .sheet(isPresented: $showingNetworkModelEditor) {
+            NetworkModelEditor { model, key in
+                externalModels.append(model)
+                ExternalLanguageModelStore.save(externalModels)
+                try? ExternalModelAPIKeyStore.save(key, modelID: model.id)
+                selectLanguageModel(model.selectionID)
+            }
+        }
+        .fileImporter(isPresented: $showingGGUFImporter,
+                      allowedContentTypes: [UTType(filenameExtension: "gguf") ?? .data]) { result in
+            importGGUF(result)
+        }
+        .confirmationDialog("允许使用网络模型？", isPresented: $showingNetworkPrivacyConfirmation, titleVisibility: .visible) {
+            Button("允许并使用") {
+                guard let model = pendingNetworkModel else { return }
+                ExternalModelPrivacyApprovalStore.approve(model.id)
+                selectedLanguageModelID = model.selectionID
+                pendingNetworkModel = nil
+            }
+            Button("取消", role: .cancel) { pendingNetworkModel = nil }
+        } message: {
+            Text("点界会把当前任务所需的文字内容发送到 \(pendingNetworkModel?.name ?? "网络服务")。内容不会先经过点界服务器，也不会在未经确认时自动切换到其他云端模型。")
+        }
     }
 
     private func speechName(_ manifest: ModelManifest) -> String {
@@ -162,6 +240,162 @@ struct ModelSettingsView: View {
 
     private func regenerateTitles() {
         Task { await container.transcriptionService.deriveMissingTitles(languageIdentifier: appLanguage) }
+    }
+
+    private func selectLanguageModel(_ selectionID: String) {
+        guard let model = externalModels.first(where: { $0.selectionID == selectionID }),
+              model.kind == .openAICompatible,
+              !ExternalModelPrivacyApprovalStore.isApproved(model.id) else {
+            selectedLanguageModelID = selectionID
+            return
+        }
+        pendingNetworkModel = model
+        showingNetworkPrivacyConfirmation = true
+    }
+
+    private func testConnection(_ model: ExternalLanguageModel) {
+        testingModelID = model.id
+        connectionResult = nil
+        externalModelError = nil
+        Task {
+            do {
+                let reply = try await ExternalModelConnectionTester.test(model: model)
+                connectionResult = "连接成功：\(reply)"
+            } catch {
+                externalModelError = "连接失败：\(error.localizedDescription)"
+            }
+            testingModelID = nil
+        }
+    }
+
+    private func importGGUF(_ result: Result<URL, Error>) {
+        guard case .success(let source) = result else {
+            if case .failure(let error) = result { externalModelError = error.localizedDescription }
+            return
+        }
+        isImportingGGUF = true
+        Task {
+            do {
+                let model = try await Task.detached(priority: .utility) {
+                    let scoped = source.startAccessingSecurityScopedResource()
+                    defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+                    let root = try AudioBlobStore.applicationSupportRoot()
+                        .appending(path: "models/external", directoryHint: .isDirectory)
+                    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                    let id = UUID()
+                    let destination = root.appending(path: id.uuidString + ".gguf")
+                    try FileManager.default.copyItem(at: source, to: destination)
+                    return ExternalLanguageModel(id: id, name: source.deletingPathExtension().lastPathComponent,
+                                                 kind: .localGGUF, localPath: destination.path)
+                }.value
+                externalModels.append(model)
+                ExternalLanguageModelStore.save(externalModels)
+                selectedLanguageModelID = model.selectionID
+                externalModelError = nil
+            } catch { externalModelError = error.localizedDescription }
+            isImportingGGUF = false
+        }
+    }
+
+    private func removeExternalModel(_ model: ExternalLanguageModel) {
+        if let path = model.localPath { try? FileManager.default.removeItem(atPath: path) }
+        ExternalModelAPIKeyStore.remove(modelID: model.id)
+        ExternalModelPrivacyApprovalStore.revoke(model.id)
+        externalModels.removeAll { $0.id == model.id }
+        ExternalLanguageModelStore.save(externalModels)
+        if selectedLanguageModelID == model.selectionID { selectedLanguageModelID = ModelSelection.disabledLanguageModelID }
+    }
+}
+
+private struct NetworkModelEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var provider = ExternalLanguageModelProvider.openRouter
+    @State private var name = "OpenRouter"
+    @State private var baseURL = ExternalLanguageModelProvider.openRouter.defaultBaseURL
+    @State private var modelName = ExternalLanguageModelProvider.openRouter.suggestedModel
+    @State private var apiKey = ""
+    @State private var isTesting = false
+    @State private var testResult: String?
+    @State private var testError: String?
+    let onSave: (ExternalLanguageModel, String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker("服务商", selection: $provider) {
+                    ForEach(ExternalLanguageModelProvider.allCases, id: \.self) { provider in
+                        Text(verbatim: provider.displayName).tag(provider)
+                    }
+                }
+                .onChange(of: provider) { _, value in
+                    name = value.displayName
+                    baseURL = value.defaultBaseURL
+                    if modelName.isEmpty || modelName == "openrouter/free" { modelName = value.suggestedModel }
+                    testResult = nil
+                    testError = nil
+                }
+                TextField("名称", text: $name)
+                TextField("Base URL", text: $baseURL).textInputAutocapitalization(.never).keyboardType(.URL)
+                TextField("模型名称", text: $modelName).textInputAutocapitalization(.never)
+                SecureField("API Key（可选）", text: $apiKey)
+                Button {
+                    testCurrentConfiguration()
+                } label: {
+                    HStack {
+                        if isTesting { ProgressView().controlSize(.small) }
+                        Text("测试连接")
+                    }
+                }
+                .disabled(!isValid || isTesting)
+                if let testResult { Text(verbatim: testResult).font(.footnote).foregroundStyle(.green) }
+                if let testError { Text(verbatim: testError).font(.footnote).foregroundStyle(.red) }
+                Section {
+                    Text("测试只发送固定文字“PointVerse OK”。保存并选择模型后，点界会再次请求你确认是否允许发送真实内容。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("添加网络模型")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        let model = ExternalLanguageModel(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                          kind: .openAICompatible,
+                                                          provider: provider,
+                                                          baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                          remoteModel: modelName.trimmingCharacters(in: .whitespacesAndNewlines))
+                        onSave(model, apiKey)
+                        dismiss()
+                    }.disabled(!isValid)
+                }
+            }
+        }
+    }
+
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !modelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        URL(string: baseURL)?.scheme?.hasPrefix("http") == true
+    }
+
+    private func testCurrentConfiguration() {
+        let model = ExternalLanguageModel(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                          kind: .openAICompatible,
+                                          provider: provider,
+                                          baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                                          remoteModel: modelName.trimmingCharacters(in: .whitespacesAndNewlines))
+        isTesting = true
+        testResult = nil
+        testError = nil
+        Task {
+            do {
+                let reply = try await ExternalModelConnectionTester.test(model: model, apiKey: apiKey)
+                testResult = "连接成功：\(reply)"
+            } catch {
+                testError = error.localizedDescription
+            }
+            isTesting = false
+        }
     }
 }
 
