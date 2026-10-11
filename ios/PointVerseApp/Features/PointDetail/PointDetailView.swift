@@ -60,7 +60,7 @@ struct PointDetailView: View {
                     case .message(let message): conversationMessage(message)
                     }
                 }
-                if isReplying { HStack { ProgressView(); AppText("Qwen 正在回复") }.foregroundStyle(.secondary) }
+                if isReplying { conversationTypingIndicator.transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading))) }
                 if conversationModelUnavailable {
                     AppText("回复失败，请确认 Qwen 模型已安装").foregroundStyle(.red)
                 } else if conversationFailed {
@@ -381,6 +381,18 @@ struct PointDetailView: View {
         }
     }
 
+    private var conversationTypingIndicator: some View {
+        HStack {
+            AnimatedEllipsis()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 18))
+                .accessibilityLabel(AppLocalization.string("正在回复", language: appLanguage))
+            Spacer(minLength: 42)
+        }
+    }
+
     private var conversationComposer: some View {
         HStack(alignment: .bottom, spacing: 10) {
             Menu {
@@ -401,9 +413,9 @@ struct PointDetailView: View {
             } label: {
                 Image(systemName: "person.crop.circle").font(.title2)
             }
-            TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText, axis: .vertical)
-                .lineLimit(1...5)
+            TextField(AppLocalization.string("继续聊聊这个想法", language: appLanguage), text: $messageText)
                 .focused($messageFieldFocused)
+                .submitLabel(.send)
                 .padding(.horizontal, 12).padding(.vertical, 9)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
                 .onSubmit(sendMessage)
@@ -543,7 +555,11 @@ struct PointDetailView: View {
         guard !text.isEmpty, !isReplying else { return }
         messageText = ""
         messageFieldFocused = false
-        isReplying = true
+        let optimisticMessage = ConversationMessage(id: UUID(), role: "user", text: text, createdAt: Date())
+        withAnimation(.easeInOut(duration: 0.2)) {
+            messages.append(optimisticMessage)
+            isReplying = true
+        }
         conversationFailed = false
         conversationModelUnavailable = false
         Task {
@@ -555,10 +571,12 @@ struct PointDetailView: View {
             )
             _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
             container.refreshEmbeddings()
-            isReplying = false
             conversationFailed = result != .succeeded
             conversationModelUnavailable = result == .modelUnavailable
             await reload()
+            withAnimation(.easeInOut(duration: 0.22)) {
+                isReplying = false
+            }
         }
     }
 
@@ -758,6 +776,20 @@ private struct LoadedPointImage: Identifiable {
     var id: UUID { asset.id }
     let asset: PointImage
     let image: UIImage
+}
+
+private struct AnimatedEllipsis: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.32)) { context in
+            let phase = Int(context.date.timeIntervalSinceReferenceDate / 0.32) % 4
+            Text(verbatim: String(repeating: ".", count: max(1, phase)))
+                .font(.body.bold())
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 28, alignment: .leading)
+                .contentTransition(.numericText())
+        }
+    }
 }
 
 private enum DetailTimelineItem: Identifiable {
