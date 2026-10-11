@@ -43,12 +43,14 @@ public struct PointImage: Identifiable, Equatable, Sendable {
     public let relativePath: String
     public let recognizedText: String?
     public let createdAt: Date
+    public let modelID: String?
 
-    public init(id: UUID, relativePath: String, recognizedText: String?, createdAt: Date) {
+    public init(id: UUID, relativePath: String, recognizedText: String?, createdAt: Date, modelID: String? = nil) {
         self.id = id
         self.relativePath = relativePath
         self.recognizedText = recognizedText
         self.createdAt = createdAt
+        self.modelID = modelID
     }
 }
 
@@ -226,6 +228,7 @@ public struct PointDetail: Equatable, Sendable {
     public let userText: String?
     public let localeIdentifier: String
     public let transcriptModelID: String?
+    public let titleModelID: String?
 
     public var effectiveTranscript: String? {
         let preferred = userText?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -246,7 +249,8 @@ public struct PointDetail: Equatable, Sendable {
         engineText: String?,
         userText: String?,
         localeIdentifier: String,
-        transcriptModelID: String? = nil
+        transcriptModelID: String? = nil,
+        titleModelID: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -260,6 +264,7 @@ public struct PointDetail: Equatable, Sendable {
         self.userText = userText
         self.localeIdentifier = localeIdentifier
         self.transcriptModelID = transcriptModelID
+        self.titleModelID = titleModelID
     }
 }
 
@@ -268,12 +273,14 @@ public struct ConversationMessage: Identifiable, Equatable, Sendable {
     public let role: String
     public let text: String
     public let createdAt: Date
+    public let modelID: String?
 
-    public init(id: UUID, role: String, text: String, createdAt: Date) {
+    public init(id: UUID, role: String, text: String, createdAt: Date, modelID: String? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.createdAt = createdAt
+        self.modelID = modelID
     }
 }
 

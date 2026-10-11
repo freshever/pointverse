@@ -30,11 +30,13 @@ final class AppContainer: ObservableObject {
     let embeddingModelManagers: [ModelDownloadManager]
     let audioUnderstandingModelManagers: [ModelDownloadManager]
     let imageGenerator: LocalImageGenerator
+    let imageGenerationWorkflow: ImageGenerationWorkflow
     let visionGenerator: QwenVisionGenerator
     let promptTranslator: QwenTitleGenerator
     private(set) var embeddingService: EmbeddingService?
     private var embeddingProvider: (any PointEmbedding)?
     private let modelRegistry: ModelRegistry
+    private let modelExecutionGate: ModelExecutionGate
     private let applicationSupportRoot: URL
     let imageTextRecognizer = ImageTextRecognizer()
     @Published private(set) var startupError: String?
@@ -57,6 +59,7 @@ final class AppContainer: ObservableObject {
             self.modelRegistry = modelRegistry
             self.applicationSupportRoot = sharedRoot
             let modelExecutionGate = ModelExecutionGate()
+            self.modelExecutionGate = modelExecutionGate
             let qwenGenerator = QwenTitleGenerator(registry: modelRegistry, executionGate: modelExecutionGate)
             self.database = database
             self.blobStore = blobStore
@@ -81,7 +84,12 @@ final class AppContainer: ObservableObject {
                 registry: modelRegistry, rootURL: sharedRoot, executionGate: modelExecutionGate
             )
             self.conversationService = ConversationService(repository: database, generator: qwenGenerator)
-            self.imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: sharedRoot, executionGate: modelExecutionGate)
+            let imageGenerator = LocalImageGenerator(registry: modelRegistry, rootURL: sharedRoot, executionGate: modelExecutionGate)
+            self.imageGenerator = imageGenerator
+            self.imageGenerationWorkflow = ImageGenerationWorkflow(
+                promptTranslator: qwenGenerator,
+                imageGenerator: imageGenerator
+            )
             self.speechModelManagers = ModelSelection.speechModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.languageModelManagers = ModelSelection.languageModels.map { ModelDownloadManager(registry: modelRegistry, manifest: $0) }
             self.edge0ModelManager = Edge0DownloadManager(registry: modelRegistry)
@@ -171,7 +179,7 @@ final class AppContainer: ObservableObject {
             PointVerseLog.embedding.info("Loading downloaded Hark E5 model and bundled tokenizer")
             let provider = try await E5CoreMLEmbedding.load(modelURL: compiledURL, tokenizerFolder: tokenizerJSON.deletingLastPathComponent())
             embeddingProvider = provider
-            embeddingService = EmbeddingService(repository: database, provider: provider)
+            embeddingService = EmbeddingService(repository: database, provider: provider, executionGate: modelExecutionGate)
             embeddingStartupError = nil
             PointVerseLog.embedding.info("E5 embedding service is ready")
         } catch {
@@ -202,7 +210,7 @@ final class AppContainer: ObservableObject {
 
     func refreshTestModeEmbeddings(in database: PointDatabase) async -> Bool {
         guard let embeddingProvider else { return false }
-        let service = EmbeddingService(repository: database, provider: embeddingProvider)
+        let service = EmbeddingService(repository: database, provider: embeddingProvider, executionGate: modelExecutionGate)
         await service.resumePending()
         return true
     }

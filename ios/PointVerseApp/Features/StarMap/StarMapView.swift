@@ -5,8 +5,11 @@ import SwiftUI
 struct StarMapView: View {
     @EnvironmentObject private var container: AppContainer
     @State private var layout = StarLayout(nodes: [], links: [], embeddingCount: 0)
+    @State private var entries: [PointMapEntry] = []
     @State private var selected: PointSummary?
     @State private var loadFailed = false
+    @State private var showingSearch = false
+    @State private var focusRequest: PointMapFocusRequest?
 
     var body: some View {
         ZStack {
@@ -24,7 +27,7 @@ struct StarMapView: View {
                 }
                 .foregroundStyle(.white)
             } else {
-                Pseudo3DStarMap(layout: layout) { selected = $0 }
+                Pseudo3DStarMap(layout: layout, focusRequest: focusRequest) { selected = $0 }
             }
         }
         .navigationTitle("星图")
@@ -33,6 +36,9 @@ struct StarMapView: View {
         .toolbarBackground(Color(red: 0.035, green: 0.045, blue: 0.11), for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                    .tint(.white)
+                    .accessibilityLabel("搜索 Point")
                 Button {
                     NotificationCenter.default.post(name: AppContainer.enterTestMode, object: nil)
                 } label: {
@@ -52,16 +58,89 @@ struct StarMapView: View {
                 .environmentObject(container)
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showingSearch) {
+            PointMapSearchSheet(entries: entries) { pointID in
+                focusRequest = PointMapFocusRequest(pointID: pointID)
+                showingSearch = false
+            }
+        }
         .alert("无法读取星图", isPresented: $loadFailed) { Button("好") {} }
     }
 
     private func reload() async {
         do {
-            async let entries = container.database.pointMapEntries()
+            async let loadedEntries = container.database.pointMapEntries()
             async let embeddings = container.database.embeddings(modelID: EmbeddingModelIdentity.bgeSmallZhV15)
-            layout = StarLayoutEngine.make(entries: try await entries, embeddings: try await embeddings)
+            let values = try await loadedEntries
+            entries = values
+            layout = StarLayoutEngine.make(entries: values, embeddings: try await embeddings)
         } catch {
             loadFailed = true
+        }
+    }
+}
+
+struct PointMapFocusRequest: Equatable {
+    let pointID: PointID
+    private let nonce = UUID()
+
+    init(pointID: PointID) {
+        self.pointID = pointID
+    }
+}
+
+struct PointMapSearchSheet: View {
+    let entries: [PointMapEntry]
+    let onSelect: (PointID) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var results: [PointMapEntry] {
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = value.isEmpty ? entries : entries.filter {
+            $0.point.title.localizedCaseInsensitiveContains(value)
+                || $0.content.localizedCaseInsensitiveContains(value)
+        }
+        return Array(source.sorted { $0.point.createdAt > $1.point.createdAt }.prefix(100))
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(results) { entry in
+                Button {
+                    onSelect(entry.id)
+                } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(entry.point.title.isEmpty ? "未命名 Point" : entry.point.title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        if !entry.content.isEmpty {
+                            Text(entry.content)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                        }
+                        Text(entry.point.createdAt, format: .dateTime.year().month().day().hour().minute())
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+            }
+            .overlay {
+                if results.isEmpty {
+                    ContentUnavailableView.search(text: query)
+                }
+            }
+            .navigationTitle("搜索 Point")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, prompt: "搜索标题或内容")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
         }
     }
 }
@@ -96,7 +175,7 @@ private struct StarMapTestModeView: View {
                 }
                 .foregroundStyle(.white)
             } else {
-                Pseudo3DStarMap(layout: layout) { point in
+                Pseudo3DStarMap(layout: layout, focusRequest: nil) { point in
                     selectedEntry = entries.first { $0.id == point.id }
                 }
             }
@@ -263,6 +342,7 @@ private struct Pseudo3DStarMap: View {
     private let minimumZoom: CGFloat = 0.55
     private let maximumZoom: CGFloat = 12
     let layout: StarLayout
+    let focusRequest: PointMapFocusRequest?
     let onSelect: (PointSummary) -> Void
     @State private var yaw: CGFloat = 0.35
     @State private var pitch: CGFloat = -0.18
@@ -271,6 +351,7 @@ private struct Pseudo3DStarMap: View {
     @State private var zoom: CGFloat = 1
     @State private var zoomStart: CGFloat?
     @State private var selectedLink: StarLayout.Link?
+    @State private var focusedPointID: PointID?
 
     var body: some View {
         GeometryReader { proxy in
@@ -331,6 +412,10 @@ private struct Pseudo3DStarMap: View {
                         )
                         context.fill(Path(ellipseIn: rect), with: .color(color))
                         context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)), with: .color(color.opacity(0.25)), lineWidth: 2)
+                        if focusedPointID == point.id {
+                            context.stroke(Path(ellipseIn: rect.insetBy(dx: -10, dy: -10)),
+                                           with: .color(.yellow.opacity(0.95)), lineWidth: 3)
+                        }
                         if layout.nodes[index].isEmbedded {
                             context.stroke(
                                 Path(ellipseIn: rect.insetBy(dx: -6, dy: -6)),
@@ -388,6 +473,25 @@ private struct Pseudo3DStarMap: View {
                     .padding(.bottom, 18)
                 }
             }
+            .onChange(of: focusRequest) { _, request in
+                focus(on: request)
+            }
+        }
+    }
+
+    private func focus(on request: PointMapFocusRequest?) {
+        guard let request,
+              let node = layout.nodes.first(where: { $0.point.id == request.pointID }) else { return }
+        let position = node.position
+        let targetYaw = atan2(-position.x, position.z)
+        let rotatedDepth = -position.x * sin(targetYaw) + position.z * cos(targetYaw)
+        let targetPitch = atan2(position.y, rotatedDepth)
+        focusedPointID = request.pointID
+        selectedLink = nil
+        withAnimation(.easeInOut(duration: 0.55)) {
+            yaw = targetYaw
+            pitch = targetPitch
+            zoom = min(maximumZoom, max(zoom, 8))
         }
     }
 
@@ -540,6 +644,7 @@ private struct Pseudo3DStarMap: View {
         default: threshold = 0.38
         }
         var remaining = Set(layout.nodes.indices)
+        let focusedIndex = focusedPointID.flatMap { id in layout.nodes.firstIndex { $0.point.id == id } }
         var groups: [[Int]] = []
         while let seed = remaining.first {
             remaining.remove(seed)
@@ -550,7 +655,8 @@ private struct Pseudo3DStarMap: View {
                     if link.a == current { neighbor = link.b }
                     else if link.b == current { neighbor = link.a }
                     else { neighbor = nil }
-                    if let neighbor, remaining.remove(neighbor) != nil {
+                    if let neighbor, neighbor != focusedIndex, current != focusedIndex,
+                       remaining.remove(neighbor) != nil {
                         group.append(neighbor); queue.append(neighbor)
                     }
                 }

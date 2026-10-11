@@ -14,7 +14,7 @@ actor ConversationService {
 
     func send(pointID: PointID, text: String, languageIdentifier: String, role: ConversationRole) async -> SendResult {
         do {
-            try await repository.appendConversationMessage(pointID: pointID, role: "user", text: text)
+            try await repository.appendConversationMessage(pointID: pointID, role: "user", text: text, modelID: nil)
             let detail = try await repository.pointDetail(id: pointID)
             let messages = try await repository.conversationMessages(pointID: pointID).filter {
                 !($0.role == "assistant" && ["user", "assistant"].contains($0.text.lowercased()))
@@ -33,7 +33,12 @@ actor ConversationService {
                 localeIdentifier: languageIdentifier,
                 role: role
             )
-            try await repository.appendConversationMessage(pointID: pointID, role: "assistant", text: reply)
+            try await repository.appendConversationMessage(
+                pointID: pointID,
+                role: "assistant",
+                text: reply.text,
+                modelID: reply.modelID
+            )
             return .succeeded
         } catch PointVerseError.modelNotInstalled {
             PointVerseLog.transcription.error("Local-model conversation failed: no installed language model resolved")
@@ -44,4 +49,5 @@ actor ConversationService {
             return .failed
         }
     }
+
 }

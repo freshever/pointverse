@@ -1,9 +1,49 @@
 import CoreML
 import Foundation
 import PointVerseKit
+import QwenAdapter
 import StableDiffusion
 import UIKit
 import ZIPFoundation
+
+struct GeneratedImageArtifact: Sendable {
+    let url: URL
+    let modelID: String
+}
+
+struct GeneratedImageWorkflowResult: Sendable {
+    let artifact: GeneratedImageArtifact
+    let prompt: String
+}
+
+/// One shared image-generation pipeline for every screen and every provider.
+/// The selected language route prepares the English prompt; the selected image
+/// route consumes that exact prompt. Local and network image providers therefore
+/// differ only in the final rendering implementation.
+actor ImageGenerationWorkflow {
+    private let promptTranslator: QwenTitleGenerator
+    private let imageGenerator: LocalImageGenerator
+
+    init(promptTranslator: QwenTitleGenerator, imageGenerator: LocalImageGenerator) {
+        self.promptTranslator = promptTranslator
+        self.imageGenerator = imageGenerator
+    }
+
+    func generate(
+        source: String,
+        localeIdentifier: String,
+        promptHandler: @escaping @MainActor @Sendable (String) -> Void,
+        progressHandler: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async throws -> GeneratedImageWorkflowResult {
+        let prompt = try await promptTranslator.translateImagePromptToEnglish(
+            source,
+            localeIdentifier: localeIdentifier
+        )
+        await promptHandler(prompt)
+        let artifact = try await imageGenerator.generate(prompt: prompt, progressHandler: progressHandler)
+        return GeneratedImageWorkflowResult(artifact: artifact, prompt: prompt)
+    }
+}
 
 actor LocalImageGenerator {
     private let registry: ModelRegistry
@@ -16,9 +56,12 @@ actor LocalImageGenerator {
         self.executionGate = executionGate
     }
 
-    func generate(prompt: String, progressHandler: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> URL {
+    func generate(prompt: String, progressHandler: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> GeneratedImageArtifact {
         await executionGate.acquire()
         defer { Task { await executionGate.release() } }
+        if let networkModel = try selectedNetworkModel() {
+            return try await generateRemotely(prompt: prompt, model: networkModel, progressHandler: progressHandler)
+        }
         let safePrompt = Self.enhancedPrompt(prompt)
         let manifest = ModelSelection.selectedImageModel()
         guard await registry.isInstalled(manifest) else { throw PointVerseError.modelNotInstalled }
@@ -57,7 +100,86 @@ actor LocalImageGenerator {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         let outputURL = outputDirectory.appending(path: UUID().uuidString + ".png")
         try data.write(to: outputURL, options: Data.WritingOptions.atomic)
-        return outputURL
+        return GeneratedImageArtifact(url: outputURL, modelID: manifest.id)
+    }
+
+    private func selectedNetworkModel(defaults: UserDefaults = .standard) throws -> ExternalLanguageModel? {
+        guard let selectionID = defaults.string(forKey: "selectedExternalModel.imageGeneration"),
+              selectionID != "local" else { return nil }
+        guard let model = ExternalLanguageModelStore.load(defaults: defaults).first(where: {
+            $0.selectionID == selectionID && $0.kind == .openAICompatible && $0.supports(.imageGeneration)
+        }) else { throw ExternalModelConnectionError.invalidConfiguration }
+        return model
+    }
+
+    private func generateRemotely(
+        prompt: String,
+        model: ExternalLanguageModel,
+        progressHandler: @escaping @Sendable (Double) -> Void
+    ) async throws -> GeneratedImageArtifact {
+        guard ExternalModelPrivacyApprovalStore.isApproved(model.id),
+              let baseURL = URL(string: model.baseURL ?? ""),
+              let remoteModel = model.remoteModel?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !remoteModel.isEmpty else { throw ExternalModelConnectionError.invalidConfiguration }
+
+        let endpoint: URL
+        if baseURL.path.hasSuffix("/images") || baseURL.path.hasSuffix("/images/generations") {
+            endpoint = baseURL
+        } else if model.provider == .openRouter {
+            endpoint = baseURL.appending(path: "images")
+        } else {
+            endpoint = baseURL.appending(path: "images/generations")
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 240
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let key = ExternalModelAPIKeyStore.load(modelID: model.id), !key.isEmpty {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        if model.provider == .openRouter { request.setValue("PointVerse", forHTTPHeaderField: "X-Title") }
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": remoteModel,
+            "prompt": prompt,
+            "n": 1,
+            "output_format": "png"
+        ])
+        progressHandler(0.05)
+        let (data, response) = try await NetworkModelRequestExecutor.perform(request)
+        guard let http = response as? HTTPURLResponse else { throw ExternalModelConnectionError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let error = object?["error"] as? [String: Any]
+            let message = (error?["message"] as? String) ?? String(data: data, encoding: .utf8) ?? "未知错误"
+            throw ExternalModelConnectionError.server(status: http.statusCode, message: String(message.prefix(300)))
+        }
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let first = (object["data"] as? [[String: Any]])?.first else {
+            throw ExternalModelConnectionError.invalidResponse
+        }
+        let imageData: Data
+        if let encoded = first["b64_json"] as? String, let decoded = Data(base64Encoded: encoded) {
+            imageData = decoded
+        } else if let value = first["url"] as? String, let url = URL(string: value) {
+            var downloadRequest = URLRequest(url: url)
+            downloadRequest.timeoutInterval = 120
+            let (downloaded, imageResponse) = try await NetworkModelRequestExecutor.perform(downloadRequest)
+            guard (imageResponse as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) != false else {
+                throw ExternalModelConnectionError.invalidResponse
+            }
+            imageData = downloaded
+        } else {
+            throw ExternalModelConnectionError.invalidResponse
+        }
+        guard UIImage(data: imageData) != nil else { throw PointVerseError.invalidModelOutput }
+        let outputDirectory = rootURL.appending(path: "generated-images", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        let outputURL = outputDirectory.appending(path: UUID().uuidString + ".png")
+        try imageData.write(to: outputURL, options: .atomic)
+        progressHandler(1)
+        let responseModel = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recordedModel = responseModel?.isEmpty == false ? responseModel! : "requested:\(remoteModel)"
+        return GeneratedImageArtifact(url: outputURL, modelID: recordedModel)
     }
 
     private static func compactPrompt(_ value: String) -> String {

@@ -34,4 +34,28 @@ final class ExternalLanguageModelTests: XCTestCase {
         ExternalModelPrivacyApprovalStore.revoke(first, defaults: defaults)
         XCTAssertFalse(ExternalModelPrivacyApprovalStore.isApproved(first, defaults: defaults))
     }
+
+    func testCapabilitiesRoundTripAndLegacyModelsRemainLanguageOnly() throws {
+        let configured = ExternalLanguageModel(
+            name: "Multi-purpose",
+            kind: .openAICompatible,
+            provider: .custom,
+            baseURL: "https://example.com/v1",
+            remoteModel: "model",
+            capabilities: [.language, .embedding, .imageGeneration]
+        )
+        let decoded = try JSONDecoder().decode(
+            ExternalLanguageModel.self,
+            from: JSONEncoder().encode(configured)
+        )
+        XCTAssertTrue(decoded.supports(.embedding))
+        XCTAssertTrue(decoded.supports(.imageGeneration))
+        XCTAssertFalse(decoded.supports(.speech))
+
+        let legacyJSON = """
+        {"id":"\(UUID().uuidString)","name":"Legacy","kind":"openAICompatible","provider":"openRouter","baseURL":"https://openrouter.ai/api/v1","remoteModel":"openrouter/free"}
+        """
+        let legacy = try JSONDecoder().decode(ExternalLanguageModel.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(legacy.supportedCapabilities, [.language])
+    }
 }

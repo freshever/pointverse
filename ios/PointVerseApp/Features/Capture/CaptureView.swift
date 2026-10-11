@@ -22,6 +22,7 @@ struct CaptureView: View {
     @State private var textInput = ""
     @State private var isSavingText = false
     @Environment(\.appLanguage) private var appLanguage
+    @Environment(\.colorScheme) private var appColorScheme
 
     var body: some View {
         GeometryReader { geometry in
@@ -201,12 +202,15 @@ struct CaptureView: View {
             }
             .padding(compact ? 14 : 24)
         }
-        .preferredColorScheme(cameraEnabled ? .dark : nil)
+        // Keep the camera overlay readable without changing the preferred color
+        // scheme of the entire window. Changing the window-level preference here
+        // made the subsequent switch to the text editor rebuild the whole scene.
+        .environment(\.colorScheme, cameraEnabled ? .dark : appColorScheme)
         .onAppear {
             if cameraEnabled { startCameraPreview() }
         }
         .onDisappear {
-            camera.stopPreview()
+            if cameraEnabled { camera.stopPreview() }
         }
         .task(id: startedAt) {
             guard startedAt != nil else { return }

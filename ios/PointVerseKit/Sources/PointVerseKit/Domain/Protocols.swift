@@ -42,7 +42,7 @@ public protocol PointRepository: Sendable {
     func saveTranscript(pointID: PointID, engineText: String, modelID: String, modelSHA256: String) async throws
     func saveCandidateTitle(pointID: PointID, title: String, modelID: String, modelSHA256: String) async throws
     func conversationMessages(pointID: PointID) async throws -> [ConversationMessage]
-    func appendConversationMessage(pointID: PointID, role: String, text: String) async throws
+    func appendConversationMessage(pointID: PointID, role: String, text: String, modelID: String?) async throws
     func images(pointID: PointID) async throws -> [PointImage]
     func updateImageText(id: UUID, recognizedText: String?) async throws
     func deletePoint(id: PointID) async throws -> String?

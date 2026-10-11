@@ -109,6 +109,16 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 table.add(column: "note_sequence_json", .text).notNull().defaults(to: "[]")
             }
         }
+        migrator.registerMigration("v9-content-provenance") { db in
+            try db.alter(table: "messages") { table in
+                table.add(column: "model_id", .text)
+            }
+        }
+        migrator.registerMigration("v10-image-provenance") { db in
+            try db.alter(table: "point_images") { table in
+                table.add(column: "model_id", .text)
+            }
+        }
         try migrator.migrate(writer)
         try await writer.write { db in
             let modelID = EmbeddingModelIdentity.multilingualE5Small
@@ -279,7 +289,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                        m.modality, m.user_text AS source_text,
                        a.relative_path, a.duration_ms,
                        CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state,
-                       t.engine_text, t.user_text, COALESCE(t.locale, '') AS locale, t.error_code, t.model_id
+                       t.engine_text, t.user_text, COALESCE(t.locale, '') AS locale, t.error_code, t.model_id,
+                       d.model_id AS title_model_id
                 FROM points p
                 JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 LEFT JOIN audio_assets a ON a.message_id = m.id
@@ -301,7 +312,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 engineText: row["engine_text"],
                 userText: row["user_text"],
                 localeIdentifier: row["locale"],
-                transcriptModelID: row["model_id"]
+                transcriptModelID: row["model_id"],
+                titleModelID: row["title_model_id"]
             )
         }
     }
@@ -404,25 +416,27 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
     public func conversationMessages(pointID: PointID) async throws -> [ConversationMessage] {
         try await writer.read { db in
             try Row.fetchAll(db, sql: """
-                SELECT id, role, user_text, created_at FROM messages
+                SELECT id, role, user_text, created_at, model_id FROM messages
                 WHERE point_id = ? AND modality = 'text' AND user_text IS NOT NULL
                 ORDER BY sequence
                 """, arguments: [pointID.rawValue.uuidString]).compactMap { row in
                     guard let id = UUID(uuidString: row["id"]), let text: String = row["user_text"] else { return nil }
-                    return ConversationMessage(id: id, role: row["role"], text: text, createdAt: Date(timeIntervalSince1970: row["created_at"]))
+                    return ConversationMessage(id: id, role: row["role"], text: text,
+                                               createdAt: Date(timeIntervalSince1970: row["created_at"]),
+                                               modelID: row["model_id"])
                 }
         }
     }
 
-    public func appendConversationMessage(pointID: PointID, role: String, text: String) async throws {
+    public func appendConversationMessage(pointID: PointID, role: String, text: String, modelID: String? = nil) async throws {
         guard role == "user" || role == "assistant" else { throw PointVerseError.invalidModelOutput }
         try await writer.write { db in
             let sequence = (try Int.fetchOne(db, sql: "SELECT MAX(sequence) FROM messages WHERE point_id = ?", arguments: [pointID.rawValue.uuidString]) ?? 0) + 1
             let id = UUID()
             try db.execute(sql: """
-                INSERT INTO messages (id, operation_id, point_id, sequence, role, modality, user_text, created_at)
-                VALUES (?, ?, ?, ?, ?, 'text', ?, ?)
-                """, arguments: [id.uuidString, "text:" + id.uuidString, pointID.rawValue.uuidString, sequence, role, text, Date().timeIntervalSince1970])
+                INSERT INTO messages (id, operation_id, point_id, sequence, role, modality, user_text, created_at, model_id)
+                VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?)
+                """, arguments: [id.uuidString, "text:" + id.uuidString, pointID.rawValue.uuidString, sequence, role, text, Date().timeIntervalSince1970, modelID])
             let timestamp = Date().timeIntervalSince1970
             try refreshSearch(pointID: pointID, db: db)
             let revision = try bumpRevision(pointID: pointID, db: db, timestamp: timestamp)
@@ -430,12 +444,14 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
-    public func addImage(pointID: PointID, id: UUID, relativePath: String, sha256: String, byteCount: Int64, recognizedText: String?) async throws {
+    public func addImage(pointID: PointID, id: UUID, relativePath: String, sha256: String, byteCount: Int64,
+                         recognizedText: String?, modelID: String? = nil) async throws {
         try await writer.write { db in
             try db.execute(sql: """
-                INSERT INTO point_images (id, point_id, relative_path, sha256, byte_count, recognized_text, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, arguments: [id.uuidString, pointID.rawValue.uuidString, relativePath, sha256, byteCount, recognizedText, Date().timeIntervalSince1970])
+                INSERT INTO point_images (id, point_id, relative_path, sha256, byte_count, recognized_text, created_at, model_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [id.uuidString, pointID.rawValue.uuidString, relativePath, sha256, byteCount,
+                                  recognizedText, Date().timeIntervalSince1970, modelID])
             try db.execute(sql: "UPDATE points SET updated_at = ?, head_revision = head_revision + 1 WHERE id = ?",
                            arguments: [Date().timeIntervalSince1970, pointID.rawValue.uuidString])
             let revision = try Int.fetchOne(db, sql: "SELECT head_revision FROM points WHERE id = ?", arguments: [pointID.rawValue.uuidString]) ?? 1
@@ -445,10 +461,11 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
 
     public func images(pointID: PointID) async throws -> [PointImage] {
         try await writer.read { db in
-            try Row.fetchAll(db, sql: "SELECT id, relative_path, recognized_text, created_at FROM point_images WHERE point_id = ? ORDER BY created_at",
+            try Row.fetchAll(db, sql: "SELECT id, relative_path, recognized_text, created_at, model_id FROM point_images WHERE point_id = ? ORDER BY created_at",
                              arguments: [pointID.rawValue.uuidString]).compactMap { row in
                 guard let id = UUID(uuidString: row["id"]) else { return nil }
-                return PointImage(id: id, relativePath: row["relative_path"], recognizedText: row["recognized_text"], createdAt: Date(timeIntervalSince1970: row["created_at"]))
+                return PointImage(id: id, relativePath: row["relative_path"], recognizedText: row["recognized_text"],
+                                  createdAt: Date(timeIntervalSince1970: row["created_at"]), modelID: row["model_id"])
             }
         }
     }

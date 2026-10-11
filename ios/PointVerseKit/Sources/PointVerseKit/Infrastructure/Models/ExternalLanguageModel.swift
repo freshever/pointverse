@@ -5,6 +5,26 @@ public enum ExternalLanguageModelKind: String, Codable, Sendable {
     case localGGUF
 }
 
+public enum ExternalModelCapability: String, Codable, CaseIterable, Sendable {
+    case language
+    case imageGeneration
+    case embedding
+    case vision
+    case speech
+    case audioUnderstanding
+
+    public var displayName: String {
+        switch self {
+        case .language: return "对话与整理"
+        case .imageGeneration: return "图片生成"
+        case .embedding: return "语义向量"
+        case .vision: return "图片理解"
+        case .speech: return "语音转写"
+        case .audioUnderstanding: return "音乐与声音"
+        }
+    }
+}
+
 public enum ExternalLanguageModelProvider: String, Codable, CaseIterable, Sendable {
     case openRouter
     case groq
@@ -47,10 +67,14 @@ public struct ExternalLanguageModel: Codable, Identifiable, Equatable, Sendable 
     public var baseURL: String?
     public var remoteModel: String?
     public var localPath: String?
+    /// Optional keeps configurations created before capability routing decodable.
+    /// Legacy network models are treated as language-only models.
+    public var capabilities: [ExternalModelCapability]?
 
     public init(id: UUID = UUID(), name: String, kind: ExternalLanguageModelKind,
                 provider: ExternalLanguageModelProvider? = nil,
-                baseURL: String? = nil, remoteModel: String? = nil, localPath: String? = nil) {
+                baseURL: String? = nil, remoteModel: String? = nil, localPath: String? = nil,
+                capabilities: [ExternalModelCapability]? = nil) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -58,9 +82,30 @@ public struct ExternalLanguageModel: Codable, Identifiable, Equatable, Sendable 
         self.baseURL = baseURL
         self.remoteModel = remoteModel
         self.localPath = localPath
+        self.capabilities = capabilities
     }
 
     public var selectionID: String { "external:\(id.uuidString)" }
+    public var supportedCapabilities: [ExternalModelCapability] { capabilities ?? [.language] }
+    public func supports(_ capability: ExternalModelCapability) -> Bool {
+        supportedCapabilities.contains(capability)
+    }
+}
+
+public enum ExternalModelCapabilitySelectionStore {
+    public static func defaultsKey(for capability: ExternalModelCapability) -> String {
+        "selectedExternalModel.\(capability.rawValue)"
+    }
+
+    public static func selectedID(for capability: ExternalModelCapability,
+                                  defaults: UserDefaults = .standard) -> String? {
+        defaults.string(forKey: defaultsKey(for: capability))
+    }
+
+    public static func select(_ modelID: String?, for capability: ExternalModelCapability,
+                              defaults: UserDefaults = .standard) {
+        defaults.set(modelID, forKey: defaultsKey(for: capability))
+    }
 }
 
 public enum ExternalModelPrivacyApprovalStore {

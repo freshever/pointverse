@@ -66,6 +66,11 @@ public protocol LanguageModelProvider: Sendable {
     func complete(_ request: LanguageModelRequest) async throws -> String
 }
 
+public struct NetworkLanguageCompletion: Sendable {
+    public let text: String
+    public let modelID: String
+}
+
 public enum ExternalModelConnectionError: LocalizedError {
     case invalidConfiguration
     case privacyApprovalRequired
@@ -95,6 +100,10 @@ public struct OpenAICompatibleProvider: LanguageModelProvider {
     }
 
     public func complete(_ input: LanguageModelRequest) async throws -> String {
+        try await completeWithMetadata(input).text
+    }
+
+    public func completeWithMetadata(_ input: LanguageModelRequest) async throws -> NetworkLanguageCompletion {
         guard let baseURL = URL(string: model.baseURL ?? ""),
               let remoteModel = model.remoteModel?.trimmingCharacters(in: .whitespacesAndNewlines),
               !remoteModel.isEmpty else { throw ExternalModelConnectionError.invalidConfiguration }
@@ -125,7 +134,7 @@ public struct OpenAICompatibleProvider: LanguageModelProvider {
             "max_tokens": input.maximumTokens,
             "temperature": input.temperature,
         ])
-        let (data, response) = try await Self.performWithTransientRetry(request)
+        let (data, response) = try await NetworkModelRequestExecutor.perform(request)
         guard let http = response as? HTTPURLResponse else { throw ExternalModelConnectionError.invalidResponse }
         guard (200...299).contains(http.statusCode) else {
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -148,34 +157,9 @@ public struct OpenAICompatibleProvider: LanguageModelProvider {
               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ExternalModelConnectionError.invalidResponse
         }
-        return content
-    }
-
-    private static func performWithTransientRetry(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        let retryDelays: [Duration] = [.milliseconds(400), .milliseconds(1_200)]
-        var attempt = 0
-        while true {
-            do {
-                return try await URLSession.shared.data(for: request)
-            } catch let error as URLError where isTransient(error.code) && attempt < retryDelays.count {
-                let delay = retryDelays[attempt]
-                attempt += 1
-                PointVerseLog.transcription.notice(
-                    "Network model connection interrupted; retry=\(attempt, privacy: .public) code=\(error.code.rawValue, privacy: .public)"
-                )
-                try await Task.sleep(for: delay)
-            }
-        }
-    }
-
-    private static func isTransient(_ code: URLError.Code) -> Bool {
-        switch code {
-        case .networkConnectionLost, .timedOut, .cannotConnectToHost,
-             .cannotFindHost, .dnsLookupFailed, .resourceUnavailable:
-            return true
-        default:
-            return false
-        }
+        let responseModel = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let actualModelID = responseModel?.isEmpty == false ? responseModel! : "requested:\(remoteModel)"
+        return NetworkLanguageCompletion(text: content, modelID: actualModelID)
     }
 
     private static func textContent(from value: Any?) -> String? {
@@ -187,6 +171,68 @@ public struct OpenAICompatibleProvider: LanguageModelProvider {
             return nil
         }.joined()
         return text.isEmpty ? nil : text
+    }
+}
+
+public enum NetworkModelRequestExecutor {
+    /// One initial request plus three retries. Only transient transport and HTTP
+    /// failures are repeated; configuration, authentication and billing errors
+    /// are returned immediately.
+    public static func perform(_ request: URLRequest, maximumAttempts: Int = 4) async throws -> (Data, URLResponse) {
+        let attempts = max(1, maximumAttempts)
+        var attempt = 1
+        while true {
+            do {
+                let result = try await URLSession.shared.data(for: request)
+                if let http = result.1 as? HTTPURLResponse,
+                   isRetryable(statusCode: http.statusCode), attempt < attempts {
+                    let delay = retryDelay(response: http, attempt: attempt)
+                    PointVerseLog.transcription.notice(
+                        "Network model temporary HTTP failure; attempt=\(attempt, privacy: .public) status=\(http.statusCode, privacy: .public)"
+                    )
+                    attempt += 1
+                    try await Task.sleep(for: delay)
+                    continue
+                }
+                return result
+            } catch let error as URLError where isTransient(error.code) && attempt < attempts {
+                let delay = backoff(attempt: attempt)
+                PointVerseLog.transcription.notice(
+                    "Network model connection interrupted; attempt=\(attempt, privacy: .public) code=\(error.code.rawValue, privacy: .public)"
+                )
+                attempt += 1
+                try await Task.sleep(for: delay)
+            }
+        }
+    }
+
+    private static func isRetryable(statusCode: Int) -> Bool {
+        statusCode == 408 || statusCode == 409 || statusCode == 425 || statusCode == 429 || (500...599).contains(statusCode)
+    }
+
+    private static func isTransient(_ code: URLError.Code) -> Bool {
+        switch code {
+        case .networkConnectionLost, .timedOut, .cannotConnectToHost,
+             .cannotFindHost, .dnsLookupFailed, .resourceUnavailable,
+             .notConnectedToInternet, .internationalRoamingOff:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func retryDelay(response: HTTPURLResponse, attempt: Int) -> Duration {
+        if let raw = response.value(forHTTPHeaderField: "Retry-After"),
+           let seconds = Double(raw), seconds.isFinite, seconds > 0 {
+            return .milliseconds(Int64(min(seconds, 30) * 1_000))
+        }
+        return backoff(attempt: attempt)
+    }
+
+    private static func backoff(attempt: Int) -> Duration {
+        let baseMilliseconds = min(8_000, 600 * (1 << max(0, attempt - 1)))
+        let jitter = Int.random(in: 0...250)
+        return .milliseconds(Int64(baseMilliseconds + jitter))
     }
 }
 
@@ -249,6 +295,11 @@ public enum ConversationRole: String, CaseIterable, Sendable {
     var maximumTokens: Int { self == .concise ? 96 : 160 }
 }
 
+public struct GeneratedLanguageReply: Sendable {
+    public let text: String
+    public let modelID: String
+}
+
 public actor QwenTitleGenerator {
     private let registry: ModelRegistry
     private let executionGate: ModelExecutionGate
@@ -299,7 +350,7 @@ public actor QwenTitleGenerator {
     }
 
     public func generateReply(context: String, conversation: [ConversationMessage], localeIdentifier: String,
-                              role: ConversationRole = .concise) async throws -> String {
+                              role: ConversationRole = .concise) async throws -> GeneratedLanguageReply {
         await executionGate.acquire()
         defer { releaseAfterExecution() }
         let manifest = try await prepareSelectedEngine()
@@ -314,12 +365,12 @@ public actor QwenTitleGenerator {
             ] + conversation.suffix(8).map {
                 .init(role: $0.role == "assistant" ? "assistant" : "user", content: String($0.text.prefix(600)))
             }
-            let rawReply = try await OpenAICompatibleProvider(model: networkModel).complete(
+            let completion = try await OpenAICompatibleProvider(model: networkModel).completeWithMetadata(
                 .init(prompt: "", messages: messages, maximumTokens: role.maximumTokens)
             )
-            let reply = Self.cleanReply(rawReply)
+            let reply = Self.cleanReply(completion.text)
             guard !reply.isEmpty else { throw PointVerseError.invalidModelOutput }
-            return reply
+            return GeneratedLanguageReply(text: reply, modelID: completion.modelID)
         }
         let assistantPreamble = manifest.map(Self.assistantPreamble(for:)) ?? ""
         let turns: [String] = conversation.suffix(6).map { message -> String in
@@ -342,7 +393,9 @@ public actor QwenTitleGenerator {
             throw PointVerseError.invalidModelOutput
         }
         let reply = Self.cleanReply(rawReply)
-        if !reply.isEmpty, !["user", "assistant"].contains(reply.lowercased()) { return reply }
+        if !reply.isEmpty, !["user", "assistant"].contains(reply.lowercased()) {
+            return GeneratedLanguageReply(text: reply, modelID: preparedModelID(manifest: manifest))
+        }
 
         // Small models occasionally echo a ChatML role token instead of the
         // answer. Retry once with only the latest question and a shorter prompt.
@@ -364,7 +417,15 @@ public actor QwenTitleGenerator {
         guard !cleanedRetry.isEmpty, !["user", "assistant"].contains(cleanedRetry.lowercased()) else {
             throw PointVerseError.invalidModelOutput
         }
-        return cleanedRetry
+        return GeneratedLanguageReply(text: cleanedRetry, modelID: preparedModelID(manifest: manifest))
+    }
+
+    private func preparedModelID(manifest: ModelManifest?) -> String {
+        if let manifest { return manifest.id }
+        let selected = ModelSelection.selectedLanguageModelID()
+        if selected == ModelSelection.edge0LanguageModelID { return "Edge0 8B A1B" }
+        if let external = ExternalLanguageModelStore.selected() { return "local:\(external.name)" }
+        return selected
     }
 
     /// Generates diverse, text-only records for the isolated test database.

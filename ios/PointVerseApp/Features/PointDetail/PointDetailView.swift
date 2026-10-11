@@ -84,7 +84,10 @@ struct PointDetailView: View {
         .safeAreaInset(edge: .bottom) { conversationComposer }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await reload() }
+        .task {
+            await reload()
+            analyzeMissingPhotosIfNeeded()
+        }
         .onChange(of: selectedPhotos) { _, items in prepareCrop(items.first) }
         .photosPicker(isPresented: $showingPhotoPicker, selection: $selectedPhotos,
                       maxSelectionCount: 1, matching: .images)
@@ -124,13 +127,21 @@ struct PointDetailView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PointVersePointImagesDidChange"))) { note in
             guard note.object as? String == point.id.rawValue.uuidString else { return }
-            Task { await reload() }
+            Task {
+                await reload()
+                analyzeMissingPhotosIfNeeded()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: TranscriptionService.didChangeNotification)) { note in
             guard note.object as? String == point.id.rawValue.uuidString else { return }
             Task { await reload() }
         }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(verbatim: displayTitle)
+                    .font(.headline).lineLimit(1)
+                    .contentProvenance(titleProvenance)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingManifestation = true } label: {
                     Label { AppText("显影") } icon: { Image(systemName: "wand.and.stars") }
@@ -181,6 +192,7 @@ struct PointDetailView: View {
             Spacer()
         }
         .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .contentProvenance("来源：用户录制的原始音频\n处理模型：无")
     }
 
     private var transcriptCard: some View {
@@ -269,6 +281,7 @@ struct PointDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .contentProvenance(transcriptProvenance)
     }
 
     private var soundUnderstandingCard: some View {
@@ -328,6 +341,7 @@ struct PointDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .contentProvenance(audioUnderstandingProvenance)
     }
 
     private var timelineItems: [DetailTimelineItem] {
@@ -366,6 +380,7 @@ struct PointDetailView: View {
         }
         .padding(12)
         .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .contentProvenance(photoProvenance(item))
     }
 
     private func conversationMessage(_ message: ConversationMessage) -> some View {
@@ -379,6 +394,9 @@ struct PointDetailView: View {
                 .foregroundStyle(message.role == "user" ? .white : .primary)
             if message.role != "user" { Spacer(minLength: 42) }
         }
+        .contentProvenance(message.role == "user"
+                           ? "来源：用户输入\n生成模型：无"
+                           : "来源：AI 回复\n模型：\(message.modelID ?? "历史记录未保存模型信息")")
     }
 
     private var conversationTypingIndicator: some View {
@@ -467,6 +485,7 @@ struct PointDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16).background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .contentProvenance("来源：语义相似度计算\n模型：Multilingual E5 Small")
     }
 
     private func relationColor(_ score: Float) -> Color {
@@ -476,6 +495,39 @@ struct PointDetailView: View {
     private var displayTitle: String {
         let value = detail?.title ?? point.title
         return value.isEmpty ? "语音想法" : value
+    }
+
+    private var titleProvenance: String {
+        guard let modelID = detail?.titleModelID, !modelID.isEmpty else {
+            return "来源：标题\n模型：历史记录未保存模型信息"
+        }
+        if modelID == "rule-title-v1" { return "来源：自动截取标题\n模型：内置规则（未使用 AI）" }
+        return "来源：AI 生成标题\n模型：\(modelID)"
+    }
+
+    private var transcriptProvenance: String {
+        guard let detail else { return "来源信息加载中" }
+        if detail.modality == "text" { return "来源：用户输入\n生成模型：无" }
+        if let userText = detail.userText, !userText.isEmpty {
+            return "来源：用户修正的语音转写\n原始转写模型：\(transcriptionEngineName(detail.transcriptModelID ?? "未知"))"
+        }
+        return "来源：语音转写\n模型：\(transcriptionEngineName(detail.transcriptModelID ?? "未知"))"
+    }
+
+    private var audioUnderstandingProvenance: String {
+        guard let value = audioUnderstanding else { return "来源：尚未进行声音理解" }
+        let semantic = value.clapModelID.map { "\n语义模型：\($0)" } ?? "\n语义模型：未使用"
+        return "来源：音频分析\n基础分析：系统 DSP（响度、节奏、音高）" + semantic
+    }
+
+    private func photoProvenance(_ item: LoadedPointImage) -> String {
+        if let modelID = item.asset.modelID, !modelID.isEmpty {
+            return "来源：AI 生成图片\n实际生成模型：\(modelID)"
+        }
+        let understanding = item.asset.recognizedText?.isEmpty == false
+            ? "\n图片文字/描述：Vision OCR 或 Qwen3-VL"
+            : "\n图片理解：尚未生成"
+        return "来源：用户添加的图片" + understanding
     }
 
     private var primaryContent: String {
@@ -648,13 +700,26 @@ struct PointDetailView: View {
         }
     }
 
+    private func analyzeMissingPhotosIfNeeded() {
+        guard visionAvailabilityChecked, visionAvailable, !isAnalyzingPhotos else { return }
+        let pending = images.filter {
+            $0.asset.recognizedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        }
+        guard !pending.isEmpty else { return }
+        analyzePhotos(pending, isAutomatic: true)
+    }
+
     private func analyzePhotos() {
-        guard visionAvailable, !images.isEmpty else { return }
+        analyzePhotos(images, isAutomatic: false)
+    }
+
+    private func analyzePhotos(_ targetImages: [LoadedPointImage], isAutomatic: Bool) {
+        guard visionAvailable, !targetImages.isEmpty, !isAnalyzingPhotos else { return }
         isAnalyzingPhotos = true; photoAnalysisKey = nil
         Task {
             await container.promptTranslator.releaseResources()
             var successCount = 0
-            for item in images {
+            for item in targetImages {
                 do {
                     let url = try await container.imageBlobStore.url(for: item.asset.relativePath)
                     let data = try Data(contentsOf: url)
@@ -674,7 +739,9 @@ struct PointDetailView: View {
                 }
             }
             await container.visionGenerator.releaseResources()
-            photoAnalysisKey = successCount > 0 ? "照片理解完成，已更新点子上下文" : "照片理解失败"
+            if !isAutomatic || successCount == 0 {
+                photoAnalysisKey = successCount > 0 ? "照片理解完成，已更新点子上下文" : "照片理解失败"
+            }
             isAnalyzingPhotos = false
             if successCount > 0 {
                 _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
@@ -776,6 +843,35 @@ private struct LoadedPointImage: Identifiable {
     var id: UUID { asset.id }
     let asset: PointImage
     let image: UIImage
+}
+
+private struct ContentProvenanceModifier: ViewModifier {
+    let description: String
+    @State private var isPresented = false
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 5, maximumDistance: 30)
+                    .onEnded { _ in
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        isPresented = true
+                    }
+            )
+            .alert("内容来源", isPresented: $isPresented) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(verbatim: description)
+            }
+            .accessibilityAction(named: "查看内容来源") { isPresented = true }
+    }
+}
+
+private extension View {
+    func contentProvenance(_ description: String) -> some View {
+        modifier(ContentProvenanceModifier(description: description))
+    }
 }
 
 private struct AnimatedEllipsis: View {
@@ -937,6 +1033,7 @@ private struct PointManifestationView: View {
     let onSaved: () -> Void
     @State private var generatedImage: UIImage?
     @State private var generatedPrompt = ""
+    @State private var generatedModelID: String?
     @State private var isGenerating = false
     @State private var diffusionStarted = false
     @State private var progress = 0.0
@@ -954,13 +1051,28 @@ private struct PointManifestationView: View {
                     .buttonStyle(.borderedProminent)
                 } else if isGenerating {
                     Spacer()
+                    if generatedPrompt.isEmpty {
+                        ProgressView()
+                        AppText("正在生成英文提示词").foregroundStyle(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            AppText("实际生图提示词")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(verbatim: generatedPrompt)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if diffusionStarted {
                         ProgressView(value: progress)
                         Text(verbatim: "\(Int(progress * 100))%")
                             .monospacedDigit().foregroundStyle(.secondary)
-                    } else {
+                    } else if !generatedPrompt.isEmpty {
                         ProgressView()
-                        AppText("正在整理想法并加载图片模型").foregroundStyle(.secondary)
+                        AppText("正在使用图片模型生成").foregroundStyle(.secondary)
                     }
                     Spacer()
                 } else {
@@ -987,23 +1099,24 @@ private struct PointManifestationView: View {
 
     private func generate() {
         guard !sourceContext.isEmpty else { return }
-        isGenerating = true; diffusionStarted = false; progress = 0; errorKey = nil
+        isGenerating = true; diffusionStarted = false; progress = 0; errorKey = nil; generatedPrompt = ""
         Task {
             do {
                 let locale = appLanguage == "system" ? Locale.current.identifier : appLanguage
-                generatedPrompt = try await container.promptTranslator.translateImagePromptToEnglish(
-                    "Create one coherent visual interpretation of this saved idea. " + sourceContext,
-                    localeIdentifier: locale
-                )
-                let url = try await container.imageGenerator.generate(prompt: generatedPrompt) { value in
+                let result = try await container.imageGenerationWorkflow.generate(
+                    source: "Create one coherent visual interpretation of this saved idea. " + sourceContext,
+                    localeIdentifier: locale,
+                    promptHandler: { finalPrompt in generatedPrompt = finalPrompt }
+                ) { value in
                     Task { @MainActor in diffusionStarted = true; progress = value }
                 }
-                generatedImage = UIImage(contentsOfFile: url.path)
+                generatedImage = UIImage(contentsOfFile: result.artifact.url.path)
+                generatedModelID = result.artifact.modelID
                 progress = 1
             } catch PointVerseError.modelNotInstalled {
                 errorKey = "请先安装语言模型和图片模型"
             } catch {
-                errorKey = "显影失败"
+                errorKey = "显影失败：\(error.localizedDescription)"
             }
             isGenerating = false
         }
@@ -1017,7 +1130,7 @@ private struct PointManifestationView: View {
                 let stored = try await container.imageBlobStore.saveJPEG(data, assetID: id)
                 try await container.database.addImage(pointID: pointID, id: id, relativePath: stored.relativePath,
                                                       sha256: stored.sha256, byteCount: stored.byteCount,
-                                                      recognizedText: generatedPrompt)
+                                                      recognizedText: generatedPrompt, modelID: generatedModelID)
                 NotificationCenter.default.post(name: Notification.Name("PointVersePointImagesDidChange"),
                                                 object: pointID.rawValue.uuidString)
                 _ = await container.transcriptionService.deriveTitle(pointID: pointID, languageIdentifier: appLanguage)

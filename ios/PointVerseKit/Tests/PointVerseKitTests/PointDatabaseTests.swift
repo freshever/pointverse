@@ -64,8 +64,10 @@ import Testing
     let audio = StoredAudio(assetID: UUID(), relativePath: "blobs/audio/delete.m4a", sha256: "abc", byteCount: 3, durationMilliseconds: 900)
     let pointID = try await database.commitVoiceCapture(VoiceCaptureCommand(operationID: UUID(), audio: audio))
     try await database.appendConversationMessage(pointID: pointID, role: "user", text: "还有什么可能？")
-    try await database.appendConversationMessage(pointID: pointID, role: "assistant", text: "可以从另一个角度思考。")
-    #expect(try await database.conversationMessages(pointID: pointID).count == 2)
+    try await database.appendConversationMessage(pointID: pointID, role: "assistant", text: "可以从另一个角度思考。", modelID: "test-model")
+    let messages = try await database.conversationMessages(pointID: pointID)
+    #expect(messages.count == 2)
+    #expect(messages.last?.modelID == "test-model")
 
     #expect(try await database.deletePoint(id: pointID) == "blobs/audio/delete.m4a")
     #expect(try await database.listPoints(matching: "").isEmpty)

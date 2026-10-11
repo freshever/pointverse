@@ -8,6 +8,7 @@ struct GlobeMapView: View {
     @EnvironmentObject private var container: AppContainer
     @Environment(\.appLanguage) private var appLanguage
     @State private var layout = StarLayout(nodes: [], links: [], embeddingCount: 0)
+    @State private var entries: [PointMapEntry] = []
     @State private var geographies: [PointID: PointGeographyRecord] = [:]
     @State private var contentByPointID: [PointID: String] = [:]
     @State private var selected: PointSummary?
@@ -15,6 +16,8 @@ struct GlobeMapView: View {
     @State private var showingDemo = false
     @State private var isRecalculating = false
     @State private var pendingSemanticCount = 0
+    @State private var showingSearch = false
+    @State private var focusRequest: PointMapFocusRequest?
 
     var body: some View {
         ZStack {
@@ -39,7 +42,8 @@ struct GlobeMapView: View {
                 }
                 .foregroundStyle(.white)
             } else {
-                SemanticGlobe(layout: layout, geographies: geographies, contentByPointID: contentByPointID) { selected = $0 }
+                SemanticGlobe(layout: layout, geographies: geographies,
+                              contentByPointID: contentByPointID, focusRequest: focusRequest) { selected = $0 }
             }
         }
         .navigationTitle(AppLocalization.string("语义星球", language: appLanguage))
@@ -47,6 +51,9 @@ struct GlobeMapView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color(red: 0.02, green: 0.08, blue: 0.16), for: .navigationBar)
         .toolbar {
+            Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                .tint(.white)
+                .accessibilityLabel("搜索 Point")
             Button { showingDemo = true } label: { Image(systemName: "flask") }
                 .tint(.white)
                 .accessibilityLabel("打开球面分布演示")
@@ -76,6 +83,12 @@ struct GlobeMapView: View {
             NavigationStack { PointDetailView(point: point) }
                 .environmentObject(container)
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showingSearch) {
+            PointMapSearchSheet(entries: entries) { pointID in
+                focusRequest = PointMapFocusRequest(pointID: pointID)
+                showingSearch = false
+            }
         }
         .alert(AppLocalization.string("无法读取语义星球", language: appLanguage), isPresented: $loadFailed) {
             Button(AppLocalization.string("好", language: appLanguage)) {}
@@ -108,6 +121,7 @@ struct GlobeMapView: View {
             // voice modality. It joins the globe only after its transcribed
             // text (plus understood image text) has a real E5 embedding.
             let semanticEntries = loadedEntries.filter { embeddedPointIDs.contains($0.id) }
+            self.entries = semanticEntries
             pendingSemanticCount = loadedEntries.count - semanticEntries.count
             let previous = discardingSavedCoordinates ? [] : try await storedGeographies
             let generated = await Task.detached(priority: .userInitiated) {
@@ -135,6 +149,7 @@ private struct SemanticGlobe: View {
     private let minimumZoom: CGFloat = 0.325
     private let maximumZoom: CGFloat = 24
     let layout: StarLayout
+    let focusRequest: PointMapFocusRequest?
     let onSelect: (PointSummary) -> Void
     private let topicByPointID: [PointID: String]
     private let communityByPointID: [PointID: String]
@@ -150,6 +165,7 @@ private struct SemanticGlobe: View {
     @State private var showsGeography = true
     @State private var cachedAdministrativeLabels: [AdministrativeLabel] = []
     @State private var placeNameOverrides: [String: String]
+    @State private var focusedPointID: PointID?
 
     init(
         layout: StarLayout,
@@ -158,9 +174,11 @@ private struct SemanticGlobe: View {
         topicByPointID: [PointID: String] = [:],
         initialYaw: CGFloat = 0.35,
         initialZoom: CGFloat = 1,
+        focusRequest: PointMapFocusRequest? = nil,
         onSelect: @escaping (PointSummary) -> Void
     ) {
         self.layout = layout
+        self.focusRequest = focusRequest
         self.onSelect = onSelect
         self.topicByPointID = topicByPointID
         self.communityByPointID = geographies.compactMapValues(\.communityID)
@@ -409,6 +427,23 @@ private struct SemanticGlobe: View {
         .onChange(of: placeNameOverrides) { _, overrides in
             Self.savePlaceNameOverrides(overrides)
         }
+        .onChange(of: focusRequest) { _, request in
+            focus(on: request)
+        }
+    }
+
+    private func focus(on request: PointMapFocusRequest?) {
+        guard let request,
+              let index = layout.nodes.firstIndex(where: { $0.point.id == request.pointID }) else { return }
+        let position = spherePositions[index]
+        let targetYaw = atan2(-position.x, position.z)
+        let rotatedDepth = -position.x * sin(targetYaw) + position.z * cos(targetYaw)
+        let targetPitch = atan2(position.y, rotatedDepth)
+        focusedPointID = request.pointID
+        withAnimation(.easeInOut(duration: 0.6)) {
+            orientation = .camera(yaw: targetYaw, pitch: targetPitch)
+            zoom = min(maximumZoom, max(zoom, 12))
+        }
     }
 
     private func regionColor(_ region: CommunityRegion) -> Color {
@@ -530,6 +565,10 @@ private struct SemanticGlobe: View {
             let rect = CGRect(x: node.point.x - radius, y: node.point.y - radius, width: radius * 2, height: radius * 2)
             context.fill(Path(ellipseIn: rect), with: .color(color))
             context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)), with: .color(color.opacity(0.28)), lineWidth: 2)
+            if focusedPointID == layout.nodes[nodeIndex].point.id {
+                context.stroke(Path(ellipseIn: rect.insetBy(dx: -10, dy: -10)),
+                               with: .color(.yellow.opacity(0.95)), lineWidth: 3)
+            }
 
             if zoom >= 10, !node.title.isEmpty {
                 let characterLimit = zoom >= 18 ? 56 : 28
@@ -860,13 +899,15 @@ private struct SemanticGlobe: View {
         // is enough room instead of all being exposed at one magic zoom value.
         let angularDistance = max(0.002, 30 / max(geometry.radius, 1))
         var remaining = Set(layout.nodes.indices)
+        let focusedIndex = focusedPointID.flatMap { id in layout.nodes.firstIndex { $0.point.id == id } }
         var result: [GlobeCluster] = []
 
         while let seed = remaining.min() {
             remaining.remove(seed)
             let seedPosition = spherePositions[seed]
             let neighbors = remaining.filter { candidate in
-                sphericalAngle(seedPosition, spherePositions[candidate]) <= angularDistance
+                seed != focusedIndex && candidate != focusedIndex
+                    && sphericalAngle(seedPosition, spherePositions[candidate]) <= angularDistance
             }
             let members = [seed] + neighbors.sorted()
             remaining.subtract(neighbors)

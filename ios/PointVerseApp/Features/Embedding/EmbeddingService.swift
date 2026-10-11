@@ -5,10 +5,12 @@ actor EmbeddingService {
     static let didChangeNotification = Notification.Name("PointVerseEmbeddingDidChange")
     private let repository: any PointRepository
     private let provider: any PointEmbedding
+    private let executionGate: ModelExecutionGate?
 
-    init(repository: any PointRepository, provider: any PointEmbedding) {
+    init(repository: any PointRepository, provider: any PointEmbedding, executionGate: ModelExecutionGate? = nil) {
         self.repository = repository
         self.provider = provider
+        self.executionGate = executionGate
     }
 
     func resumePending() async {
@@ -20,7 +22,15 @@ actor EmbeddingService {
             for document in usable {
                 do {
                     PointVerseLog.embedding.info("Encoding point=\(document.pointID.rawValue.uuidString, privacy: .public) revision=\(document.revision, privacy: .public) characters=\(document.text.count, privacy: .public)")
-                    let vector = try await provider.encode(document.text)
+                    if let executionGate { await executionGate.acquire() }
+                    let vector: [Float]
+                    do {
+                        vector = try await provider.encode(document.text)
+                        if let executionGate { await executionGate.release() }
+                    } catch {
+                        if let executionGate { await executionGate.release() }
+                        throw error
+                    }
                     guard vector.count == provider.dimension else { throw PointVerseError.invalidModelOutput }
                     try await repository.saveEmbedding(.init(pointID: document.pointID, revision: document.revision,
                                                              modelID: provider.modelID, vector: vector))

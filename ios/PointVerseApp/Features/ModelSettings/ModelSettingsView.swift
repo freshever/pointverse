@@ -8,6 +8,11 @@ struct ModelSettingsView: View {
     @AppStorage(ModelSelection.speechDefaultsKey) private var selectedSpeechModelID = ModelManifest.whisperBaseQ5.id
     @AppStorage(ModelSelection.languageDefaultsKey) private var selectedLanguageModelID = ModelManifest.qwen3_0_6BQ8.id
     @AppStorage(ModelSelection.imageDefaultsKey) private var selectedImageModelID = ModelManifest.stableDiffusion21Base6Bit.id
+    @AppStorage("selectedExternalModel.imageGeneration") private var imageGenerationRoute = "local"
+    @AppStorage("selectedExternalModel.embedding") private var embeddingRoute = "local"
+    @AppStorage("selectedExternalModel.vision") private var visionRoute = "local"
+    @AppStorage("selectedExternalModel.speech") private var speechRoute = "local"
+    @AppStorage("selectedExternalModel.audioUnderstanding") private var audioUnderstandingRoute = "local"
     @EnvironmentObject private var container: AppContainer
     @State private var externalModels = ExternalLanguageModelStore.load()
     @State private var showingNetworkModelEditor = false
@@ -16,8 +21,32 @@ struct ModelSettingsView: View {
     @State private var externalModelError: String?
     @State private var pendingNetworkModel: ExternalLanguageModel?
     @State private var showingNetworkPrivacyConfirmation = false
+    @State private var pendingCapability: ExternalModelCapability = .language
     @State private var testingModelID: UUID?
     @State private var connectionResult: String?
+
+    private var selectedExternalModel: ExternalLanguageModel? {
+        externalModels.first { $0.selectionID == selectedLanguageModelID }
+    }
+
+    private var currentAssistantName: String {
+        if selectedLanguageModelID == ModelSelection.disabledLanguageModelID { return "未启用" }
+        if selectedLanguageModelID == ModelSelection.edge0LanguageModelID { return "Edge0 8B A1B" }
+        if let model = selectedExternalModel { return model.name }
+        if let manifest = ModelSelection.languageModels.first(where: { $0.id == selectedLanguageModelID }) {
+            return languageName(manifest)
+        }
+        return "未启用"
+    }
+
+    private var currentAssistantLocation: String {
+        guard let model = selectedExternalModel else {
+            return selectedLanguageModelID == ModelSelection.disabledLanguageModelID ? "不会生成标题或对话回复" : "在这台设备上运行 · 内容不离开设备"
+        }
+        return model.kind == .openAICompatible
+            ? "通过 \(model.provider?.displayName ?? "网络服务") 运行 · 内容会发送给服务商"
+            : "使用导入的 GGUF 文件 · 在这台设备上运行"
+    }
 
     var body: some View {
         List {
@@ -32,29 +61,54 @@ struct ModelSettingsView: View {
             } header: { AppText("界面语言") }
 
             Section {
-                Picker(selection: $selectedSpeechModelID) {
-                    ForEach(ModelSelection.speechModels, id: \.id) { manifest in
-                        Text(verbatim: speechName(manifest)).tag(manifest.id)
-                    }
-                } label: { AppText("当前模型") }
+                CurrentAssistantCard(
+                    name: currentAssistantName,
+                    detail: currentAssistantLocation,
+                    isNetwork: selectedExternalModel?.kind == .openAICompatible
+                )
 
-                ForEach(container.speechModelManagers, id: \.manifest.id) { manager in
-                    ModelRow(manager: manager, name: speechName(manager.manifest), metadata: metadata(manager.manifest), explanation: speechExplanation(manager.manifest), isSelected: selectedSpeechModelID == manager.manifest.id) {
-                        selectedSpeechModelID = manager.manifest.id
+                Picker(selection: Binding(get: { selectedLanguageModelID }, set: selectLanguageModel)) {
+                    AppText("关闭 AI 助手").tag(ModelSelection.disabledLanguageModelID)
+                    Section("设备端") {
+                        ForEach(ModelSelection.languageModels, id: \.id) { manifest in
+                            Text(verbatim: languageName(manifest)).tag(manifest.id)
+                        }
+                        Text(verbatim: "Edge0 8B A1B · Experimental").tag(ModelSelection.edge0LanguageModelID)
+                        ForEach(externalModels.filter { $0.kind == .localGGUF }) { model in
+                            Text(verbatim: model.name).tag(model.selectionID)
+                        }
                     }
-                }
-            } header: { AppText("语音转写") }
+                    if externalModels.contains(where: { $0.kind == .openAICompatible }) {
+                        Section("网络") {
+                            ForEach(externalModels.filter { $0.kind == .openAICompatible }) { model in
+                                Text(verbatim: model.name).tag(model.selectionID)
+                            }
+                        }
+                    }
+                } label: { AppText("切换 AI 助手") }
+            } header: { AppText("当前 AI 助手") }
+              footer: { Text("用于自动标题、内容整理、对话和测试数据生成。语义坐标仍由独立的 E5 模型计算。") }
 
             Section {
-                Picker(selection: Binding(get: { selectedLanguageModelID }, set: selectLanguageModel)) {
-                    AppText("关闭本地整理").tag(ModelSelection.disabledLanguageModelID)
-                    ForEach(ModelSelection.languageModels, id: \.id) { manifest in
-                        Text(verbatim: languageName(manifest)).tag(manifest.id)
-                    }
-                    Text(verbatim: "Edge0 8B A1B · Experimental").tag(ModelSelection.edge0LanguageModelID)
-                    ForEach(externalModels) { model in Text(verbatim: model.name).tag(model.selectionID) }
-                } label: { AppText("当前模型") }
+                Button { showingNetworkModelEditor = true } label: {
+                    Label("添加网络模型", systemImage: "network")
+                }
+                ForEach(externalModels.filter { $0.kind == .openAICompatible }) { model in
+                    ExternalModelRow(
+                        model: model,
+                        isSelected: selectedLanguageModelID == model.selectionID,
+                        isTesting: testingModelID == model.id,
+                        onSelect: { selectLanguageModel(model.selectionID) },
+                        onTest: { testConnection(model) },
+                        onRemove: { removeExternalModel(model) }
+                    )
+                }
+                if let connectionResult { Text(verbatim: connectionResult).font(.footnote).foregroundStyle(.green) }
+                if let externalModelError { Text(verbatim: externalModelError).font(.footnote).foregroundStyle(.red) }
+            } header: { AppText("网络模型") }
+              footer: { Text("支持 OpenRouter、Groq、OpenAI，以及任何兼容 OpenAI Chat Completions 的服务。API Key 只保存在本机 Keychain。") }
 
+            Section {
                 ForEach(container.languageModelManagers, id: \.manifest.id) { manager in
                     ModelRow(manager: manager, name: languageName(manager.manifest), metadata: metadata(manager.manifest), explanation: languageExplanation(manager.manifest), isSelected: selectedLanguageModelID == manager.manifest.id, onSelect: {
                         selectedLanguageModelID = manager.manifest.id
@@ -66,52 +120,46 @@ struct ModelSettingsView: View {
                     isSelected: selectedLanguageModelID == ModelSelection.edge0LanguageModelID,
                     onSelect: { selectedLanguageModelID = ModelSelection.edge0LanguageModelID }
                 )
-            } header: { AppText("本地整理") }
+            } header: { AppText("设备端语言模型") }
+              footer: { Text("设备端模型无需上传内容，但需要下载并占用设备存储。模型越大，通常质量越高，对内存要求也越高。") }
 
             Section {
-                Button { showingNetworkModelEditor = true } label: {
-                    Label("添加网络模型", systemImage: "network")
-                }
                 Button { showingGGUFImporter = true } label: {
                     Label("导入本地 GGUF", systemImage: "square.and.arrow.down")
                 }.disabled(isImportingGGUF)
                 if isImportingGGUF { HStack { ProgressView(); Text("正在复制本地模型…") } }
-                ForEach(externalModels) { model in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(verbatim: model.name)
-                            Text(model.kind == .openAICompatible
-                                 ? "\(model.provider?.displayName ?? "OpenAI-compatible") · \(model.remoteModel ?? "")"
-                                 : "本地 GGUF")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if selectedLanguageModelID == model.selectionID {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        } else {
-                            Button("使用") { selectLanguageModel(model.selectionID) }.buttonStyle(.borderless)
-                        }
-                        if model.kind == .openAICompatible {
-                            Button {
-                                testConnection(model)
-                            } label: {
-                                if testingModelID == model.id { ProgressView().controlSize(.small) }
-                                else { Image(systemName: "bolt.horizontal.circle") }
-                            }
-                            .disabled(testingModelID != nil)
-                            .buttonStyle(.borderless)
-                        }
-                        Button(role: .destructive) { removeExternalModel(model) } label: {
-                            Image(systemName: "trash")
-                        }.buttonStyle(.borderless)
-                    }
+                ForEach(externalModels.filter { $0.kind == .localGGUF }) { model in
+                    ExternalModelRow(model: model,
+                                     isSelected: selectedLanguageModelID == model.selectionID,
+                                     isTesting: false,
+                                     onSelect: { selectLanguageModel(model.selectionID) },
+                                     onTest: {},
+                                     onRemove: { removeExternalModel(model) })
                 }
-                if let connectionResult { Text(verbatim: connectionResult).font(.footnote).foregroundStyle(.secondary) }
-                if let externalModelError { Text(verbatim: externalModelError).font(.footnote).foregroundStyle(.red) }
-            } header: { AppText("外部语言模型") }
-              footer: { Text("网络模型的内容会发送到你配置的服务；API Key 仅保存在本机 Keychain。本地 GGUF 会复制到点界的模型目录。") }
+            } header: { AppText("导入的设备端模型") }
+              footer: { Text("GGUF 文件会复制到点界的模型目录。兼容性取决于模型架构和当前推理引擎。") }
 
             Section {
+                CapabilityRoutePicker(title: "运行方式", capability: .speech,
+                                      selection: Binding(get: { speechRoute }, set: { selectCapability(.speech, selectionID: $0) }),
+                                      models: externalModels)
+                Picker(selection: $selectedSpeechModelID) {
+                    ForEach(ModelSelection.speechModels, id: \.id) { manifest in
+                        Text(verbatim: speechName(manifest)).tag(manifest.id)
+                    }
+                } label: { AppText("语音转写模型") }
+
+                ForEach(container.speechModelManagers, id: \.manifest.id) { manager in
+                    ModelRow(manager: manager, name: speechName(manager.manifest), metadata: metadata(manager.manifest), explanation: speechExplanation(manager.manifest), isSelected: selectedSpeechModelID == manager.manifest.id) {
+                        selectedSpeechModelID = manager.manifest.id
+                    }
+                }
+            } header: { AppText("语音转写") }
+
+            Section {
+                CapabilityRoutePicker(title: "运行方式", capability: .imageGeneration,
+                                      selection: Binding(get: { imageGenerationRoute }, set: { selectCapability(.imageGeneration, selectionID: $0) }),
+                                      models: externalModels)
                 ForEach(container.imageModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -125,6 +173,9 @@ struct ModelSettingsView: View {
             } header: { AppText("图片生成") }
 
             Section {
+                CapabilityRoutePicker(title: "运行方式", capability: .vision,
+                                      selection: Binding(get: { visionRoute }, set: { selectCapability(.vision, selectionID: $0) }),
+                                      models: externalModels)
                 ForEach(container.visionModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -142,6 +193,9 @@ struct ModelSettingsView: View {
             } header: { AppText("图片理解") }
 
             Section {
+                CapabilityRoutePicker(title: "运行方式", capability: .embedding,
+                                      selection: Binding(get: { embeddingRoute }, set: { selectCapability(.embedding, selectionID: $0) }),
+                                      models: externalModels)
                 ForEach(container.embeddingModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -158,6 +212,9 @@ struct ModelSettingsView: View {
             } header: { AppText("语义分类") }
 
             Section {
+                CapabilityRoutePicker(title: "运行方式", capability: .audioUnderstanding,
+                                      selection: Binding(get: { audioUnderstandingRoute }, set: { selectCapability(.audioUnderstanding, selectionID: $0) }),
+                                      models: externalModels)
                 ForEach(container.audioUnderstandingModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -171,7 +228,7 @@ struct ModelSettingsView: View {
                 }
             } header: { AppText("音乐与现场声音") }
         }
-        .navigationTitle(AppLocalization.string("本地模型", language: appLanguage))
+        .navigationTitle("模型中心")
         .onChange(of: selectedLanguageModelID) { _, _ in regenerateTitles() }
         .onChange(of: appLanguage) { _, _ in regenerateTitles() }
         .sheet(isPresented: $showingNetworkModelEditor) {
@@ -190,12 +247,12 @@ struct ModelSettingsView: View {
             Button("允许并使用") {
                 guard let model = pendingNetworkModel else { return }
                 ExternalModelPrivacyApprovalStore.approve(model.id)
-                selectedLanguageModelID = model.selectionID
+                applySelection(model.selectionID, for: pendingCapability)
                 pendingNetworkModel = nil
             }
             Button("取消", role: .cancel) { pendingNetworkModel = nil }
         } message: {
-            Text("点界会把当前任务所需的文字内容发送到 \(pendingNetworkModel?.name ?? "网络服务")。内容不会先经过点界服务器，也不会在未经确认时自动切换到其他云端模型。")
+            Text(privacyMessage)
         }
     }
 
@@ -250,7 +307,47 @@ struct ModelSettingsView: View {
             return
         }
         pendingNetworkModel = model
+        pendingCapability = .language
         showingNetworkPrivacyConfirmation = true
+    }
+
+    private func selectCapability(_ capability: ExternalModelCapability, selectionID: String) {
+        guard selectionID != "local",
+              let model = externalModels.first(where: { $0.selectionID == selectionID }) else {
+            applySelection("local", for: capability)
+            return
+        }
+        guard ExternalModelPrivacyApprovalStore.isApproved(model.id) else {
+            pendingNetworkModel = model
+            pendingCapability = capability
+            showingNetworkPrivacyConfirmation = true
+            return
+        }
+        applySelection(selectionID, for: capability)
+    }
+
+    private func applySelection(_ selectionID: String, for capability: ExternalModelCapability) {
+        switch capability {
+        case .language: selectedLanguageModelID = selectionID
+        case .imageGeneration: imageGenerationRoute = selectionID
+        case .embedding: embeddingRoute = selectionID
+        case .vision: visionRoute = selectionID
+        case .speech: speechRoute = selectionID
+        case .audioUnderstanding: audioUnderstandingRoute = selectionID
+        }
+    }
+
+    private var privacyMessage: String {
+        let content: String
+        switch pendingCapability {
+        case .language: content = "当前任务所需的文字"
+        case .imageGeneration: content = "生图提示词"
+        case .embedding: content = "用于建立语义坐标的文字"
+        case .vision: content = "所选图片和相关文字"
+        case .speech: content = "录音内容"
+        case .audioUnderstanding: content = "音乐或现场声音"
+        }
+        return "点界会把\(content)发送到 \(pendingNetworkModel?.name ?? "网络服务")。内容不会先经过点界服务器，也不会自动切换到其他云端模型。"
     }
 
     private func testConnection(_ model: ExternalLanguageModel) {
@@ -307,6 +404,106 @@ struct ModelSettingsView: View {
     }
 }
 
+private struct CurrentAssistantCard: View {
+    let name: String
+    let detail: String
+    let isNetwork: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill((isNetwork ? Color.blue : Color.indigo).gradient)
+                    .frame(width: 48, height: 48)
+                Image(systemName: isNetwork ? "cloud.fill" : "iphone.gen3")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: name).font(.headline)
+                Text(verbatim: detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct CapabilityRoutePicker: View {
+    let title: String
+    let capability: ExternalModelCapability
+    @Binding var selection: String
+    let models: [ExternalLanguageModel]
+
+    var body: some View {
+        Picker(title, selection: $selection) {
+            Label("设备端", systemImage: "iphone.gen3").tag("local")
+            ForEach(models.filter { $0.kind == .openAICompatible && $0.supports(capability) }) { model in
+                Label(model.name, systemImage: "cloud").tag(model.selectionID)
+            }
+        }
+    }
+}
+
+private struct ExternalModelRow: View {
+    let model: ExternalLanguageModel
+    let isSelected: Bool
+    let isTesting: Bool
+    let onSelect: () -> Void
+    let onTest: () -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Image(systemName: model.kind == .openAICompatible ? "cloud" : "externaldrive")
+                    .foregroundStyle(model.kind == .openAICompatible ? .blue : .indigo)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: model.name)
+                    Text(verbatim: subtitle).font(.caption).foregroundStyle(.secondary)
+                    if model.kind == .openAICompatible {
+                        Text(verbatim: model.supportedCapabilities.map(\.displayName).joined(separator: " · "))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if isSelected {
+                    Label("使用中", systemImage: "checkmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.green)
+                }
+            }
+            HStack {
+                if !isSelected {
+                    Button("使用此模型", action: onSelect).buttonStyle(.borderless)
+                }
+                if model.kind == .openAICompatible {
+                    Button(action: onTest) {
+                        if isTesting { ProgressView().controlSize(.small) }
+                        else { Label("测试连接", systemImage: "bolt.horizontal.circle") }
+                    }
+                    .disabled(isTesting)
+                    .buttonStyle(.borderless)
+                }
+                Spacer()
+                Button("移除", role: .destructive, action: onRemove).buttonStyle(.borderless)
+            }
+            .font(.subheadline)
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var subtitle: String {
+        if model.kind == .localGGUF { return "本地 GGUF" }
+        let provider = model.provider?.displayName ?? "OpenAI-compatible"
+        let remote = model.remoteModel?.isEmpty == false ? model.remoteModel! : "未指定模型"
+        return "\(provider) · \(remote)"
+    }
+}
+
 private struct NetworkModelEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var provider = ExternalLanguageModelProvider.openRouter
@@ -314,6 +511,7 @@ private struct NetworkModelEditor: View {
     @State private var baseURL = ExternalLanguageModelProvider.openRouter.defaultBaseURL
     @State private var modelName = ExternalLanguageModelProvider.openRouter.suggestedModel
     @State private var apiKey = ""
+    @State private var capabilities: Set<ExternalModelCapability> = [.language]
     @State private var isTesting = false
     @State private var testResult: String?
     @State private var testError: String?
@@ -338,6 +536,17 @@ private struct NetworkModelEditor: View {
                 TextField("Base URL", text: $baseURL).textInputAutocapitalization(.never).keyboardType(.URL)
                 TextField("模型名称", text: $modelName).textInputAutocapitalization(.never)
                 SecureField("API Key（可选）", text: $apiKey)
+                Section("用于") {
+                    ForEach(ExternalModelCapability.allCases, id: \.self) { capability in
+                        Toggle(capability.displayName, isOn: Binding(
+                            get: { capabilities.contains(capability) },
+                            set: { enabled in
+                                if enabled { capabilities.insert(capability) }
+                                else { capabilities.remove(capability) }
+                            }
+                        ))
+                    }
+                }
                 Button {
                     testCurrentConfiguration()
                 } label: {
@@ -363,7 +572,8 @@ private struct NetworkModelEditor: View {
                                                           kind: .openAICompatible,
                                                           provider: provider,
                                                           baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                          remoteModel: modelName.trimmingCharacters(in: .whitespacesAndNewlines))
+                                                          remoteModel: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                          capabilities: capabilities.sorted { $0.rawValue < $1.rawValue })
                         onSave(model, apiKey)
                         dismiss()
                     }.disabled(!isValid)
@@ -374,6 +584,7 @@ private struct NetworkModelEditor: View {
 
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !capabilities.isEmpty &&
         !modelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         URL(string: baseURL)?.scheme?.hasPrefix("http") == true
     }
@@ -383,7 +594,8 @@ private struct NetworkModelEditor: View {
                                           kind: .openAICompatible,
                                           provider: provider,
                                           baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                                          remoteModel: modelName.trimmingCharacters(in: .whitespacesAndNewlines))
+                                          remoteModel: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                          capabilities: capabilities.sorted { $0.rawValue < $1.rawValue })
         isTesting = true
         testResult = nil
         testError = nil
