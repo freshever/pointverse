@@ -145,12 +145,23 @@ struct GlobeMapView: View {
     }
 }
 
-private struct SemanticGlobe: View {
+struct SemanticGlobe: View {
     private let minimumZoom: CGFloat = 0.325
     private let maximumZoom: CGFloat = 24
     let layout: StarLayout
     let focusRequest: PointMapFocusRequest?
     let onSelect: (PointSummary) -> Void
+    let onZoomOut: (() -> Void)?
+    let showsChrome: Bool
+    let externalZoom: CGFloat?
+    let onZoomChanged: ((CGFloat) -> Void)?
+    let planetTint: Color
+    let cameraDriven: Bool
+    let embeddedInUniverse: Bool
+    let detailZoomOverride: CGFloat?
+    let onCameraMagnificationChanged: ((CGFloat) -> Void)?
+    let onCameraMagnificationEnded: (() -> Void)?
+    let onInteractionBegan: (() -> Void)?
     private let topicByPointID: [PointID: String]
     private let communityByPointID: [PointID: String]
     private let contentByPointID: [PointID: String]
@@ -175,11 +186,33 @@ private struct SemanticGlobe: View {
         initialYaw: CGFloat = 0.35,
         initialZoom: CGFloat = 1,
         focusRequest: PointMapFocusRequest? = nil,
+        onZoomOut: (() -> Void)? = nil,
+        showsChrome: Bool = true,
+        externalZoom: CGFloat? = nil,
+        onZoomChanged: ((CGFloat) -> Void)? = nil,
+        planetTint: Color = .cyan,
+        cameraDriven: Bool = false,
+        embeddedInUniverse: Bool = false,
+        detailZoomOverride: CGFloat? = nil,
+        onCameraMagnificationChanged: ((CGFloat) -> Void)? = nil,
+        onCameraMagnificationEnded: (() -> Void)? = nil,
+        onInteractionBegan: (() -> Void)? = nil,
         onSelect: @escaping (PointSummary) -> Void
     ) {
         self.layout = layout
         self.focusRequest = focusRequest
         self.onSelect = onSelect
+        self.onZoomOut = onZoomOut
+        self.showsChrome = showsChrome
+        self.externalZoom = externalZoom
+        self.onZoomChanged = onZoomChanged
+        self.planetTint = planetTint
+        self.cameraDriven = cameraDriven
+        self.embeddedInUniverse = embeddedInUniverse
+        self.detailZoomOverride = detailZoomOverride
+        self.onCameraMagnificationChanged = onCameraMagnificationChanged
+        self.onCameraMagnificationEnded = onCameraMagnificationEnded
+        self.onInteractionBegan = onInteractionBegan
         self.topicByPointID = topicByPointID
         self.communityByPointID = geographies.compactMapValues(\.communityID)
         self.contentByPointID = contentByPointID
@@ -205,6 +238,8 @@ private struct SemanticGlobe: View {
         let angle = sqrt(radial) * 0.18
         return Point3D(x: sin(angle) * cos(bearing), y: sin(angle) * sin(bearing), z: cos(angle))
     }
+
+    private var detailZoom: CGFloat { detailZoomOverride ?? zoom }
 
     private var regions: [CommunityRegion] {
         let keys = layout.nodes.map { node -> String? in
@@ -252,7 +287,7 @@ private struct SemanticGlobe: View {
                     }
                 )
 
-                VStack(spacing: 0) {
+                if showsChrome { VStack(spacing: 0) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
                             Label("语义球面 · \(layout.nodes.count) 个想法", systemImage: "network")
@@ -356,7 +391,7 @@ private struct SemanticGlobe: View {
                     .background(.black.opacity(0.68), in: Capsule())
                     .overlay(Capsule().stroke(.white.opacity(0.2)))
                     .padding(.bottom, 18)
-                }
+                } }
             }
         }
         .sheet(isPresented: $showingRegions) {
@@ -416,6 +451,10 @@ private struct SemanticGlobe: View {
                 }
             }
         }
+        .onChange(of: externalZoom) { _, value in
+            guard let value else { return }
+            zoom = min(maximumZoom, max(minimumZoom, value))
+        }
         .onAppear {
             if cachedAdministrativeLabels.isEmpty {
                 cachedAdministrativeLabels = makeAdministrativeLabels()
@@ -459,6 +498,7 @@ private struct SemanticGlobe: View {
         DragGesture(minimumDistance: 5)
             .onChanged { value in
                 if dragOrigin == nil {
+                    onInteractionBegan?()
                     dragOrigin = value.startLocation
                     rotationOrigin = orientation
                 }
@@ -480,10 +520,21 @@ private struct SemanticGlobe: View {
     private var magnificationGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
-                if zoomOrigin == nil { zoomOrigin = zoom }
-                zoom = min(maximumZoom, max(minimumZoom, (zoomOrigin ?? zoom) * value))
+                if cameraDriven {
+                    onInteractionBegan?()
+                    onCameraMagnificationChanged?(value)
+                } else {
+                    if zoomOrigin == nil { zoomOrigin = zoom }
+                    zoom = min(maximumZoom, max(minimumZoom, (zoomOrigin ?? zoom) * value))
+                    onZoomChanged?(zoom)
+                }
             }
-            .onEnded { _ in zoomOrigin = nil }
+            .onEnded { value in
+                let shouldExit = !cameraDriven && value < 0.82 && zoom <= minimumZoom + 0.03
+                zoomOrigin = nil
+                if shouldExit { onZoomOut?() }
+                if cameraDriven { onCameraMagnificationEnded?() }
+            }
     }
 
     private func controlButton(_ systemName: String, action: @escaping () -> Void) -> some View {
@@ -497,8 +548,13 @@ private struct SemanticGlobe: View {
     }
 
     private func changeZoom(by factor: CGFloat) {
+        if factor < 1, zoom <= minimumZoom + 0.03, let onZoomOut {
+            onZoomOut()
+            return
+        }
         withAnimation(.easeInOut(duration: 0.22)) {
             zoom = min(maximumZoom, max(minimumZoom, zoom * factor))
+            onZoomChanged?(zoom)
         }
     }
 
@@ -514,25 +570,28 @@ private struct SemanticGlobe: View {
         context.fill(
             Path(ellipseIn: globeRect),
             with: .radialGradient(
-                Gradient(colors: [Color.cyan.opacity(0.22), Color.blue.opacity(0.13), Color.black.opacity(0.88)]),
+                Gradient(colors: [planetTint.opacity(0.28), planetTint.opacity(0.12), Color.black.opacity(0.88)]),
                 center: CGPoint(x: geometry.center.x - geometry.radius * 0.28, y: geometry.center.y - geometry.radius * 0.3),
                 startRadius: 2,
                 endRadius: geometry.radius * 1.2
             )
         )
-        context.stroke(Path(ellipseIn: globeRect), with: .color(.cyan.opacity(0.52)), lineWidth: 1.4)
+        context.stroke(Path(ellipseIn: globeRect), with: .color(planetTint.opacity(0.58)), lineWidth: 1.4)
 
         if showsGeography {
             drawSemanticLand(context: &context, geometry: geometry)
         }
         drawGraticule(context: &context, geometry: geometry)
-        drawCoordinateLabels(context: &context, geometry: geometry)
-        drawPoleLabels(context: &context, geometry: geometry)
+        if !embeddedInUniverse || detailZoom >= 0.85 {
+            drawCoordinateLabels(context: &context, geometry: geometry)
+            drawPoleLabels(context: &context, geometry: geometry)
+        }
 
         let projected = projectedNodes(geometry: geometry)
         let clusters = displayClusters(projected: projected, geometry: geometry)
 
-        for cluster in clusters.sorted(by: { $0.depth < $1.depth }) {
+        if !embeddedInUniverse || detailZoom >= 0.65 {
+          for cluster in clusters.sorted(by: { $0.depth < $1.depth }) {
             if cluster.nodeIndices.count > 1 {
                 let radius = min(25, 11 + sqrt(CGFloat(cluster.nodeIndices.count)) * 3.5)
                 let rect = CGRect(x: cluster.point.x - radius, y: cluster.point.y - radius, width: radius * 2, height: radius * 2)
@@ -570,11 +629,13 @@ private struct SemanticGlobe: View {
                                with: .color(.yellow.opacity(0.95)), lineWidth: 3)
             }
 
-            if zoom >= 10, !node.title.isEmpty {
-                let characterLimit = zoom >= 18 ? 56 : 28
+            let pointLabelThreshold: CGFloat = embeddedInUniverse ? 2.4 : 10
+            let expandedLabelThreshold: CGFloat = embeddedInUniverse ? 4.5 : 18
+            if detailZoom >= pointLabelThreshold, !node.title.isEmpty {
+                let characterLimit = detailZoom >= expandedLabelThreshold ? 56 : 28
                 let content = String(node.title.prefix(characterLimit))
                 let lines = max(1, min(3, Int(ceil(Double(content.count) / 14.0))))
-                let bubbleWidth: CGFloat = zoom >= 18 ? 190 : 150
+                let bubbleWidth: CGFloat = detailZoom >= expandedLabelThreshold ? 190 : 150
                 let bubbleHeight = CGFloat(lines * 19 + 12)
                 let bubble = CGRect(
                     x: node.point.x - bubbleWidth / 2,
@@ -591,14 +652,17 @@ private struct SemanticGlobe: View {
                     in: bubble.insetBy(dx: 6, dy: 5)
                 )
             }
+          }
         }
 
-        drawAdministrativeLabels(context: &context, geometry: geometry)
+        if !embeddedInUniverse || detailZoom >= 0.85 {
+            drawAdministrativeLabels(context: &context, geometry: geometry)
+        }
     }
 
     private func drawAdministrativeLabels(context: inout GraphicsContext, geometry: GlobeGeometry) {
         let visibleLevel: AdministrativeLevel
-        switch zoom {
+        switch detailZoom {
         case ..<1.8: visibleLevel = .province
         case ..<5: visibleLevel = .city
         default: visibleLevel = .district
@@ -882,8 +946,12 @@ private struct SemanticGlobe: View {
             hypot($0.point.x - location.x, $0.point.y - location.y) < hypot($1.point.x - location.x, $1.point.y - location.y)
         }), hypot(nearest.point.x - location.x, nearest.point.y - location.y) <= 26 else { return }
         if nearest.nodeIndices.count > 1 {
-            withAnimation(.easeInOut(duration: 0.28)) {
-                zoom = min(maximumZoom, max(1.12, zoom * 1.5))
+            // An embedded planet never zooms itself when tapped. The user
+            // controls distance only through the universe camera.
+            if !cameraDriven {
+                withAnimation(.easeInOut(duration: 0.28)) {
+                    zoom = min(maximumZoom, max(1.12, zoom * 1.5))
+                }
             }
         } else if let index = nearest.nodeIndices.first {
             onSelect(layout.nodes[index].point)
@@ -935,6 +1003,15 @@ private struct SemanticGlobe: View {
     }
 
     private func globeGeometry(size: CGSize) -> GlobeGeometry {
+        if embeddedInUniverse {
+            // In universe mode the container itself is the camera-projected
+            // planet diameter. Do not reuse the standalone page's reserved
+            // header/footer geometry or its 0.43 inset.
+            return GlobeGeometry(
+                center: CGPoint(x: size.width / 2, y: size.height / 2),
+                radius: min(size.width, size.height) / 2
+            )
+        }
         let availableHeight = max(160, size.height - 145)
         return GlobeGeometry(
             center: CGPoint(x: size.width / 2, y: size.height / 2 + 5),

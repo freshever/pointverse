@@ -433,7 +433,7 @@ private struct Pseudo3DStarMap: View {
                 }
                 .contentShape(Rectangle())
                 .gesture(rotationGesture)
-                .simultaneousGesture(zoomGesture)
+                .simultaneousGesture(zoomGesture(size: proxy.size))
                 .simultaneousGesture(
                     SpatialTapGesture().onEnded { value in
                         handleTap(at: value.location, size: proxy.size)
@@ -590,7 +590,7 @@ private struct Pseudo3DStarMap: View {
             .onEnded { _ in dragStartYaw = nil; dragStartPitch = nil }
     }
 
-    private var zoomGesture: some Gesture {
+    private func zoomGesture(size: CGSize) -> some Gesture {
         MagnificationGesture()
             .onChanged { value in
                 if zoomStart == nil { zoomStart = zoom }
@@ -893,5 +893,1199 @@ enum StarLayoutEngine {
         func unit(_ offset: Int) -> CGFloat { CGFloat((Int(bytes[offset]) << 8) | Int(bytes[offset + 1])) / 65_535 }
         let theta = unit(0) * .pi * 2, phi = acos(2 * unit(2) - 1), radius: CGFloat = 4.5
         return .init(x: radius * sin(phi) * cos(theta), y: radius * cos(phi), z: radius * sin(phi) * sin(theta))
+    }
+}
+
+struct UniverseMapView: View {
+    @EnvironmentObject private var container: AppContainer
+    @State private var entries: [PointMapEntry] = []
+    @State private var layout = StarLayout(nodes: [], links: [], embeddingCount: 0)
+    @State private var geographies: [PointID: PointGeographyRecord] = [:]
+    @State private var contentByPointID: [PointID: String] = [:]
+    @State private var selected: PointSummary?
+    @State private var showingSearch = false
+    @State private var focusRequest: PointMapFocusRequest?
+    @State private var loadFailed = false
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.025, green: 0.018, blue: 0.09), .black],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            if layout.nodes.isEmpty {
+                ContentUnavailableView {
+                    Label("宇宙尚未形成", systemImage: "hurricane")
+                } description: {
+                    Text("记录更多想法后，相关 Point 会逐渐形成星球与星系。")
+                }
+                .foregroundStyle(.white)
+            } else {
+                SemanticUniverse(
+                    layout: layout,
+                    geographies: geographies,
+                    contentByPointID: contentByPointID,
+                    focusRequest: focusRequest
+                ) { selected = $0 }
+            }
+        }
+        .navigationTitle("语义宇宙")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(Color(red: 0.025, green: 0.018, blue: 0.09), for: .navigationBar)
+        .toolbar {
+            Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                .tint(.white)
+            Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
+                .tint(.white)
+        }
+        .task { await reload() }
+        .onReceive(NotificationCenter.default.publisher(for: EmbeddingService.didChangeNotification)) { _ in
+            Task { await reload() }
+        }
+        .sheet(isPresented: $showingSearch) {
+            PointMapSearchSheet(entries: entries) { pointID in
+                focusRequest = PointMapFocusRequest(pointID: pointID)
+                showingSearch = false
+            }
+        }
+        .sheet(item: $selected) { point in
+            NavigationStack { PointDetailView(point: point) }
+                .environmentObject(container)
+                .presentationDetents([.medium, .large])
+        }
+        .alert("无法读取语义宇宙", isPresented: $loadFailed) { Button("好") {} }
+    }
+
+    private func reload() async {
+        do {
+            async let loadedEntries = container.database.pointMapEntries()
+            async let embeddings = container.database.embeddings(modelID: EmbeddingModelIdentity.bgeSmallZhV15)
+            async let storedGeographies = container.database.geographies(version: GeographyIdentity.relativeSemanticV6)
+            let values = try await loadedEntries
+            let loadedGeographies = try await storedGeographies
+            entries = values
+            layout = StarLayoutEngine.make(entries: values, embeddings: try await embeddings)
+            geographies = Dictionary(uniqueKeysWithValues: loadedGeographies.map { ($0.pointID, $0) })
+            contentByPointID = Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0.content) })
+        } catch {
+            loadFailed = true
+        }
+    }
+}
+
+private struct SemanticUniverse: View {
+    private let minimumZoom: CGFloat = 0.45
+    // A dense planet (400+ Points) needs map-like zoom depth. This remains
+    // bounded for numerical stability, but is effectively unrestricted in UI.
+    // This is only a numerical safety ceiling. The real user-facing maximum
+    // is calculated per planet by `maximumReadableDiameter`.
+    private let maximumZoom: CGFloat = 1_000_000_000_000
+    let layout: StarLayout
+    let geographies: [PointID: PointGeographyRecord]
+    let contentByPointID: [PointID: String]
+    let focusRequest: PointMapFocusRequest?
+    let onSelect: (PointSummary) -> Void
+    private let hierarchy: CosmicHierarchy
+    private let cachedPlanetLayouts: [Int: StarLayout]
+
+    init(layout: StarLayout,
+         geographies: [PointID: PointGeographyRecord],
+         contentByPointID: [PointID: String],
+         focusRequest: PointMapFocusRequest?,
+         onSelect: @escaping (PointSummary) -> Void) {
+        self.layout = layout
+        self.geographies = geographies
+        self.contentByPointID = contentByPointID
+        self.focusRequest = focusRequest
+        self.onSelect = onSelect
+        let hierarchy = CosmicHierarchy.make(layout: layout, geographies: geographies)
+        self.hierarchy = hierarchy
+        self.cachedPlanetLayouts = Dictionary(uniqueKeysWithValues: hierarchy.planets.map { planet in
+            let oldIndices = planet.nodeIndices
+            let remap = Dictionary(uniqueKeysWithValues: oldIndices.enumerated().map { ($0.element, $0.offset) })
+            let nodes = oldIndices.map { layout.nodes[$0] }
+            let links = layout.links.compactMap { link -> StarLayout.Link? in
+                guard let a = remap[link.a], let b = remap[link.b] else { return nil }
+                return .init(a: a, b: b, strength: link.strength)
+            }
+            return (planet.id, StarLayout(nodes: nodes, links: links,
+                                          embeddingCount: nodes.filter(\.isEmbedded).count))
+        })
+    }
+
+    @State private var zoom: CGFloat = 0.75
+    @State private var zoomOrigin: CGFloat?
+    @State private var camera = CGPoint.zero
+    @State private var dragOrigin: CGPoint?
+    @State private var focusedPointID: PointID?
+    @State private var activePlanetID: Int?
+    @State private var cameraTargetPlanetID: Int?
+    @State private var planetFocusProgress: CGFloat = 0
+    @State private var universeZoomBeforeEntry: CGFloat = 2.2
+    @State private var surfaceEntryCameraDistance: CGFloat = 0
+    @State private var planetYaw: CGFloat = 0
+    @State private var planetPitch: CGFloat = 0
+    @State private var surfaceRotationOrigin: CGPoint?
+    @State private var surfaceZoom: CGFloat = 1
+    @State private var viewportSize: CGSize = .zero
+    @State private var didCenterInitialCamera = false
+    @State private var cameraMagnificationOrigin: CGFloat?
+    @State private var cameraMagnificationDiameterOrigin: CGFloat?
+    @State private var cameraMagnificationDistanceOrigin: CGFloat?
+    @State private var cameraAnimationToken = UUID()
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Canvas { context, size in draw(context: &context, size: size) }
+                .contentShape(Rectangle())
+                .gesture(panGesture(size: proxy.size))
+                .simultaneousGesture(zoomGesture(size: proxy.size))
+                .simultaneousGesture(
+                    SpatialTapGesture().onEnded { value in handleTap(at: value.location, size: proxy.size) }
+                )
+
+                ForEach(hierarchy.planets.sorted { planetWorldPosition($0).z < planetWorldPosition($1).z }, id: \.id) { planet in
+                    let selected = activePlanetID == planet.id
+                    let universeCenter = planetScreenPosition(planet, size: proxy.size)
+                    let diameter = planetVisualRadius(planet, size: proxy.size) * 2
+                    let showsDetailedSurface = diameter >= surfaceRevealDiameter(for: proxy.size)
+                    // Instantiate the full province/city/district renderer only
+                    // for a selected or genuinely near planet. Far planets use
+                    // the cheap Canvas LOD below. The two renderers are mutually
+                    // exclusive, so the map replaces the very same projected
+                    // sphere instead of drawing a second sphere over it.
+                    if isPlanetOnScreen(planet, size: proxy.size),
+                       preparesDetailedRenderer(planet, size: proxy.size) {
+                        SemanticGlobe(
+                            layout: planetLayout(planet),
+                            geographies: geographies,
+                            contentByPointID: contentByPointID,
+                            initialZoom: 1,
+                            focusRequest: selected ? focusedPointID.map(PointMapFocusRequest.init(pointID:)) : nil,
+                            onZoomOut: nil,
+                            showsChrome: false,
+                            externalZoom: 1,
+                            onZoomChanged: nil,
+                            planetTint: cosmicColor(planet.id + 31),
+                            cameraDriven: true,
+                            embeddedInUniverse: true,
+                            // Surface detail grows continuously from the early
+                            // quarter-screen reveal to the fitted map scale.
+                            detailZoomOverride: max(0.28, diameter / fittedPlanetDiameter(for: proxy.size)),
+                            onCameraMagnificationChanged: { updateCameraMagnification($0) },
+                            onCameraMagnificationEnded: { finishCameraMagnification() },
+                            onInteractionBegan: { activatePlanetSurface(planet) },
+                            onSelect: onSelect
+                        )
+                        .frame(width: max(28, diameter), height: max(28, diameter))
+                        .contentShape(Circle())
+                        // The globe owns drags once its surface is visible,
+                        // but a tap must still reach the universe camera so
+                        // an already-interactive, off-centre planet can be
+                        // brought to the middle of the viewport.
+                        .simultaneousGesture(
+                            TapGesture().onEnded { centerCamera(on: planet) }
+                        )
+                        .position(universeCenter)
+                        // Prepare the map before it is needed. Crossing the LOD
+                        // threshold then only swaps surface detail; it never
+                        // creates a newly scaling planet during camera travel.
+                        .opacity(showsDetailedSurface ? 1 : 0)
+                        .allowsHitTesting(showsDetailedSurface)
+                        .id("universe-planet-\(planet.id)")
+                        .transition(.identity)
+                    }
+                }
+
+                VStack {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label(levelTitle, systemImage: levelIcon)
+                                .font(.caption.bold())
+                            Text("缩放穿越：恒星系 → 行星与卫星 → 行星地图 → Point")
+                                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+                        }
+                        Spacer()
+                        Text("\(hierarchy.galaxies.count) 恒星系 · \(hierarchy.planets.count) 行星")
+                            .font(.caption2.monospacedDigit())
+                    }
+                    .foregroundStyle(.white)
+                    .padding(12)
+                    .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+                    .padding()
+                    Spacer()
+                    HStack(spacing: 12) {
+                        universeControl("minus.magnifyingglass") { changeZoom(0.7) }
+                        Text("\(Int(zoom * 100))%")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.75))
+                            .frame(minWidth: 46)
+                        universeControl("plus.magnifyingglass") { changeZoom(1.45) }
+                        Divider().frame(height: 22).overlay(.white.opacity(0.22))
+                        Button("全景") {
+                            focusedPointID = nil
+                            activePlanetID = nil
+                            cameraTargetPlanetID = nil
+                            animateUniverseCamera(to: .zero, zoom: 0.75, duration: 0.4)
+                        }
+                        .font(.caption.bold()).foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(.black.opacity(0.7), in: Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.2)))
+                    .padding(.bottom, 18)
+                }
+            }
+            .onChange(of: focusRequest) { _, request in focus(on: request) }
+            .onAppear { viewportSize = proxy.size; centerInitialCameraIfNeeded() }
+            .onChange(of: proxy.size) { _, value in viewportSize = value }
+        }
+    }
+
+    private func exitPlanet() {
+        surfaceZoom = 1
+        planetFocusProgress = 0
+        focusedPointID = nil
+        activePlanetID = nil
+        cameraTargetPlanetID = nil
+    }
+
+    private func updateFocusedPlanetZoom(_ value: CGFloat) {
+        // Split the visual scale between the reusable globe's frame and its
+        // own map zoom. Their product remains linear and avoids a sudden jump.
+        surfaceZoom = value * value
+        if value < 0.96 {
+            DispatchQueue.main.async { exitPlanet() }
+        }
+    }
+
+    private func updateCameraMagnification(_ gestureScale: CGFloat) {
+        if cameraMagnificationOrigin == nil {
+            cameraAnimationToken = UUID()
+            cameraMagnificationOrigin = zoom
+            cameraMagnificationDistanceOrigin = cameraDistance
+            if let planet = cameraDollyPlanet, viewportSize.width > 0 {
+                cameraMagnificationDiameterOrigin = planetVisualRadius(planet, size: viewportSize) * 2
+            }
+        }
+        if let planet = cameraDollyPlanet,
+           let diameterOrigin = cameraMagnificationDiameterOrigin,
+           viewportSize.width > 0 {
+            let targetDiameter = min(
+                maximumReadableDiameter(for: planet, size: viewportSize),
+                max(24, diameterOrigin * max(0.05, gestureScale))
+            )
+            zoom = zoom(forPlanetDiameter: targetDiameter, planet: planet, size: viewportSize)
+            return
+        }
+        // In universe space solve the camera curve backwards: a 1.2x pinch
+        // produces a 1.2x projected scene at every distance.
+        let originDistance = cameraMagnificationDistanceOrigin ?? cameraDistance
+        let targetDistance = originDistance / max(0.05, gestureScale)
+        zoom = universeZoom(forCameraDistance: targetDistance)
+    }
+
+    private func finishCameraMagnification() {
+        cameraMagnificationOrigin = nil
+        cameraMagnificationDiameterOrigin = nil
+        cameraMagnificationDistanceOrigin = nil
+        if let planet = activePlanet,
+           viewportSize.width > 0,
+           planetVisualRadius(planet, size: viewportSize) * 2 < surfaceRevealDiameter(for: viewportSize) {
+            deactivatePlanetSurfaceKeepingCameraTarget()
+            return
+        }
+        activateCenteredSurfaceIfNeeded()
+    }
+
+    /// Leaving the detailed-surface LOD must not also change camera space.
+    /// Keeping the dolly target makes the simplified and detailed spheres use
+    /// one continuous projection and lets the same small planet enlarge again
+    /// without requiring another centering tap.
+    private func deactivatePlanetSurfaceKeepingCameraTarget() {
+        focusedPointID = nil
+        activePlanetID = nil
+        planetFocusProgress = 0
+        surfaceZoom = 1
+    }
+
+    private func visiblePlanets() -> [CosmicHierarchy.Planet] {
+        guard viewportSize.width > 0 else { return [] }
+        let bounds = CGRect(origin: .zero, size: viewportSize).insetBy(dx: -24, dy: -24)
+        return hierarchy.planets.filter { planet in
+            let center = planetScreenPosition(planet, size: viewportSize)
+            let radius = planetVisualRadius(planet, size: viewportSize)
+            return bounds.intersects(CGRect(x: center.x - radius, y: center.y - radius,
+                                            width: radius * 2, height: radius * 2))
+        }
+    }
+
+    private func activatePlanetSurface(_ planet: CosmicHierarchy.Planet) {
+        guard activePlanetID != planet.id else { return }
+        if cameraTargetPlanetID != planet.id {
+            let currentDistance = cameraDistance
+            universeZoomBeforeEntry = zoom
+            surfaceEntryCameraDistance = currentDistance
+        }
+        cameraTargetPlanetID = planet.id
+        activePlanetID = planet.id
+        planetFocusProgress = 0
+        surfaceZoom = 1
+    }
+
+    private func centerCamera(on planet: CosmicHierarchy.Planet) {
+        if cameraTargetPlanetID != planet.id {
+            let currentDistance = cameraDistance
+            activePlanetID = nil
+            universeZoomBeforeEntry = zoom
+            surfaceEntryCameraDistance = currentDistance
+            cameraTargetPlanetID = planet.id
+        }
+        if viewportSize.width > 0, isPlanetInteractive(planet) {
+            activatePlanetSurface(planet)
+        }
+        let world = planetWorldPosition(planet)
+        animateUniverseCamera(to: CGPoint(x: world.x, y: world.y), zoom: zoom, duration: 0.65)
+    }
+
+    /// Canvas does not interpolate captured camera state through
+    /// `withAnimation`. Advance the one universe camera explicitly so the
+    /// backdrop, stars, orbits, planets and map surface all move together.
+    private func animateUniverseCamera(to targetCamera: CGPoint,
+                                       zoom targetZoom: CGFloat,
+                                       duration: Double,
+                                       completion: (() -> Void)? = nil) {
+        let token = UUID()
+        cameraAnimationToken = token
+        let startCamera = camera
+        let startZoom = zoom
+        let frameCount = max(1, Int(duration * 60))
+        Task { @MainActor in
+            for frame in 1...frameCount {
+                guard cameraAnimationToken == token else { return }
+                let linear = CGFloat(frame) / CGFloat(frameCount)
+                let progress = linear * linear * (3 - 2 * linear)
+                camera = CGPoint(
+                    x: startCamera.x + (targetCamera.x - startCamera.x) * progress,
+                    y: startCamera.y + (targetCamera.y - startCamera.y) * progress
+                )
+                zoom = startZoom + (targetZoom - startZoom) * progress
+                if frame < frameCount {
+                    try? await Task.sleep(for: .milliseconds(16))
+                }
+            }
+            guard cameraAnimationToken == token else { return }
+            completion?()
+        }
+    }
+
+    private func centerInitialCameraIfNeeded() {
+        guard !didCenterInitialCamera, !hierarchy.planets.isEmpty else { return }
+        let worlds = hierarchy.planets.map(planetWorldPosition)
+        camera = CGPoint(
+            x: worlds.reduce(0) { $0 + $1.x } / CGFloat(worlds.count),
+            y: worlds.reduce(0) { $0 + $1.y } / CGFloat(worlds.count)
+        )
+        didCenterInitialCamera = true
+    }
+
+    private func activateCenteredSurfaceIfNeeded() {
+        guard activePlanetID == nil, viewportSize.width > 0,
+              let planetID = detailedPlanetID(for: viewportSize),
+              let planet = hierarchy.planets.first(where: { $0.id == planetID }),
+              isPlanetInteractive(planet) else { return }
+        activatePlanetSurface(planet)
+    }
+
+    /// Preserve the original globe interaction and administrative rendering,
+    /// while limiting its data to the selected semantic planet.
+    private func planetLayout(_ planet: CosmicHierarchy.Planet) -> StarLayout {
+        cachedPlanetLayouts[planet.id]
+            ?? StarLayout(nodes: [], links: [], embeddingCount: 0)
+    }
+
+    private var levelTitle: String {
+        if zoom < 1.6 { return "恒星系视图" }
+        return "行星与卫星"
+    }
+
+    private var levelIcon: String {
+        zoom < 1.6 ? "hurricane" : "globe.americas.fill"
+    }
+
+    private func draw(context: inout GraphicsContext, size: CGSize) {
+        drawBackdrop(context: &context, size: size)
+        // Cross-fade the hierarchy instead of replacing one canvas at a hard
+        // zoom threshold. This makes a star system visibly unfold from its
+        // galaxy while the user pinches.
+        if zoom < 2.0 {
+            var galaxyLayer = context
+            galaxyLayer.opacity = Double(min(1, max(0, (2.0 - zoom) / 0.8)))
+            drawGalaxies(context: &galaxyLayer, size: size)
+        }
+        var systemLayer = context
+        systemLayer.opacity = Double(min(1, max(0.72, (zoom - 0.45) / 0.9)))
+        drawPlanets(context: &systemLayer, size: size)
+    }
+
+    private func drawBackdrop(context: inout GraphicsContext, size: CGSize) {
+        for index in 0..<90 {
+            let x = CGFloat((index * 73) % 997) / 997 * size.width
+            let y = CGFloat((index * 193) % 991) / 991 * size.height
+            let radius: CGFloat = index.isMultiple(of: 7) ? 1.3 : 0.7
+            context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: radius * 2, height: radius * 2)),
+                         with: .color(.white.opacity(index.isMultiple(of: 5) ? 0.5 : 0.22)))
+        }
+    }
+
+    private func drawGalaxies(context: inout GraphicsContext, size: CGSize) {
+        for galaxy in hierarchy.galaxies {
+            let projection = perspectiveProject(galaxyWorldPosition(galaxy), size: size)
+            let center = projection.point
+            let radius = max(8, starWorldRadius(galaxy) * projection.pointsPerWorldUnit * 2.4)
+            let color = cosmicColor(galaxy.id)
+            let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+            context.fill(Path(ellipseIn: rect), with: .radialGradient(
+                Gradient(colors: [.white.opacity(0.9), color.opacity(0.8), color.opacity(0.08)]),
+                center: center, startRadius: 1, endRadius: radius
+            ))
+            context.stroke(Path(ellipseIn: rect.insetBy(dx: -7, dy: -7)), with: .color(color.opacity(0.25)), lineWidth: 2)
+            context.draw(Text(galaxy.name).font(.caption.bold()).foregroundStyle(.white),
+                         at: CGPoint(x: center.x, y: center.y + radius + 13), anchor: .center)
+            context.draw(Text("\(galaxy.planetIDs.count) 个星球").font(.caption2).foregroundStyle(.white.opacity(0.62)),
+                         at: CGPoint(x: center.x, y: center.y + radius + 28), anchor: .center)
+        }
+    }
+
+    private func drawPlanets(context: inout GraphicsContext, size: CGSize) {
+        for galaxy in hierarchy.galaxies {
+            let starProjection = perspectiveProject(galaxyWorldPosition(galaxy), size: size)
+            let galaxyCenter = starProjection.point
+            let starRadius = max(5, starWorldRadius(galaxy) * starProjection.pointsPerWorldUnit)
+            let starRect = CGRect(x: galaxyCenter.x - starRadius, y: galaxyCenter.y - starRadius,
+                                  width: starRadius * 2, height: starRadius * 2)
+            context.fill(Path(ellipseIn: starRect), with: .radialGradient(
+                Gradient(colors: [.white, .yellow, .orange.opacity(0.25)]),
+                center: galaxyCenter, startRadius: 1, endRadius: starRadius * 1.7
+            ))
+            context.draw(Text(galaxy.name.replacingOccurrences(of: "星系", with: "恒星"))
+                .font(.caption2.bold()).foregroundStyle(.yellow.opacity(0.9)),
+                         at: CGPoint(x: galaxyCenter.x, y: galaxyCenter.y + starRadius + 12), anchor: .center)
+
+            let members = galaxy.planetIDs
+            for orbit in members.indices {
+                var path = Path()
+                let orbitSegments = zoom < 1.6 ? 24 : 36
+                for step in 0...orbitSegments {
+                    let angle = CGFloat(step) / CGFloat(orbitSegments) * 2 * .pi
+                    let point = perspectiveProject(
+                        orbitWorldPosition(galaxy: galaxy, orbit: orbit, angle: angle), size: size
+                    ).point
+                    step == 0 ? path.move(to: point) : path.addLine(to: point)
+                }
+                context.stroke(path, with: .color(.white.opacity(0.12)), lineWidth: 0.8)
+            }
+        }
+        for planet in hierarchy.planets.sorted(by: { planetWorldPosition($0).z < planetWorldPosition($1).z }) {
+            // Once this planet is large enough for its semantic map, the
+            // overlay renders it at this exact camera-projected center/radius.
+            // Do not also draw the simplified sphere underneath.
+            if planetVisualRadius(planet, size: size) * 2 >= surfaceRevealDiameter(for: size) {
+                continue
+            }
+            let center = planetScreenPosition(planet, size: size)
+            let radius = planetVisualRadius(planet, size: size)
+            let color = cosmicColor(planet.id + 31)
+            let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+            context.fill(Path(ellipseIn: rect), with: .radialGradient(
+                Gradient(colors: [.white.opacity(0.85), color.opacity(0.92), color.opacity(0.5)]),
+                center: CGPoint(x: center.x - radius * 0.25, y: center.y - radius * 0.25),
+                startRadius: 1, endRadius: radius
+            ))
+            // Distance-based LOD: far planets render no Point-derived land;
+            // medium planets sample a handful of regions. Full geography is
+            // instantiated only by SemanticGlobe when the planet is near.
+            let patchLimit = radius < 18 ? 0 : radius < 38 ? 6 : 18
+            if patchLimit > 0 {
+                var surface = context
+                surface.clip(to: Path(ellipseIn: rect))
+                let step = max(1, planet.nodeIndices.count / patchLimit)
+                for index in planet.nodeIndices.enumerated().compactMap({ $0.offset.isMultiple(of: step) ? $0.element : nil }).prefix(patchLimit) {
+                    let local = geographicSurfacePoint(index: index, center: center, radius: radius)
+                    let patch = max(1.5, radius * 0.16)
+                    surface.fill(Path(ellipseIn: CGRect(x: local.x - patch, y: local.y - patch * 0.65,
+                                                         width: patch * 2, height: patch * 1.3)),
+                                 with: .color(cosmicColor(index + planet.id * 13).opacity(0.34)))
+                }
+            }
+            if radius >= 11 {
+                context.draw(Text(planet.name).font(.caption2.bold()).foregroundStyle(.white),
+                             at: CGPoint(x: center.x, y: center.y + radius + 11), anchor: .center)
+            }
+
+            // Satellites summarize the next semantic level. They are visual
+            // children of the planet, not individual Points.
+            let moonCount = radius >= 16 ? min(5, max(1, Int(ceil(sqrt(Double(planet.nodeIndices.count) / 6))))) : 0
+            let moonOrbit = radius + 13
+            context.stroke(Path(ellipseIn: CGRect(x: center.x - moonOrbit, y: center.y - moonOrbit * 0.38,
+                                                   width: moonOrbit * 2, height: moonOrbit * 0.76)),
+                           with: .color(.white.opacity(0.16)), lineWidth: 0.6)
+            for moon in 0..<moonCount {
+                let angle = CGFloat(moon) / CGFloat(moonCount) * 2 * .pi + CGFloat(planet.id) * 0.71
+                let moonCenter = CGPoint(x: center.x + cos(angle) * moonOrbit,
+                                         y: center.y + sin(angle) * moonOrbit * 0.38)
+                let moonRadius: CGFloat = moon == 0 ? 3.2 : 2.4
+                context.fill(Path(ellipseIn: CGRect(x: moonCenter.x - moonRadius, y: moonCenter.y - moonRadius,
+                                                     width: moonRadius * 2, height: moonRadius * 2)),
+                             with: .color(.white.opacity(0.72)))
+            }
+        }
+    }
+
+    private func planetVisualRadius(_ planet: CosmicHierarchy.Planet, size: CGSize) -> CGFloat {
+        let projection = perspectiveProject(planetWorldPosition(planet), size: size)
+        return max(5, planetWorldRadius(planet) * projection.pointsPerWorldUnit)
+    }
+
+    private func preparesDetailedRenderer(_ planet: CosmicHierarchy.Planet, size: CGSize) -> Bool {
+        // Preload well before the visible handoff. Its frame already follows
+        // the universe projection, so there is no planet-local entrance scale.
+        planetVisualRadius(planet, size: size) * 2 >= surfaceRevealDiameter(for: size) * 0.72
+    }
+
+    private func isPlanetOnScreen(_ planet: CosmicHierarchy.Planet, size: CGSize) -> Bool {
+        let center = planetScreenPosition(planet, size: size)
+        let radius = planetVisualRadius(planet, size: size)
+        return CGRect(origin: .zero, size: size).insetBy(dx: -radius, dy: -radius).contains(center)
+    }
+
+    private func detailedPlanetID(for size: CGSize) -> Int? {
+        if let activePlanetID { return activePlanetID }
+        if let cameraTargetPlanetID { return cameraTargetPlanetID }
+        let screenCenter = CGPoint(x: size.width / 2, y: size.height / 2)
+        return hierarchy.planets
+            .filter { planetVisualRadius($0, size: size) * 2 >= surfaceRevealDiameter(for: size) * 0.72 }
+            .min {
+                distance(planetScreenPosition($0, size: size), screenCenter)
+                    < distance(planetScreenPosition($1, size: size), screenCenter)
+            }?.id
+    }
+
+    private func isPlanetInteractive(_ planet: CosmicHierarchy.Planet) -> Bool {
+        guard viewportSize.width > 0 else { return false }
+        return planetVisualRadius(planet, size: viewportSize) * 2 >= surfaceRevealDiameter(for: viewportSize)
+    }
+
+    private func surfaceRevealDiameter(for size: CGSize) -> CGFloat {
+        // Reveal the spherical terrain while the planet is still part of the
+        // wider universe—about one quarter of the shorter screen dimension.
+        max(84, min(size.width, size.height) * 0.26)
+    }
+
+    private func fittedPlanetDiameter(for size: CGSize) -> CGFloat {
+        // Match the standalone globe's useful viewport: leave room for the
+        // title and controls while fitting the planet as large as possible.
+        min(size.width * 0.86, max(220, size.height - 190) * 0.86)
+    }
+
+    private func maximumReadableDiameter(for planet: CosmicHierarchy.Planet, size: CGSize) -> CGFloat {
+        // For roughly uniform points on the visible hemisphere, useful linear
+        // resolution grows with sqrt(count). 72 pt leaves room for a hit target
+        // and a short label at the finest level. Keep practical bounds so a
+        // sparse planet still has map depth and a dense one cannot explode.
+        let fitted = fittedPlanetDiameter(for: size)
+        let densityLimit = 72 * sqrt(CGFloat(max(1, planet.nodeIndices.count)))
+        return min(fitted * 10, max(fitted * 3, densityLimit))
+    }
+
+    private func zoom(forPlanetDiameter diameter: CGFloat,
+                      planet: CosmicHierarchy.Planet,
+                      size: CGSize) -> CGFloat {
+        let focalLength = min(size.width, size.height) * 1.15
+        let worldDiameter = planetWorldRadius(planet) * 2
+        let planetDepth = planetWorldPosition(planet).z
+        let entryDistance = surfaceEntryCameraDistance > 0
+            ? surfaceEntryCameraDistance
+            : universeCameraDistance(for: universeZoomBeforeEntry)
+        let entryGap = max(0.35, entryDistance - planetDepth)
+        let targetGap = max(0.08, worldDiameter * focalLength / max(1, diameter))
+        let mapScale = pow(entryGap / targetGap, 1 / 0.72)
+        return min(maximumZoom, max(minimumZoom, universeZoomBeforeEntry * mapScale))
+    }
+
+    private func geographicSurfacePoint(index: Int, center: CGPoint, radius: CGFloat) -> CGPoint {
+        guard let geography = geographies[layout.nodes[index].point.id] else { return center }
+        let latitude = CGFloat(geography.latitude) * .pi / 180
+        let longitude = CGFloat(geography.longitude) * .pi / 180
+        return CGPoint(x: center.x + sin(longitude) * cos(latitude) * radius * 0.82,
+                       y: center.y - sin(latitude) * radius * 0.82)
+    }
+
+    private func planetScreenPosition(_ planet: CosmicHierarchy.Planet, size: CGSize) -> CGPoint {
+        perspectiveProject(planetWorldPosition(planet), size: size).point
+    }
+
+    private func galaxyWorldPosition(_ galaxy: CosmicHierarchy.Galaxy) -> Point3D {
+        Point3D(x: galaxy.center.x * 22, y: galaxy.center.y * 22, z: galaxy.center.z * 10)
+    }
+
+    private func orbitWorldPosition(galaxy: CosmicHierarchy.Galaxy, orbit: Int, angle: CGFloat) -> Point3D {
+        let star = galaxyWorldPosition(galaxy)
+        let radius = 3.2 + CGFloat(orbit) * 2.45
+        let inclination = (CGFloat((galaxy.id * 37 + orbit * 19) % 29) / 29 - 0.5) * 0.7
+        return Point3D(x: star.x + cos(angle) * radius,
+                       y: star.y + sin(angle) * radius * cos(inclination),
+                       z: star.z + sin(angle) * radius * sin(inclination))
+    }
+
+    private func planetWorldPosition(_ planet: CosmicHierarchy.Planet) -> Point3D {
+        guard let galaxy = hierarchy.galaxies.first(where: { $0.id == planet.galaxyID }),
+              let orbit = galaxy.planetIDs.firstIndex(of: planet.id) else { return planet.center }
+        let dx = planet.center.x - galaxy.center.x, dy = planet.center.y - galaxy.center.y
+        let angle = abs(dx) + abs(dy) > 0.0001 ? atan2(dy, dx) : CGFloat(planet.id) * 2.399963
+        return orbitWorldPosition(galaxy: galaxy, orbit: orbit, angle: angle)
+    }
+
+    private func planetWorldRadius(_ planet: CosmicHierarchy.Planet) -> CGFloat {
+        min(1.18, 0.48 + sqrt(CGFloat(planet.nodeIndices.count)) * 0.035)
+    }
+
+    private func starWorldRadius(_ galaxy: CosmicHierarchy.Galaxy) -> CGFloat {
+        min(1.65, 0.8 + sqrt(CGFloat(galaxy.nodeIndices.count)) * 0.025)
+    }
+
+    private var cameraDistance: CGFloat {
+        guard let planet = cameraDollyPlanet else {
+            return universeCameraDistance(for: zoom)
+        }
+        // Continue dollying toward the selected planet itself. The old curve
+        // approached a fixed universe-space Z=5 plane, which imposed a hard
+        // visual magnification ceiling for planets farther away in depth.
+        let planetDepth = planetWorldPosition(planet).z
+        let entryDistance = surfaceEntryCameraDistance > 0
+            ? surfaceEntryCameraDistance
+            : universeCameraDistance(for: universeZoomBeforeEntry)
+        let entryGap = max(0.35, entryDistance - planetDepth)
+        let mapScale = max(0.05, zoom / max(minimumZoom, universeZoomBeforeEntry))
+        return planetDepth + max(0.08, entryGap / pow(mapScale, 0.72))
+    }
+
+    private func universeCameraDistance(for zoom: CGFloat) -> CGFloat {
+        // A softened universe-scale dolly curve.
+        5 + 58 / pow(max(0.45, zoom), 0.72)
+    }
+
+    private func universeZoom(forCameraDistance distance: CGFloat) -> CGFloat {
+        let safeDistance = max(5.0001, distance)
+        let solved = pow(58 / (safeDistance - 5), 1 / 0.72)
+        return min(maximumZoom, max(minimumZoom, solved))
+    }
+
+    private func perspectiveProject(_ world: Point3D, size: CGSize)
+    -> (point: CGPoint, depth: CGFloat, pointsPerWorldUnit: CGFloat) {
+        let focalLength = min(size.width, size.height) * 1.15
+        let depth = max(0.35, cameraDistance - world.z)
+        let scale = focalLength / depth
+        return (CGPoint(x: size.width / 2 + (world.x - camera.x) * scale,
+                        y: size.height / 2 - (world.y - camera.y) * scale), depth, scale)
+    }
+
+    private func drawPoints(context: inout GraphicsContext, size: CGSize) {
+        guard let planet = activePlanet ?? nearestPlanetToCamera() else { return }
+        let map = planetMapGeometry(planet: planet, size: size)
+        let globeRect = CGRect(x: map.center.x - map.radius, y: map.center.y - map.radius,
+                               width: map.radius * 2, height: map.radius * 2)
+        context.fill(Path(ellipseIn: globeRect), with: .radialGradient(
+            Gradient(colors: [cosmicColor(planet.id + 31).opacity(0.62), .blue.opacity(0.28), .black.opacity(0.9)]),
+            center: CGPoint(x: map.center.x - map.radius * 0.3, y: map.center.y - map.radius * 0.32),
+            startRadius: 2, endRadius: map.radius * 1.25
+        ))
+        context.stroke(Path(ellipseIn: globeRect), with: .color(.cyan.opacity(0.55)), lineWidth: 2)
+
+        var surface = context
+        surface.clip(to: Path(ellipseIn: globeRect))
+        drawSphereGrid(context: &surface, map: map)
+
+        for index in planet.nodeIndices {
+            let projected = planetMapProjection(index: index, map: map, planet: planet)
+            guard projected.depth >= 0 else { continue }
+            let point = projected.point
+            let regionRadius: CGFloat = max(2, map.radius * (0.045 + CGFloat((index * 17) % 4) * 0.006))
+            surface.fill(Path(ellipseIn: CGRect(x: point.x - regionRadius, y: point.y - regionRadius * 0.65,
+                                                 width: regionRadius * 2, height: regionRadius * 1.3)),
+                         with: .color(cosmicColor(index + planet.id * 13).opacity(0.1)))
+        }
+
+        for link in layout.links where planet.nodeIndices.contains(link.a) && planet.nodeIndices.contains(link.b) {
+            let a = planetMapProjection(index: link.a, map: map, planet: planet)
+            let b = planetMapProjection(index: link.b, map: map, planet: planet)
+            guard a.depth >= 0, b.depth >= 0 else { continue }
+            var path = Path()
+            path.move(to: a.point)
+            path.addLine(to: b.point)
+            surface.stroke(path, with: .color(.cyan.opacity(0.3 + Double(link.strength) * 0.42)),
+                           style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [5, 4]))
+        }
+        for index in planet.nodeIndices {
+            let node = layout.nodes[index]
+            let projected = planetMapProjection(index: index, map: map, planet: planet)
+            guard projected.depth >= 0 else { continue }
+            let center = projected.point
+            let color = cosmicColor(index + planet.id * 13)
+            let radius: CGFloat = focusedPointID == node.point.id ? 8 : 5.5
+            let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+            surface.fill(Path(ellipseIn: rect), with: .color(color))
+            if focusedPointID == node.point.id {
+                surface.stroke(Path(ellipseIn: rect.insetBy(dx: -8, dy: -8)), with: .color(.yellow), lineWidth: 3)
+            }
+            let labelStride: Int = zoom >= 40 ? 1 : zoom >= 20 ? 2 : zoom >= 10 ? 5 : .max
+            if labelStride != .max, index.isMultiple(of: labelStride) {
+                surface.draw(Text(String(node.point.title.prefix(24))).font(.caption2).foregroundStyle(.white.opacity(0.88)),
+                             at: CGPoint(x: center.x, y: center.y + radius + 11), anchor: .center)
+            }
+        }
+        context.draw(Text(planet.name).font(.headline.bold()).foregroundStyle(.white),
+                     at: CGPoint(x: map.center.x, y: map.center.y - map.radius - 18), anchor: .center)
+    }
+
+    private var activePlanet: CosmicHierarchy.Planet? {
+        guard let activePlanetID else { return nil }
+        return hierarchy.planets.first { $0.id == activePlanetID }
+    }
+
+    private var cameraDollyPlanet: CosmicHierarchy.Planet? {
+        if let activePlanet { return activePlanet }
+        guard let cameraTargetPlanetID else { return nil }
+        return hierarchy.planets.first { $0.id == cameraTargetPlanetID }
+    }
+
+    private func nearestPlanetToCamera() -> CosmicHierarchy.Planet? {
+        hierarchy.planets.min {
+            hypot($0.center.x - camera.x, $0.center.y - camera.y)
+                < hypot($1.center.x - camera.x, $1.center.y - camera.y)
+        }
+    }
+
+    private func planetMapGeometry(planet: CosmicHierarchy.Planet, size: CGSize) -> (center: CGPoint, radius: CGFloat, extent: CGFloat) {
+        let sourceCenter = planetScreenPosition(planet, size: size)
+        let targetCenter = CGPoint(x: size.width / 2, y: size.height / 2 + 4)
+        let sourceRadius = planetVisualRadius(planet, size: size)
+        let baseTargetRadius = min(size.width * 0.43, max(120, (size.height - 190) * 0.43))
+        let entryZoom = max(1, universeZoomBeforeEntry + 4.2)
+        let surfaceScale = activePlanetID == nil ? 1 : max(1, zoom / entryZoom)
+        let targetRadius = baseTargetRadius * surfaceScale
+        let radius = sourceRadius + (targetRadius - sourceRadius) * planetFocusProgress
+        let mapCenter = CGPoint(x: sourceCenter.x + (targetCenter.x - sourceCenter.x) * planetFocusProgress,
+                                y: sourceCenter.y + (targetCenter.y - sourceCenter.y) * planetFocusProgress)
+        let extent = max(0.35, planet.nodeIndices.reduce(CGFloat(0)) { partial, index in
+            let point = layout.nodes[index].position
+            return max(partial, hypot(point.x - planet.center.x, point.y - planet.center.y))
+        })
+        return (mapCenter, radius, extent)
+    }
+
+    private func planetMapProjection(index: Int,
+                                     map: (center: CGPoint, radius: CGFloat, extent: CGFloat),
+                                     planet: CosmicHierarchy.Planet) -> (point: CGPoint, depth: CGFloat) {
+        if let geography = geographies[layout.nodes[index].point.id] {
+            return sphereProjection(latitude: CGFloat(geography.latitude) * .pi / 180,
+                                    longitude: CGFloat(geography.longitude) * .pi / 180,
+                                    center: map.center, radius: map.radius)
+        }
+        let position = layout.nodes[index].position
+        let latitude = max(-CGFloat.pi / 2, min(.pi / 2, (position.y - planet.center.y) / map.extent))
+        let longitude = max(-CGFloat.pi, min(.pi, (position.x - planet.center.x) / map.extent))
+        return sphereProjection(latitude: latitude, longitude: longitude, center: map.center, radius: map.radius)
+    }
+
+    private func sphereProjection(latitude: CGFloat, longitude: CGFloat,
+                                  center: CGPoint, radius: CGFloat) -> (point: CGPoint, depth: CGFloat) {
+        let x = cos(latitude) * sin(longitude)
+        let y = sin(latitude)
+        let z = cos(latitude) * cos(longitude)
+        let yawX = cos(planetYaw) * x + sin(planetYaw) * z
+        let yawZ = -sin(planetYaw) * x + cos(planetYaw) * z
+        let pitchY = cos(planetPitch) * y - sin(planetPitch) * yawZ
+        let pitchZ = sin(planetPitch) * y + cos(planetPitch) * yawZ
+        return (CGPoint(x: center.x + yawX * radius, y: center.y - pitchY * radius), pitchZ)
+    }
+
+    private func drawSphereGrid(context: inout GraphicsContext,
+                                map: (center: CGPoint, radius: CGFloat, extent: CGFloat)) {
+        for latitudeDegrees in stride(from: -60, through: 60, by: 30) {
+            var path = Path(); var drawing = false
+            for longitudeDegrees in stride(from: -180, through: 180, by: 6) {
+                let p = sphereProjection(latitude: CGFloat(latitudeDegrees) * .pi / 180,
+                                         longitude: CGFloat(longitudeDegrees) * .pi / 180,
+                                         center: map.center, radius: map.radius)
+                if p.depth >= 0 { drawing ? path.addLine(to: p.point) : path.move(to: p.point); drawing = true }
+                else { drawing = false }
+            }
+            context.stroke(path, with: .color(.cyan.opacity(0.16)), lineWidth: 0.8)
+        }
+        for longitudeDegrees in stride(from: -150, through: 180, by: 30) {
+            var path = Path(); var drawing = false
+            for latitudeDegrees in stride(from: -90, through: 90, by: 4) {
+                let p = sphereProjection(latitude: CGFloat(latitudeDegrees) * .pi / 180,
+                                         longitude: CGFloat(longitudeDegrees) * .pi / 180,
+                                         center: map.center, radius: map.radius)
+                if p.depth >= 0 { drawing ? path.addLine(to: p.point) : path.move(to: p.point); drawing = true }
+                else { drawing = false }
+            }
+            context.stroke(path, with: .color(.cyan.opacity(0.14)), lineWidth: 0.8)
+        }
+    }
+
+    private func screen(_ position: Point3D, size: CGSize) -> CGPoint {
+        let scale = min(size.width, size.height) * 0.075 * zoom
+        return CGPoint(x: size.width / 2 + (position.x - camera.x) * scale,
+                       y: size.height / 2 - (position.y - camera.y) * scale)
+    }
+
+    private func panGesture(size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 5)
+            .onChanged { value in
+                if surfacePlanet(at: value.startLocation, size: size) != nil {
+                    // A detailed globe owns this gesture and rotates around
+                    // its own projected center.
+                    return
+                }
+                // A drag that begins outside every detailed globe pans the
+                // entire universe, even when one planet is currently active.
+                if dragOrigin == nil {
+                    cameraAnimationToken = UUID()
+                    dragOrigin = camera
+                }
+                // Convert screen translation with the projection scale at the
+                // current dolly target. At close range the former far-camera
+                // scale turned a few points of dragging into a huge world-space
+                // jump, which made the last visible planet disappear.
+                let scale: CGFloat
+                if let target = cameraDollyPlanet {
+                    scale = max(1, perspectiveProject(planetWorldPosition(target), size: size).pointsPerWorldUnit)
+                } else {
+                    let focalLength = min(size.width, size.height) * 1.15
+                    scale = max(1, focalLength / max(0.35, cameraDistance))
+                }
+                camera = CGPoint(x: (dragOrigin ?? camera).x - value.translation.width / scale,
+                                 y: (dragOrigin ?? camera).y + value.translation.height / scale)
+            }
+            .onEnded { _ in dragOrigin = nil; surfaceRotationOrigin = nil }
+    }
+
+    private func surfacePlanet(at location: CGPoint, size: CGSize) -> CosmicHierarchy.Planet? {
+        hierarchy.planets
+            .filter { planetVisualRadius($0, size: size) * 2 >= surfaceRevealDiameter(for: size) }
+            .sorted { planetWorldPosition($0).z > planetWorldPosition($1).z }
+            .first { planet in
+                distance(planetScreenPosition(planet, size: size), location)
+                    <= planetVisualRadius(planet, size: size)
+            }
+    }
+
+    private func zoomGesture(size: CGSize) -> some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                if zoomOrigin == nil {
+                    cameraAnimationToken = UUID()
+                    zoomOrigin = zoom
+                    cameraMagnificationDistanceOrigin = cameraDistance
+                    if let planet = cameraDollyPlanet {
+                        cameraMagnificationDiameterOrigin = planetVisualRadius(planet, size: size) * 2
+                    }
+                }
+                if let planet = cameraDollyPlanet,
+                   let diameterOrigin = cameraMagnificationDiameterOrigin {
+                    let targetDiameter = min(
+                        maximumReadableDiameter(for: planet, size: size),
+                        max(24, diameterOrigin * max(0.05, value))
+                    )
+                    zoom = zoom(forPlanetDiameter: targetDiameter, planet: planet, size: size)
+                } else {
+                    let originDistance = cameraMagnificationDistanceOrigin ?? cameraDistance
+                    zoom = universeZoom(forCameraDistance: originDistance / max(0.05, value))
+                }
+                if activePlanetID != nil {
+                    planetFocusProgress = min(1, max(0, (zoom - universeZoomBeforeEntry) / 4.2))
+                }
+            }
+            .onEnded { _ in
+                zoomOrigin = nil
+                cameraMagnificationDiameterOrigin = nil
+                cameraMagnificationDistanceOrigin = nil
+                if let planet = activePlanet,
+                   planetVisualRadius(planet, size: size) * 2 < surfaceRevealDiameter(for: size) {
+                    deactivatePlanetSurfaceKeepingCameraTarget()
+                    return
+                }
+                if activePlanetID == nil { activateCenteredSurfaceIfNeeded() }
+            }
+    }
+
+    private func changeZoom(_ factor: CGFloat) {
+        var mapPlanet = cameraDollyPlanet
+        if mapPlanet == nil, viewportSize.width > 0,
+           let planetID = detailedPlanetID(for: viewportSize),
+           let candidate = hierarchy.planets.first(where: { $0.id == planetID }),
+           isPlanetInteractive(candidate) {
+            activatePlanetSurface(candidate)
+            mapPlanet = candidate
+        }
+        if let planet = mapPlanet, viewportSize.width > 0 {
+            let currentDiameter = planetVisualRadius(planet, size: viewportSize) * 2
+            let step: CGFloat = factor >= 1 ? 1.25 : 0.8
+            let targetDiameter = min(
+                maximumReadableDiameter(for: planet, size: viewportSize),
+                max(24, currentDiameter * step)
+            )
+            let targetZoom = zoom(forPlanetDiameter: targetDiameter, planet: planet, size: viewportSize)
+            animateUniverseCamera(to: camera, zoom: targetZoom, duration: 0.22) {
+                if targetDiameter < surfaceRevealDiameter(for: viewportSize) {
+                    deactivatePlanetSurfaceKeepingCameraTarget()
+                }
+            }
+            return
+        }
+        let visualStep: CGFloat = factor >= 1 ? 1.25 : 0.8
+        let targetZoom = universeZoom(forCameraDistance: cameraDistance / visualStep)
+        animateUniverseCamera(to: camera, zoom: targetZoom, duration: 0.25) {
+            activateCenteredSurfaceIfNeeded()
+        }
+    }
+
+    private func universeControl(_ systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName).foregroundStyle(.white)
+                .frame(width: 34, height: 34).background(.white.opacity(0.12), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func handleTap(at location: CGPoint, size: CGSize) {
+        if let tappedPlanet = planetHit(at: location, size: size),
+           tappedPlanet.id != activePlanetID {
+            centerCamera(on: tappedPlanet)
+            return
+        }
+        if let planet = activePlanet {
+            let map = planetMapGeometry(planet: planet, size: size)
+            let visible = planet.nodeIndices.filter {
+                planetMapProjection(index: $0, map: map, planet: planet).depth >= 0
+            }
+            if let index = visible.min(by: {
+                distance(planetMapProjection(index: $0, map: map, planet: planet).point, location)
+                    < distance(planetMapProjection(index: $1, map: map, planet: planet).point, location)
+            }), distance(planetMapProjection(index: index, map: map, planet: planet).point, location) < 34 {
+                focusedPointID = layout.nodes[index].point.id
+                onSelect(layout.nodes[index].point)
+            }
+        } else if let planet = hierarchy.planets.min(by: {
+            distance(planetScreenPosition($0, size: size), location)
+                < distance(planetScreenPosition($1, size: size), location)
+        }).flatMap({ planet in
+            let hitRadius = max(18, planetVisualRadius(planet, size: size) + 10)
+            return distance(planetScreenPosition(planet, size: size), location) <= hitRadius ? planet : nil
+        }) {
+            // A planet tap is selection/centering only. It must never be
+            // mistaken for its parent galaxy's zoom action.
+            if planetVisualRadius(planet, size: size) * 2 >= surfaceRevealDiameter(for: size) {
+                activatePlanetSurface(planet)
+            }
+            centerCamera(on: planet)
+        } else if zoom < 1.6, let galaxy = hierarchy.galaxies.min(by: {
+            distance(perspectiveProject(galaxyWorldPosition($0), size: size).point, location)
+                < distance(perspectiveProject(galaxyWorldPosition($1), size: size).point, location)
+        }).flatMap({ distance(perspectiveProject(galaxyWorldPosition($0), size: size).point, location) < 80 ? $0 : nil }) {
+            let world = galaxyWorldPosition(galaxy)
+            animateUniverseCamera(to: CGPoint(x: world.x, y: world.y), zoom: 2.2, duration: 0.45)
+        }
+    }
+
+    private func planetHit(at location: CGPoint, size: CGSize) -> CosmicHierarchy.Planet? {
+        hierarchy.planets.min(by: {
+            distance(planetScreenPosition($0, size: size), location)
+                < distance(planetScreenPosition($1, size: size), location)
+        }).flatMap { planet in
+            let hitRadius = max(18, planetVisualRadius(planet, size: size) + 10)
+            return distance(planetScreenPosition(planet, size: size), location) <= hitRadius
+                ? planet : nil
+        }
+    }
+
+    private func nearest<T>(_ values: [T], to location: CGPoint, size: CGSize,
+                            center: KeyPath<T, Point3D>) -> T? {
+        values.min {
+            distance(screen($0[keyPath: center], size: size), location)
+                < distance(screen($1[keyPath: center], size: size), location)
+        }.flatMap { distance(screen($0[keyPath: center], size: size), location) < 80 ? $0 : nil }
+    }
+
+    private func distance(_ lhs: CGPoint, _ rhs: CGPoint) -> CGFloat { hypot(lhs.x - rhs.x, lhs.y - rhs.y) }
+
+    private func focus(on request: PointMapFocusRequest?) {
+        guard let request,
+              let index = layout.nodes.firstIndex(where: { $0.point.id == request.pointID }) else { return }
+        focusedPointID = request.pointID
+        let planetID = hierarchy.nodeToPlanet[index]
+        universeZoomBeforeEntry = max(1.8, min(3.2, zoom))
+        surfaceEntryCameraDistance = universeCameraDistance(for: zoom)
+        cameraTargetPlanetID = planetID
+        activePlanetID = planetID
+        if let planetID, let planet = hierarchy.planets.first(where: { $0.id == planetID }) {
+            let world = planetWorldPosition(planet)
+            animateUniverseCamera(
+                to: CGPoint(x: world.x, y: world.y),
+                zoom: max(zoom, 24),
+                duration: 0.55
+            ) {
+                planetFocusProgress = 1
+            }
+        } else {
+            planetFocusProgress = 1
+        }
+    }
+
+    private func cosmicColor(_ seed: Int) -> Color {
+        Color(hue: Double(abs(seed * 47) % 360) / 360, saturation: 0.78, brightness: 0.98)
+    }
+}
+
+private struct CosmicHierarchy {
+    struct Galaxy {
+        let id: Int
+        let name: String
+        let nodeIndices: [Int]
+        let planetIDs: [Int]
+        let center: Point3D
+    }
+    struct Planet {
+        let id: Int
+        let galaxyID: Int
+        let name: String
+        let nodeIndices: [Int]
+        let center: Point3D
+    }
+    let galaxies: [Galaxy]
+    let planets: [Planet]
+    let nodeToPlanet: [Int: Int]
+
+    static func make(layout: StarLayout, geographies: [PointID: PointGeographyRecord] = [:]) -> Self {
+        guard !layout.nodes.isEmpty else { return Self(galaxies: [], planets: [], nodeToPlanet: [:]) }
+        _ = geographies // Geography still drives the map inside each planet.
+
+        // Universe bodies are deliberately much coarser than administrative
+        // regions. Aim for tens of Points per planet and cap the total so that
+        // sparse/outlier Points can never become one-Point planets.
+        let desiredPlanetCount = min(10, max(1, Int((sqrt(Double(layout.nodes.count) / 8)).rounded())))
+        let planetGroups = spatialGroups(
+            indices: Array(layout.nodes.indices),
+            count: desiredPlanetCount,
+            nodes: layout.nodes
+        )
+        var planets: [Planet] = []
+        var nodeToPlanet: [Int: Int] = [:]
+        for (id, group) in planetGroups.enumerated() {
+            group.forEach { nodeToPlanet[$0] = id }
+            planets.append(Planet(id: id, galaxyID: 0,
+                                  name: name(for: group, nodes: layout.nodes, suffix: "星球"),
+                                  nodeIndices: group, center: center(of: group, nodes: layout.nodes)))
+        }
+
+        let desiredGalaxyCount = min(3, max(1, Int(ceil(sqrt(Double(planets.count) / 3)))))
+        let planetNodes = planets.map {
+            StarLayout.Node(point: layout.nodes[$0.nodeIndices[0]].point, position: $0.center, isEmbedded: true)
+        }
+        let galaxyPlanetGroups = spatialGroups(
+            indices: Array(planets.indices), count: desiredGalaxyCount, nodes: planetNodes
+        )
+        var galaxies: [Galaxy] = []
+        for (galaxyID, planetIDs) in galaxyPlanetGroups.enumerated() {
+            for planetID in planetIDs {
+                let old = planets[planetID]
+                planets[planetID] = Planet(id: old.id, galaxyID: galaxyID, name: old.name,
+                                           nodeIndices: old.nodeIndices, center: old.center)
+            }
+            let nodes = planetIDs.flatMap { planets[$0].nodeIndices }.sorted()
+            galaxies.append(Galaxy(id: galaxyID,
+                                   name: name(for: nodes, nodes: layout.nodes, suffix: "星系"),
+                                   nodeIndices: nodes, planetIDs: planetIDs,
+                                   center: center(of: nodes, nodes: layout.nodes)))
+        }
+        return Self(galaxies: galaxies, planets: planets, nodeToPlanet: nodeToPlanet)
+    }
+
+    /// Small deterministic k-means pass over the existing semantic layout.
+    /// Farthest-first seeds avoid random reshuffling; empty groups are removed.
+    private static func spatialGroups(indices: [Int], count requestedCount: Int,
+                                      nodes: [StarLayout.Node]) -> [[Int]] {
+        let count = min(max(1, requestedCount), indices.count)
+        guard count > 1 else { return [indices] }
+        var centers = [nodes[indices[0]].position]
+        while centers.count < count {
+            let next = indices.max { lhs, rhs in
+                nearestDistance(nodes[lhs].position, centers) < nearestDistance(nodes[rhs].position, centers)
+            }!
+            centers.append(nodes[next].position)
+        }
+        var assignments = Array(repeating: 0, count: indices.count)
+        for _ in 0..<10 {
+            for (offset, index) in indices.enumerated() {
+                assignments[offset] = centers.indices.min {
+                    squaredDistance(nodes[index].position, centers[$0]) < squaredDistance(nodes[index].position, centers[$1])
+                }!
+            }
+            for cluster in centers.indices {
+                let members = indices.enumerated().compactMap { assignments[$0.offset] == cluster ? $0.element : nil }
+                if !members.isEmpty { centers[cluster] = center(of: members, nodes: nodes) }
+            }
+        }
+        return centers.indices.map { cluster in
+            indices.enumerated().compactMap { assignments[$0.offset] == cluster ? $0.element : nil }.sorted()
+        }.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
+    }
+
+    private static func nearestDistance(_ point: Point3D, _ centers: [Point3D]) -> CGFloat {
+        centers.map { squaredDistance(point, $0) }.min() ?? .greatestFiniteMagnitude
+    }
+
+    private static func squaredDistance(_ lhs: Point3D, _ rhs: Point3D) -> CGFloat {
+        let dx = lhs.x - rhs.x, dy = lhs.y - rhs.y, dz = lhs.z - rhs.z
+        return dx * dx + dy * dy + dz * dz
+    }
+
+    private static func components(indices: [Int], links: [StarLayout.Link], threshold: CGFloat) -> [[Int]] {
+        var remaining = Set(indices)
+        var result: [[Int]] = []
+        while let seed = remaining.min() {
+            remaining.remove(seed)
+            var group = [seed]
+            var queue = [seed]
+            while let current = queue.popLast() {
+                for link in links where link.strength >= threshold {
+                    let neighbor = link.a == current ? link.b : link.b == current ? link.a : nil
+                    if let neighbor, remaining.remove(neighbor) != nil {
+                        group.append(neighbor)
+                        queue.append(neighbor)
+                    }
+                }
+            }
+            result.append(group.sorted())
+        }
+        return result.sorted { $0.count == $1.count ? ($0.first ?? 0) < ($1.first ?? 0) : $0.count > $1.count }
+    }
+
+    private static func center(of indices: [Int], nodes: [StarLayout.Node]) -> Point3D {
+        let total = indices.reduce(Point3D(x: 0, y: 0, z: 0)) { $0 + nodes[$1].position }
+        return total * (1 / CGFloat(max(1, indices.count)))
+    }
+
+    private static func name(for indices: [Int], nodes: [StarLayout.Node], suffix: String) -> String {
+        let title = indices.lazy.map { nodes[$0].point.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? "未命名"
+        return String(title.prefix(8)) + suffix
     }
 }

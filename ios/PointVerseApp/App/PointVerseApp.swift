@@ -49,6 +49,8 @@ private struct RootView: View {
                 .tabItem { Label { AppText("星图") } icon: { Image(systemName: "sparkles") } }
             NavigationStack { GlobeMapView() }
                 .tabItem { Label { AppText("星球") } icon: { Image(systemName: "globe.asia.australia.fill") } }
+            NavigationStack { UniverseMapView() }
+                .tabItem { Label { AppText("宇宙") } icon: { Image(systemName: "hurricane") } }
             NavigationStack { PointListView() }
                 .tabItem { Label { AppText("想法") } icon: { Image(systemName: "circle.grid.2x2.fill") } }
             NavigationStack { ImageGenerationView() }
