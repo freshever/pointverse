@@ -36,6 +36,11 @@ actor TranscriptionService {
         }
         try await repository.saveTranscriptionCandidate(pointID: pointID, text: output.text, modelID: output.modelID,
                                                         modelSHA256: output.modelSHA256, select: true)
+        // Always make the newly selected transcript visible as a title at
+        // once. The optional language model may be unavailable or slow; it can
+        // replace this deterministic title when it finishes.
+        try await saveRuleTitle(pointID: pointID, transcript: output.text)
+        await notifyChange(pointID)
         _ = await deriveTitle(pointID: pointID)
         await notifyChange(pointID)
     }

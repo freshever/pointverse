@@ -24,6 +24,7 @@ struct ModelSettingsView: View {
     @State private var pendingCapability: ExternalModelCapability = .language
     @State private var testingModelID: UUID?
     @State private var connectionResult: String?
+    @State private var showingPlanetDistributionDemo = false
 
     private var selectedExternalModel: ExternalLanguageModel? {
         externalModels.first { $0.selectionID == selectedLanguageModelID }
@@ -50,6 +51,24 @@ struct ModelSettingsView: View {
 
     var body: some View {
         List {
+            Section {
+                Button {
+                    NotificationCenter.default.post(name: AppContainer.enterTestMode, object: nil)
+                } label: {
+                    Label("进入独立测试模式", systemImage: "flask.fill")
+                }
+
+                Button {
+                    showingPlanetDistributionDemo = true
+                } label: {
+                    Label("球面分布演示", systemImage: "globe.asia.australia.fill")
+                }
+            } header: {
+                AppText("实验工具")
+            } footer: {
+                Text("测试模式使用独立数据库；球面分布演示使用内置样本，不影响正式内容。")
+            }
+
             Section {
                 Picker(selection: $appLanguage) {
                     AppText("跟随系统").tag("system")
@@ -238,6 +257,9 @@ struct ModelSettingsView: View {
                 try? ExternalModelAPIKeyStore.save(key, modelID: model.id)
                 selectLanguageModel(model.selectionID)
             }
+        }
+        .sheet(isPresented: $showingPlanetDistributionDemo) {
+            NavigationStack { PlanetDistributionDemoView() }
         }
         .fileImporter(isPresented: $showingGGUFImporter,
                       allowedContentTypes: [UTType(filenameExtension: "gguf") ?? .data]) { result in

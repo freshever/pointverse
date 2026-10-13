@@ -1336,7 +1336,7 @@ private struct PlanetDemoPoint: Codable, Identifiable {
     }
 }
 
-private struct PlanetDistributionDemoView: View {
+struct PlanetDistributionDemoView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selected: PlanetDemoPoint?
     private let samples = PlanetDemoPoint.load()

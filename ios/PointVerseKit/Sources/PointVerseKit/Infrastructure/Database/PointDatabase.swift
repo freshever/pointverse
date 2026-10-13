@@ -325,7 +325,10 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 FROM transcripts t
                 JOIN audio_assets a ON a.id = t.asset_id
                 JOIN messages m ON m.id = a.message_id
-                WHERE t.state IN ('queued', 'running')
+                -- Watch audio can arrive while iOS only grants a short
+                -- background execution window. Treat a transiently failed
+                -- recognition as resumable the next time the app prepares.
+                WHERE t.state IN ('queued', 'running', 'failed')
                 ORDER BY t.created_at
                 """).compactMap(UUID.init(uuidString:)).map(PointID.init(rawValue:))
         }

@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct PointVerseApp: App {
     @UIApplicationDelegateAdaptor(PointVerseAppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var container = AppContainer()
     @StateObject private var testContainer = AppContainer(storageMode: .test)
     @AppStorage("appLanguage") private var appLanguage = "system"
@@ -22,9 +23,20 @@ struct PointVerseApp: App {
                     if isTestMode {
                         await testContainer.prepare()
                     } else {
-                        container.startWatchConnectivity()
                         await container.prepare()
+                        // Do not accept a Watch transfer until migrations and
+                        // pending-task recovery have finished. A file can be
+                        // delivered immediately when WCSession activates.
+                        container.startWatchConnectivity()
                     }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active, !isTestMode else { return }
+                    // A Watch recording may have arrived during a short
+                    // background window in which Speech was unavailable.
+                    // Retry resumable transcription as soon as the phone app
+                    // becomes active instead of waiting for another launch.
+                    Task { await container.transcriptionService.resumePending() }
                 }
         }
     }
@@ -45,14 +57,10 @@ private struct RootView: View {
         TabView {
             NavigationStack { CaptureView() }
                 .tabItem { Label { AppText("记录") } icon: { Image(systemName: "waveform.circle.fill") } }
-            NavigationStack { StarMapView() }
-                .tabItem { Label { AppText("星图") } icon: { Image(systemName: "sparkles") } }
-            NavigationStack { GlobeMapView() }
-                .tabItem { Label { AppText("星球") } icon: { Image(systemName: "globe.asia.australia.fill") } }
-            NavigationStack { UniverseMapView() }
-                .tabItem { Label { AppText("宇宙") } icon: { Image(systemName: "hurricane") } }
             NavigationStack { PointListView() }
                 .tabItem { Label { AppText("想法") } icon: { Image(systemName: "circle.grid.2x2.fill") } }
+            NavigationStack { UniverseMapView() }
+                .tabItem { Label { AppText("宇宙") } icon: { Image(systemName: "hurricane") } }
             NavigationStack { ImageGenerationView() }
                 .tabItem { Label { AppText("图片") } icon: { Image(systemName: "photo.badge.plus") } }
             NavigationStack { ModelSettingsView() }

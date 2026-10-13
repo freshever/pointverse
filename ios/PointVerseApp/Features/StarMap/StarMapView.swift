@@ -978,11 +978,9 @@ struct UniverseMapView: View {
 }
 
 private struct SemanticUniverse: View {
-    private let minimumZoom: CGFloat = 0.45
-    // A dense planet (400+ Points) needs map-like zoom depth. This remains
-    // bounded for numerical stability, but is effectively unrestricted in UI.
-    // This is only a numerical safety ceiling. The real user-facing maximum
-    // is calculated per planet by `maximumReadableDiameter`.
+    // These are numerical guards only, not user-facing zoom limits.
+    private let minimumZoom: CGFloat = 0.0001
+    // A numerical safety ceiling only; there is no content-based UI limit.
     private let maximumZoom: CGFloat = 1_000_000_000_000
     let layout: StarLayout
     let geographies: [PointID: PointGeographyRecord]
@@ -1036,6 +1034,8 @@ private struct SemanticUniverse: View {
     @State private var cameraMagnificationOrigin: CGFloat?
     @State private var cameraMagnificationDiameterOrigin: CGFloat?
     @State private var cameraMagnificationDistanceOrigin: CGFloat?
+    @State private var magnificationPlanetID: Int?
+    @State private var magnificationPlanetScreenAnchor: CGPoint?
     @State private var cameraAnimationToken = UUID()
 
     var body: some View {
@@ -1102,6 +1102,31 @@ private struct SemanticUniverse: View {
                     }
                 }
 
+                // Detailed globes replace the cheap Canvas sphere, but their
+                // planet identity still belongs to the universe layer. Keep a
+                // stable label above every revealed surface instead of losing
+                // the name at the LOD handoff.
+                ForEach(hierarchy.planets, id: \.id) { planet in
+                    let center = planetScreenPosition(planet, size: proxy.size)
+                    let radius = planetVisualRadius(planet, size: proxy.size)
+                    if radius * 2 >= surfaceRevealDiameter(for: proxy.size),
+                       isPlanetOnScreen(planet, size: proxy.size) {
+                        Text(planet.name)
+                            .font(radius >= 150 ? .headline.bold() : .caption.bold())
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.55), in: Capsule())
+                            .overlay(Capsule().stroke(.white.opacity(0.18)))
+                            .position(
+                                x: center.x,
+                                y: max(76, center.y - radius - 16)
+                            )
+                            .allowsHitTesting(false)
+                    }
+                }
+
                 VStack {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -1121,16 +1146,15 @@ private struct SemanticUniverse: View {
                     Spacer()
                     HStack(spacing: 12) {
                         universeControl("minus.magnifyingglass") { changeZoom(0.7) }
-                        Text("\(Int(zoom * 100))%")
-                            .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.75))
-                            .frame(minWidth: 46)
                         universeControl("plus.magnifyingglass") { changeZoom(1.45) }
                         Divider().frame(height: 22).overlay(.white.opacity(0.22))
                         Button("全景") {
                             focusedPointID = nil
                             activePlanetID = nil
                             cameraTargetPlanetID = nil
-                            animateUniverseCamera(to: .zero, zoom: 0.75, duration: 0.4)
+                            surfaceEntryCameraDistance = 0
+                            let overview = universeOverview(size: proxy.size)
+                            animateUniverseCamera(to: overview.camera, zoom: overview.zoom, duration: 0.4)
                         }
                         .font(.caption.bold()).foregroundStyle(.white)
                     }
@@ -1141,7 +1165,7 @@ private struct SemanticUniverse: View {
                 }
             }
             .onChange(of: focusRequest) { _, request in focus(on: request) }
-            .onAppear { viewportSize = proxy.size; centerInitialCameraIfNeeded() }
+            .onAppear { viewportSize = proxy.size; centerInitialCameraIfNeeded(size: proxy.size) }
             .onChange(of: proxy.size) { _, value in viewportSize = value }
         }
     }
@@ -1176,8 +1200,8 @@ private struct SemanticUniverse: View {
            let diameterOrigin = cameraMagnificationDiameterOrigin,
            viewportSize.width > 0 {
             let targetDiameter = min(
-                maximumReadableDiameter(for: planet, size: viewportSize),
-                max(24, diameterOrigin * max(0.05, gestureScale))
+                maximumSafeDiameter(for: viewportSize),
+                max(0.1, diameterOrigin * max(0.0001, gestureScale))
             )
             zoom = zoom(forPlanetDiameter: targetDiameter, planet: planet, size: viewportSize)
             return
@@ -1185,7 +1209,8 @@ private struct SemanticUniverse: View {
         // In universe space solve the camera curve backwards: a 1.2x pinch
         // produces a 1.2x projected scene at every distance.
         let originDistance = cameraMagnificationDistanceOrigin ?? cameraDistance
-        let targetDistance = originDistance / max(0.05, gestureScale)
+        let near = universeCameraNearDistance
+        let targetDistance = near + (originDistance - near) / max(0.0001, gestureScale)
         zoom = universeZoom(forCameraDistance: targetDistance)
     }
 
@@ -1197,6 +1222,7 @@ private struct SemanticUniverse: View {
            viewportSize.width > 0,
            planetVisualRadius(planet, size: viewportSize) * 2 < surfaceRevealDiameter(for: viewportSize) {
             deactivatePlanetSurfaceKeepingCameraTarget()
+            releasePlanetCameraIfFarEnough(planet, size: viewportSize)
             return
         }
         activateCenteredSurfaceIfNeeded()
@@ -1211,6 +1237,19 @@ private struct SemanticUniverse: View {
         activePlanetID = nil
         planetFocusProgress = 0
         surfaceZoom = 1
+    }
+
+    /// Switch from the planet-relative dolly curve back to the universe curve
+    /// without changing the rendered frame. This is essential after search:
+    /// otherwise the searched planet remains the camera's permanent anchor and
+    /// zooming out can never return to the multi-planet universe.
+    private func releasePlanetCameraIfFarEnough(_ planet: CosmicHierarchy.Planet, size: CGSize) {
+        let diameter = planetVisualRadius(planet, size: size) * 2
+        guard diameter < surfaceRevealDiameter(for: size) * 0.72 else { return }
+        let preservedDistance = cameraDistance
+        cameraTargetPlanetID = nil
+        surfaceEntryCameraDistance = 0
+        zoom = universeZoom(forCameraDistance: preservedDistance)
     }
 
     private func visiblePlanets() -> [CosmicHierarchy.Planet] {
@@ -1283,14 +1322,59 @@ private struct SemanticUniverse: View {
         }
     }
 
-    private func centerInitialCameraIfNeeded() {
+    private func centerInitialCameraIfNeeded(size: CGSize) {
         guard !didCenterInitialCamera, !hierarchy.planets.isEmpty else { return }
-        let worlds = hierarchy.planets.map(planetWorldPosition)
-        camera = CGPoint(
-            x: worlds.reduce(0) { $0 + $1.x } / CGFloat(worlds.count),
-            y: worlds.reduce(0) { $0 + $1.y } / CGFloat(worlds.count)
-        )
+        let overview = universeOverview(size: size)
+        camera = overview.camera
+        zoom = overview.zoom
         didCenterInitialCamera = true
+    }
+
+    /// Fits every semantic planet into the usable viewport. The initial view
+    /// is therefore derived from the actual universe bounds instead of a fixed
+    /// zoom value that could show only one star system.
+    private func universeOverview(size: CGSize) -> (camera: CGPoint, zoom: CGFloat) {
+        let worlds = hierarchy.planets.map(planetWorldPosition)
+        guard !worlds.isEmpty, size.width > 0, size.height > 0 else {
+            return (.zero, 0.75)
+        }
+        let minX = worlds.map(\.x).min() ?? 0
+        let maxX = worlds.map(\.x).max() ?? 0
+        let minY = worlds.map(\.y).min() ?? 0
+        let maxY = worlds.map(\.y).max() ?? 0
+        let overviewCamera = CGPoint(
+            x: (minX + maxX) / 2,
+            y: (minY + maxY) / 2
+        )
+        guard hierarchy.planets.count > 1 else { return (overviewCamera, 0.75) }
+
+        let focalLength = min(size.width, size.height) * 1.15
+        let visibleBounds = CGRect(x: 24, y: 88,
+                                   width: max(1, size.width - 48),
+                                   height: max(1, size.height - 188))
+        func fits(_ candidateZoom: CGFloat) -> Bool {
+            let distance = universeCameraDistance(for: candidateZoom)
+            return hierarchy.planets.allSatisfy { planet in
+                let world = planetWorldPosition(planet)
+                let depth = max(0.35, distance - world.z)
+                let scale = focalLength / depth
+                let center = CGPoint(
+                    x: size.width / 2 + (world.x - overviewCamera.x) * scale,
+                    y: size.height / 2 - (world.y - overviewCamera.y) * scale
+                )
+                let radius = max(1, planetWorldRadius(planet) * scale) + 20
+                return visibleBounds.contains(CGPoint(x: center.x - radius, y: center.y - radius))
+                    && visibleBounds.contains(CGPoint(x: center.x + radius, y: center.y + radius))
+            }
+        }
+
+        var lower = minimumZoom
+        var upper: CGFloat = 0.75
+        for _ in 0..<48 {
+            let candidate = (lower + upper) / 2
+            if fits(candidate) { lower = candidate } else { upper = candidate }
+        }
+        return (overviewCamera, max(minimumZoom, lower * 0.9))
     }
 
     private func activateCenteredSurfaceIfNeeded() {
@@ -1448,7 +1532,7 @@ private struct SemanticUniverse: View {
 
     private func planetVisualRadius(_ planet: CosmicHierarchy.Planet, size: CGSize) -> CGFloat {
         let projection = perspectiveProject(planetWorldPosition(planet), size: size)
-        return max(5, planetWorldRadius(planet) * projection.pointsPerWorldUnit)
+        return max(0.25, planetWorldRadius(planet) * projection.pointsPerWorldUnit)
     }
 
     private func preparesDetailedRenderer(_ planet: CosmicHierarchy.Planet, size: CGSize) -> Bool {
@@ -1492,14 +1576,10 @@ private struct SemanticUniverse: View {
         min(size.width * 0.86, max(220, size.height - 190) * 0.86)
     }
 
-    private func maximumReadableDiameter(for planet: CosmicHierarchy.Planet, size: CGSize) -> CGFloat {
-        // For roughly uniform points on the visible hemisphere, useful linear
-        // resolution grows with sqrt(count). 72 pt leaves room for a hit target
-        // and a short label at the finest level. Keep practical bounds so a
-        // sparse planet still has map depth and a dense one cannot explode.
-        let fitted = fittedPlanetDiameter(for: size)
-        let densityLimit = 72 * sqrt(CGFloat(max(1, planet.nodeIndices.count)))
-        return min(fitted * 10, max(fitted * 3, densityLimit))
+    private func maximumSafeDiameter(for size: CGSize) -> CGFloat {
+        // Effectively unlimited for interaction; this only keeps SwiftUI frame
+        // arithmetic finite under an accidental extreme gesture value.
+        max(size.width, size.height) * 1_000_000
     }
 
     private func zoom(forPlanetDiameter diameter: CGFloat,
@@ -1512,7 +1592,7 @@ private struct SemanticUniverse: View {
             ? surfaceEntryCameraDistance
             : universeCameraDistance(for: universeZoomBeforeEntry)
         let entryGap = max(0.35, entryDistance - planetDepth)
-        let targetGap = max(0.08, worldDiameter * focalLength / max(1, diameter))
+        let targetGap = max(0.000001, worldDiameter * focalLength / max(0.000001, diameter))
         let mapScale = pow(entryGap / targetGap, 1 / 0.72)
         return min(maximumZoom, max(minimumZoom, universeZoomBeforeEntry * mapScale))
     }
@@ -1559,9 +1639,12 @@ private struct SemanticUniverse: View {
     }
 
     private var cameraDistance: CGFloat {
-        guard let planet = cameraDollyPlanet else {
-            return universeCameraDistance(for: zoom)
-        }
+        cameraDistance(for: zoom, dollyPlanet: cameraDollyPlanet)
+    }
+
+    private func cameraDistance(for targetZoom: CGFloat,
+                                dollyPlanet planet: CosmicHierarchy.Planet?) -> CGFloat {
+        guard let planet else { return universeCameraDistance(for: targetZoom) }
         // Continue dollying toward the selected planet itself. The old curve
         // approached a fixed universe-space Z=5 plane, which imposed a hard
         // visual magnification ceiling for planets farther away in depth.
@@ -1570,25 +1653,34 @@ private struct SemanticUniverse: View {
             ? surfaceEntryCameraDistance
             : universeCameraDistance(for: universeZoomBeforeEntry)
         let entryGap = max(0.35, entryDistance - planetDepth)
-        let mapScale = max(0.05, zoom / max(minimumZoom, universeZoomBeforeEntry))
-        return planetDepth + max(0.08, entryGap / pow(mapScale, 0.72))
+        let mapScale = max(0.000001, targetZoom / max(minimumZoom, universeZoomBeforeEntry))
+        return planetDepth + max(0.000001, entryGap / pow(mapScale, 0.72))
     }
 
     private func universeCameraDistance(for zoom: CGFloat) -> CGFloat {
-        // A softened universe-scale dolly curve.
-        5 + 58 / pow(max(0.45, zoom), 0.72)
+        // Approach the actual front of this universe rather than a hard-coded
+        // Z=5 plane. The former constant produced a singularity where zoom
+        // jumped into the tens of millions and then stopped changing visually.
+        universeCameraNearDistance + 58 / pow(max(minimumZoom, zoom), 0.72)
     }
 
     private func universeZoom(forCameraDistance distance: CGFloat) -> CGFloat {
-        let safeDistance = max(5.0001, distance)
-        let solved = pow(58 / (safeDistance - 5), 1 / 0.72)
+        let near = universeCameraNearDistance
+        let safeDistance = max(near + 0.000001, distance)
+        let solved = pow(58 / (safeDistance - near), 1 / 0.72)
         return min(maximumZoom, max(minimumZoom, solved))
+    }
+
+    private var universeCameraNearDistance: CGFloat {
+        let planetFront = hierarchy.planets.map { planetWorldPosition($0).z }.max() ?? 0
+        let galaxyFront = hierarchy.galaxies.map { galaxyWorldPosition($0).z }.max() ?? 0
+        return max(planetFront, galaxyFront) + 0.000001
     }
 
     private func perspectiveProject(_ world: Point3D, size: CGSize)
     -> (point: CGPoint, depth: CGFloat, pointsPerWorldUnit: CGFloat) {
         let focalLength = min(size.width, size.height) * 1.15
-        let depth = max(0.35, cameraDistance - world.z)
+        let depth = max(0.000001, cameraDistance - world.z)
         let scale = focalLength / depth
         return (CGPoint(x: size.width / 2 + (world.x - camera.x) * scale,
                         y: size.height / 2 - (world.y - camera.y) * scale), depth, scale)
@@ -1788,26 +1880,52 @@ private struct SemanticUniverse: View {
     }
 
     private func zoomGesture(size: CGSize) -> some Gesture {
-        MagnificationGesture()
+        MagnifyGesture(minimumScaleDelta: 0)
             .onChanged { value in
                 if zoomOrigin == nil {
                     cameraAnimationToken = UUID()
                     zoomOrigin = zoom
                     cameraMagnificationDistanceOrigin = cameraDistance
-                    if let planet = cameraDollyPlanet {
+                    let anchor = CGPoint(
+                        x: value.startAnchor.x * size.width,
+                        y: value.startAnchor.y * size.height
+                    )
+                    if let planet = zoomTargetPlanet(at: anchor, size: size) {
+                        beginDollyTowardPlanet(planet)
+                        magnificationPlanetID = planet.id
+                        magnificationPlanetScreenAnchor = planetScreenPosition(planet, size: size)
+                        cameraMagnificationDistanceOrigin = cameraDistance
                         cameraMagnificationDiameterOrigin = planetVisualRadius(planet, size: size) * 2
+                    } else if let planet = cameraDollyPlanet,
+                              isPlanetOnScreen(planet, size: size) {
+                        magnificationPlanetID = planet.id
+                        magnificationPlanetScreenAnchor = planetScreenPosition(planet, size: size)
+                        cameraMagnificationDiameterOrigin = planetVisualRadius(planet, size: size) * 2
+                    } else {
+                        // A stale off-screen planet must not capture a new
+                        // universe pinch.
+                        cameraTargetPlanetID = nil
+                        magnificationPlanetID = nil
                     }
                 }
-                if let planet = cameraDollyPlanet,
+                let gesturePlanet = magnificationPlanetID.flatMap { id in
+                    hierarchy.planets.first { $0.id == id }
+                }
+                if let planet = gesturePlanet,
                    let diameterOrigin = cameraMagnificationDiameterOrigin {
                     let targetDiameter = min(
-                        maximumReadableDiameter(for: planet, size: size),
-                        max(24, diameterOrigin * max(0.05, value))
+                        maximumSafeDiameter(for: size),
+                        max(0.1, diameterOrigin * max(0.0001, value.magnification))
                     )
                     zoom = zoom(forPlanetDiameter: targetDiameter, planet: planet, size: size)
+                    if let anchor = magnificationPlanetScreenAnchor {
+                        camera = cameraKeepingPlanet(planet, at: anchor, zoom: zoom, size: size)
+                    }
                 } else {
                     let originDistance = cameraMagnificationDistanceOrigin ?? cameraDistance
-                    zoom = universeZoom(forCameraDistance: originDistance / max(0.05, value))
+                    let near = universeCameraNearDistance
+                    let targetDistance = near + (originDistance - near) / max(0.0001, value.magnification)
+                    zoom = universeZoom(forCameraDistance: targetDistance)
                 }
                 if activePlanetID != nil {
                     planetFocusProgress = min(1, max(0, (zoom - universeZoomBeforeEntry) / 4.2))
@@ -1817,13 +1935,54 @@ private struct SemanticUniverse: View {
                 zoomOrigin = nil
                 cameraMagnificationDiameterOrigin = nil
                 cameraMagnificationDistanceOrigin = nil
+                magnificationPlanetID = nil
+                magnificationPlanetScreenAnchor = nil
                 if let planet = activePlanet,
                    planetVisualRadius(planet, size: size) * 2 < surfaceRevealDiameter(for: size) {
                     deactivatePlanetSurfaceKeepingCameraTarget()
+                    releasePlanetCameraIfFarEnough(planet, size: size)
                     return
+                }
+                if let planet = cameraDollyPlanet {
+                    releasePlanetCameraIfFarEnough(planet, size: size)
                 }
                 if activePlanetID == nil { activateCenteredSurfaceIfNeeded() }
             }
+    }
+
+    /// Picks the planet beneath the initial pinch centroid. A generous minimum
+    /// hit radius makes small/far planets selectable without first centering
+    /// them, while still leaving empty space for whole-universe zoom.
+    private func zoomTargetPlanet(at location: CGPoint, size: CGSize) -> CosmicHierarchy.Planet? {
+        hierarchy.planets
+            .filter { isPlanetOnScreen($0, size: size) }
+            .sorted { planetWorldPosition($0).z > planetWorldPosition($1).z }
+            .first { planet in
+                let radius = max(44, planetVisualRadius(planet, size: size) + 20)
+                return distance(planetScreenPosition(planet, size: size), location) <= radius
+            }
+    }
+
+    private func beginDollyTowardPlanet(_ planet: CosmicHierarchy.Planet) {
+        guard cameraTargetPlanetID != planet.id else { return }
+        let currentDistance = cameraDistance
+        universeZoomBeforeEntry = zoom
+        surfaceEntryCameraDistance = currentDistance
+        cameraTargetPlanetID = planet.id
+    }
+
+    private func cameraKeepingPlanet(_ planet: CosmicHierarchy.Planet,
+                                     at screenPoint: CGPoint,
+                                     zoom targetZoom: CGFloat,
+                                     size: CGSize) -> CGPoint {
+        let world = planetWorldPosition(planet)
+        let distance = cameraDistance(for: targetZoom, dollyPlanet: planet)
+        let focalLength = min(size.width, size.height) * 1.15
+        let scale = focalLength / max(0.35, distance - world.z)
+        return CGPoint(
+            x: world.x - (screenPoint.x - size.width / 2) / scale,
+            y: world.y + (screenPoint.y - size.height / 2) / scale
+        )
     }
 
     private func changeZoom(_ factor: CGFloat) {
@@ -1837,21 +1996,28 @@ private struct SemanticUniverse: View {
         }
         if let planet = mapPlanet, viewportSize.width > 0 {
             let currentDiameter = planetVisualRadius(planet, size: viewportSize) * 2
+            let screenAnchor = planetScreenPosition(planet, size: viewportSize)
             let step: CGFloat = factor >= 1 ? 1.25 : 0.8
             let targetDiameter = min(
-                maximumReadableDiameter(for: planet, size: viewportSize),
-                max(24, currentDiameter * step)
+                maximumSafeDiameter(for: viewportSize),
+                max(0.1, currentDiameter * step)
             )
             let targetZoom = zoom(forPlanetDiameter: targetDiameter, planet: planet, size: viewportSize)
-            animateUniverseCamera(to: camera, zoom: targetZoom, duration: 0.22) {
+            let targetCamera = cameraKeepingPlanet(
+                planet, at: screenAnchor, zoom: targetZoom, size: viewportSize
+            )
+            animateUniverseCamera(to: targetCamera, zoom: targetZoom, duration: 0.22) {
                 if targetDiameter < surfaceRevealDiameter(for: viewportSize) {
                     deactivatePlanetSurfaceKeepingCameraTarget()
+                    releasePlanetCameraIfFarEnough(planet, size: viewportSize)
                 }
             }
             return
         }
         let visualStep: CGFloat = factor >= 1 ? 1.25 : 0.8
-        let targetZoom = universeZoom(forCameraDistance: cameraDistance / visualStep)
+        let near = universeCameraNearDistance
+        let targetDistance = near + (cameraDistance - near) / visualStep
+        let targetZoom = universeZoom(forCameraDistance: targetDistance)
         animateUniverseCamera(to: camera, zoom: targetZoom, duration: 0.25) {
             activateCenteredSurfaceIfNeeded()
         }
@@ -1929,10 +2095,11 @@ private struct SemanticUniverse: View {
     private func focus(on request: PointMapFocusRequest?) {
         guard let request,
               let index = layout.nodes.firstIndex(where: { $0.point.id == request.pointID }) else { return }
+        let currentCameraDistance = cameraDistance
         focusedPointID = request.pointID
         let planetID = hierarchy.nodeToPlanet[index]
         universeZoomBeforeEntry = max(1.8, min(3.2, zoom))
-        surfaceEntryCameraDistance = universeCameraDistance(for: zoom)
+        surfaceEntryCameraDistance = currentCameraDistance
         cameraTargetPlanetID = planetID
         activePlanetID = planetID
         if let planetID, let planet = hierarchy.planets.first(where: { $0.id == planetID }) {
