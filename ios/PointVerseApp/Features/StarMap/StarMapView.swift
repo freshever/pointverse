@@ -1931,7 +1931,14 @@ private struct SemanticUniverse: View {
                     planetFocusProgress = min(1, max(0, (zoom - universeZoomBeforeEntry) / 4.2))
                 }
             }
-            .onEnded { _ in
+            .onEnded { value in
+                // A planet-relative camera can move behind the universe's
+                // front-most Z plane when the chosen system sits farther
+                // away. Converting it back to the whole-universe curve after
+                // a zoom-in cannot preserve that distance and looks like a
+                // spring-back. Keep the chosen target after enlargement;
+                // only release it while the user is deliberately zooming out.
+                let wasZoomingOut = value.magnification < 1
                 zoomOrigin = nil
                 cameraMagnificationDiameterOrigin = nil
                 cameraMagnificationDistanceOrigin = nil
@@ -1940,10 +1947,12 @@ private struct SemanticUniverse: View {
                 if let planet = activePlanet,
                    planetVisualRadius(planet, size: size) * 2 < surfaceRevealDiameter(for: size) {
                     deactivatePlanetSurfaceKeepingCameraTarget()
-                    releasePlanetCameraIfFarEnough(planet, size: size)
+                    if wasZoomingOut {
+                        releasePlanetCameraIfFarEnough(planet, size: size)
+                    }
                     return
                 }
-                if let planet = cameraDollyPlanet {
+                if wasZoomingOut, let planet = cameraDollyPlanet {
                     releasePlanetCameraIfFarEnough(planet, size: size)
                 }
                 if activePlanetID == nil { activateCenteredSurfaceIfNeeded() }
