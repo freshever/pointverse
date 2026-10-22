@@ -2,6 +2,86 @@ import Foundation
 import Testing
 @testable import PointVerseKit
 
+@Test func automaticRecognitionPreservesManualLabelsAndExcludesSelfReference() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let audio = StoredAudio(assetID: UUID(), relativePath: "blobs/audio/recognition.m4a", sha256: "abc", byteCount: 3, durationMilliseconds: 6000)
+    let point = try await database.commitVoiceCapture(.init(operationID: UUID(), audio: audio))
+    let speaker = try await database.createSpeakerProfile(name: "A")
+    try await database.saveManualRecordingLabels(pointID: point, speakerID: speaker, voiceState: .calm)
+    try await database.saveRecordingRecognition(pointID: point, speakerID: nil, speakerSimilarity: nil,
+        voiceState: .animated, emotionScore: 0.9, rawEmotion: "<|HAPPY|>", modelID: "test-models",
+        speakerModelID: "cam-test", vector: [1, 0])
+    #expect(try await database.recordingLabels().first?.voiceState == .calm)
+    #expect(try await database.recordingRecognition(pointID: point)?.voiceState == .animated)
+    #expect(try await database.speakerReferences(modelID: "cam-test", excluding: point).isEmpty)
+    #expect(try await database.speakerReferences(modelID: "other-model", excluding: PointID()).isEmpty)
+    #expect(try await database.speakerReferences(modelID: "cam-test", excluding: PointID()).count == 1)
+    try await database.deleteSpeakerProfile(id: speaker)
+    #expect(try await database.speakerReferences(modelID: "cam-test", excluding: PointID()).isEmpty)
+    #expect(try await database.pointDetail(id: point).audioRelativePath != nil)
+}
+
+@Test func deletingSpeakerPreservesRecordingAndManualLabelsHaveNoConfidence() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let audio = StoredAudio(assetID: UUID(), relativePath: "blobs/audio/speaker.m4a", sha256: "abc", byteCount: 3, durationMilliseconds: 1000)
+    let point = try await database.commitVoiceCapture(.init(operationID: UUID(), audio: audio))
+    let speaker = try await database.createSpeakerProfile(name: "说话人 A")
+    try await database.saveManualRecordingLabels(pointID: point, speakerID: speaker, voiceState: .calm)
+    let labels = try #require(try await database.recordingLabels().first)
+    #expect(labels.source == "manual")
+    #expect(labels.confidence == nil)
+    try await database.deleteSpeakerProfile(id: speaker)
+    #expect(try await database.recordingLabels().first?.speakerID == nil)
+    #expect(try await database.pointDetail(id: point).audioRelativePath == audio.relativePath)
+}
+
+@Test func clearingTestDatabaseNeverClearsProductionDatabase() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "clear-test-\(UUID().uuidString)")
+    let testRoot = root.appending(path: "test-mode")
+    try FileManager.default.createDirectory(at: testRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let testURL = testRoot.appending(path: "pointverse-test.sqlite")
+    let productionURL = root.appending(path: "pointverse.sqlite")
+    let test = try PointDatabase(path: testURL.path)
+    let production = try PointDatabase(path: productionURL.path)
+    try await test.migrate()
+    try await production.migrate()
+    let real = try await production.commitTextPoint(text: "不能删除的用户资料")
+    _ = try await test.commitTextPoint(text: "测试样本")
+    let facetTestPoint = try await test.commitTextPoint(text: "测试分类样本")
+    try await test.saveFacetOverride(pointID: facetTestPoint, dimension: .project, values: ["测试项目"])
+    try await production.saveFacetOverride(pointID: real, dimension: .project, values: ["正式项目"])
+    for (db, id, text) in [(test, facetTestPoint, "测试分类样本"), (production, real, "不能删除的用户资料")] {
+        let entry = PointMapEntry(point: .init(id: id, title: "", createdAt: Date(), transcriptState: nil), content: text, localeIdentifier: "zh-CN")
+        try await db.saveLCCClassificationReview(.init(entry: entry, embeddingModelID: "stub", judgeModelID: nil,
+            candidates: [.init(id: "lcc:Q", cosine: 0.8)],
+            decision: .init(status: .retrievalOnly, ids: [], reason: "候选")))
+    }
+    try await test.saveProvinceEvaluation(.init(provinceID: "test-province", provinceName: "测试省", members: []))
+    try await production.saveProvinceEvaluation(.init(provinceID: "real-province", provinceName: "正式省", members: []))
+    do {
+        _ = try await production.clearIsolatedTestData(expectedURL: testURL)
+        Issue.record("Production database accepted a test clear request")
+    } catch { }
+    do {
+        _ = try await production.clearIsolatedTestData(expectedURL: productionURL)
+        Issue.record("Production database accepted its own path as a test database")
+    } catch { }
+    _ = try await test.clearIsolatedTestData(expectedURL: testURL)
+    #expect(try await test.listPoints(matching: "").isEmpty)
+    #expect(try await production.listPoints(matching: "").map(\.id) == [real])
+    #expect(try await test.provinceEvaluations(provinceID: "test-province").isEmpty)
+    #expect(try await test.facetOverrides().isEmpty)
+    #expect(try await test.lccClassificationReviews().isEmpty)
+    #expect(try await production.lccClassificationReviews().count == 1)
+    #expect(try await production.facetOverrides().first?.values == ["正式项目"])
+    #expect(try await production.provinceEvaluations(provinceID: "real-province").count == 1)
+    _ = try await test.commitTextPoint(text: "清除后可以继续生成")
+    #expect(try await test.listPoints(matching: "").count == 1)
+}
+
 @Test func repeatedOperationIsIdempotent() async throws {
     let database = try PointDatabase(inMemory: true)
     try await database.migrate()
@@ -72,6 +152,50 @@ import Testing
     #expect(try await database.deletePoint(id: pointID) == "blobs/audio/delete.m4a")
     #expect(try await database.listPoints(matching: "").isEmpty)
     #expect(try await database.conversationMessages(pointID: pointID).isEmpty)
+}
+
+@Test func rediscoveryWaitsSevenDaysAndHonorsDailyFeedback() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let now = Date()
+    let oldPoint = try await database.commitTextPoint(
+        text: "这是一条值得重新思考的旧想法",
+        createdAt: now.addingTimeInterval(-8 * 24 * 60 * 60)
+    )
+    _ = try await database.commitTextPoint(text: "今天的新想法", createdAt: now)
+
+    let first = try await database.rediscoveryItems(referenceDate: now, limit: 4)
+    #expect(first.map(\.id) == [oldPoint])
+    try await database.recordRediscoveryFeedback(pointID: oldPoint, feedback: .shown, context: "test")
+    #expect(try await database.rediscoveryItems(referenceDate: now, limit: 4).isEmpty)
+    #expect(try await database.rediscoveryItems(referenceDate: now.addingTimeInterval(25 * 60 * 60), limit: 4).map(\.id) == [oldPoint])
+}
+
+@Test func userConfirmedRelationCanBeChangedAndRemoved() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let source = try await database.commitTextPoint(text: "想法会随时间演化")
+    let target = try await database.commitTextPoint(text: "回看会让想法产生新的延伸")
+
+    try await database.confirmRelation(source: source, target: target, type: .similar)
+    #expect(try await database.confirmedRelation(source: source, target: target)?.type == .similar)
+    try await database.confirmRelation(source: source, target: target, type: .extend)
+    #expect(try await database.confirmedRelation(source: source, target: target)?.type == .extend)
+    try await database.removeConfirmedRelation(source: source, target: target)
+    #expect(try await database.confirmedRelation(source: source, target: target) == nil)
+}
+
+@Test func assistantResultBecomesTraceablePoint() async throws {
+    let database = try PointDatabase(inMemory: true)
+    try await database.migrate()
+    let source = try await database.commitTextPoint(text: "原始问题")
+    let result = try await database.commitDerivedTextPoint(
+        text: "从原始问题延伸出的新理解",
+        sourcePointIDs: [source],
+        modelID: "test-model"
+    )
+    #expect(try await database.pointDetail(id: result).sourceText == "从原始问题延伸出的新理解")
+    #expect(try await database.confirmedRelation(source: source, target: result)?.type == .extend)
 }
 
 @Test func draftRejectsFieldsOutsidePOCContract() {

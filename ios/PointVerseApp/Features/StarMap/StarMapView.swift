@@ -135,7 +135,7 @@ struct PointMapSearchSheet: View {
             }
             .navigationTitle("搜索 Point")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "搜索标题或内容")
+            .macSafeSearchable(text: $query, prompt: "搜索标题或内容")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
@@ -722,7 +722,7 @@ private struct DisplayCluster: Identifiable {
     let radius: CGFloat
 }
 
-struct Point3D {
+struct Point3D: Sendable {
     var x: CGFloat
     var y: CGFloat
     var z: CGFloat
@@ -733,14 +733,14 @@ struct Point3D {
     var normalized: Self { self * (1 / max(length, 0.001)) }
 }
 
-struct StarLayout {
+struct StarLayout: Sendable {
     let nodes: [Node]
     let links: [Link]
     let embeddingCount: Int
     var usesBGE: Bool { embeddingCount > 0 }
     var strongestLink: Link? { links.max { $0.strength < $1.strength } }
-    struct Node { let point: PointSummary; let position: Point3D; let isEmbedded: Bool }
-    struct Link { let a: Int; let b: Int; let strength: CGFloat }
+    struct Node: Sendable { let point: PointSummary; let position: Point3D; let isEmbedded: Bool }
+    struct Link: Sendable { let a: Int; let b: Int; let strength: CGFloat }
 }
 
 @MainActor
@@ -896,6 +896,10 @@ enum StarLayoutEngine {
     }
 }
 
+private enum UniverseBrowseMode: String, CaseIterable {
+    case universe = "宇宙", mindMap = "脑图", facets = "分类"
+}
+
 struct UniverseMapView: View {
     @EnvironmentObject private var container: AppContainer
     @State private var entries: [PointMapEntry] = []
@@ -906,6 +910,15 @@ struct UniverseMapView: View {
     @State private var showingSearch = false
     @State private var focusRequest: PointMapFocusRequest?
     @State private var loadFailed = false
+    @State private var memoryInvitation: ProvinceMemory?
+    @State private var openedMemory: ProvinceMemory?
+    @State private var showingProvinceEvaluation = false
+    @State private var browseMode: UniverseBrowseMode = .universe
+    @State private var loadedEmbeddings: [PointEmbeddingRecord] = []
+    @State private var semanticScopes: [EvaluationProvince] = []
+    @State private var classificationMapRevision = 0
+    @AppStorage("provinceMemoryLastShown") private var memoryLastShown = "{}"
+    @State private var lastVisitedMemoryPlanet: Set<PointID> = []
 
     var body: some View {
         ZStack {
@@ -923,20 +936,57 @@ struct UniverseMapView: View {
                     Text("记录更多想法后，相关 Point 会逐渐形成星球与星系。")
                 }
                 .foregroundStyle(.white)
+            } else if browseMode == .facets {
+                PointFacetPrototypeView(entries: entries) { selected = $0 }
+            } else if browseMode == .mindMap {
+                ReadOnlyHierarchyMindMap(layout: layout, entries: entries, embeddings: loadedEmbeddings,
+                                         geographies: Array(geographies.values), focusRequest: focusRequest) { selected = $0 }
             } else {
                 SemanticUniverse(
                     layout: layout,
                     geographies: geographies,
+                    semanticScopes: semanticScopes,
                     contentByPointID: contentByPointID,
-                    focusRequest: focusRequest
+                    focusRequest: focusRequest,
+                    onVisitPlanet: proposeMemory
                 ) { selected = $0 }
+                .id(classificationMapRevision)
             }
         }
         .navigationTitle("语义宇宙")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("浏览方式", selection: $browseMode) {
+                ForEach(UniverseBrowseMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal).padding(.vertical, 8)
+            .background(Color(red: 0.025, green: 0.018, blue: 0.09))
+        }
+        .safeAreaInset(edge: .bottom) {
+            if browseMode == .universe, let memory = memoryInvitation {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("回到「\(memory.name)」省", systemImage: "clock.arrow.circlepath").font(.headline)
+                        Spacer()
+                        Button { memoryInvitation = nil } label: { Image(systemName: "xmark") }
+                    }
+                    Text("这里留下了 \(memory.totalCount) 条想法，看看这段思考走到了哪里。")
+                        .font(.subheadline)
+                    Button("开始回忆") {
+                        focusRequest = PointMapFocusRequest(pointID: memory.records[0].id)
+                        openedMemory = memory
+                        memoryInvitation = nil
+                    }.buttonStyle(.borderedProminent)
+                }.padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18)).padding()
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color(red: 0.025, green: 0.018, blue: 0.09), for: .navigationBar)
         .toolbar {
+            Button { showingProvinceEvaluation = true } label: { Image(systemName: "checkmark.bubble") }
+                .tint(.white)
+                .accessibilityLabel("分层质量评估")
             Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
                 .tint(.white)
             Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
@@ -945,6 +995,13 @@ struct UniverseMapView: View {
         .task { await reload() }
         .onReceive(NotificationCenter.default.publisher(for: EmbeddingService.didChangeNotification)) { _ in
             Task { await reload() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ClassificationMapProjection.didChange)
+            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)) { _ in
+            if browseMode != .facets { Task { await reload() } }
+        }
+        .onChange(of: browseMode) { old, new in
+            if old == .facets && new != .facets { Task { await reload() } }
         }
         .sheet(isPresented: $showingSearch) {
             PointMapSearchSheet(entries: entries) { pointID in
@@ -957,6 +1014,13 @@ struct UniverseMapView: View {
                 .environmentObject(container)
                 .presentationDetents([.medium, .large])
         }
+        .sheet(item: $openedMemory) { memory in
+            ProvinceMemoryView(memory: memory)
+                .environmentObject(container)
+        }
+        .sheet(isPresented: $showingProvinceEvaluation) {
+            NavigationStack { ProvinceEvaluationIndexView(existingLayout: layout) }.environmentObject(container)
+        }
         .alert("无法读取语义宇宙", isPresented: $loadFailed) { Button("好") {} }
     }
 
@@ -966,18 +1030,122 @@ struct UniverseMapView: View {
             async let embeddings = container.database.embeddings(modelID: EmbeddingModelIdentity.bgeSmallZhV15)
             async let storedGeographies = container.database.geographies(version: GeographyIdentity.relativeSemanticV6)
             let values = try await loadedEntries
-            let loadedGeographies = try await storedGeographies
+            let originalGeographies = try await storedGeographies
+            let classifications = try await container.database.facetOverrides()
+            let reviews = try await container.database.lccClassificationReviews()
+            let loadedGeographies = ClassificationMapProjection.make(entries: values, geographies: originalGeographies,
+                overrides: classifications, reviews: reviews)
             entries = values
-            layout = StarLayoutEngine.make(entries: values, embeddings: try await embeddings)
-            geographies = Dictionary(uniqueKeysWithValues: loadedGeographies.map { ($0.pointID, $0) })
+            let vectors = try await embeddings
+            loadedEmbeddings = vectors
+            layout = StarLayoutEngine.make(entries: values, embeddings: vectors)
+            let projected = Dictionary(uniqueKeysWithValues: loadedGeographies.map { ($0.pointID, $0) })
+            if projected != geographies { classificationMapRevision += 1 }
+            geographies = projected
             contentByPointID = Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0.content) })
+            let currentLayout = layout
+            let overrides = UserDefaults.standard.data(forKey: "semanticGeography.placeNameOverrides.v1")
+                .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
+            semanticScopes = await Task.detached(priority: .userInitiated) {
+                EvaluationHierarchy.make(layout: currentLayout, entries: values, embeddings: vectors,
+                                         geographies: loadedGeographies, overrides: overrides)
+            }.value
         } catch {
             loadFailed = true
+        }
+    }
+
+    private func proposeMemory(_ ids: [PointID]) {
+        let identity = Set(ids)
+        guard identity != lastVisitedMemoryPlanet else { return }
+        lastVisitedMemoryPlanet = identity
+        let members = entries.filter { ids.contains($0.id) && !$0.content.isEmpty }
+        let groups = Dictionary(grouping: members.filter { geographies[$0.id]?.communityID != nil }) {
+            geographies[$0.id]!.communityID!
+        }
+        let previous = (try? JSONDecoder().decode([String: Double].self, from: Data(memoryLastShown.utf8))) ?? [:]
+        let now = Date()
+        let eligible = groups.filter { key, values in
+            values.count >= 3 &&
+            (values.map(\.point.createdAt).max()!.timeIntervalSince(values.map(\.point.createdAt).min()!) >= 86400) &&
+            now.timeIntervalSince1970 - (previous[key] ?? 0) > 7 * 86400
+        }.sorted { $0.value.count > $1.value.count }
+        guard let group = eligible.first else { memoryInvitation = nil; return }
+        let ordered = group.value.sorted { $0.point.createdAt < $1.point.createdAt }
+        let count = min(5, ordered.count)
+        let samples = (0..<count).map { ordered[$0 * (ordered.count - 1) / (count - 1)] }
+        let defaultName = SemanticPlaceNameEngine.name(contents: ordered.map(\.content), level: .province)
+        let overrides = UserDefaults.standard.data(forKey: "semanticGeography.placeNameOverrides.v1")
+            .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
+        let name = overrides["province:\(group.key)"] ?? defaultName
+        memoryInvitation = ProvinceMemory(id: group.key, name: name, totalCount: ordered.count, records: samples)
+        var updated = previous
+        updated[group.key] = now.timeIntervalSince1970
+        if let data = try? JSONEncoder().encode(updated), let text = String(data: data, encoding: .utf8) {
+            memoryLastShown = text
+        }
+    }
+}
+
+private struct ProvinceMemory: Identifiable {
+    let id: String
+    let name: String
+    let totalCount: Int
+    // Immutable selection and text snapshot for this presentation.
+    let records: [PointMapEntry]
+}
+
+private struct ProvinceMemoryView: View {
+    @EnvironmentObject private var container: AppContainer
+    @Environment(\.dismiss) private var dismiss
+    let memory: ProvinceMemory
+    @State private var reflection = ""
+    @State private var saving = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("这段思考的足迹").font(.title2.bold())
+                    Text("从 \(memory.records.first!.point.createdAt.formatted(date: .abbreviated, time: .omitted)) 到 \(memory.records.last!.point.createdAt.formatted(date: .abbreviated, time: .omitted))，这里积累了 \(memory.totalCount) 条记录。下面按时间选出 \(memory.records.count) 条原文。")
+                        .foregroundStyle(.secondary)
+                    ForEach(memory.records) { record in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(record.point.createdAt, format: .dateTime.year().month().day()).font(.caption).foregroundStyle(.secondary)
+                            Text(record.point.title).font(.headline)
+                            Text(record.content).textSelection(.enabled)
+                            NavigationLink("打开原文") { PointDetailView(point: record.point) }
+                        }.padding().frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    Text("现在回看，你最想补充哪一点？").font(.headline)
+                    TextField("记下新的理解", text: $reflection, axis: .vertical).lineLimit(3...8).textFieldStyle(.roundedBorder)
+                    if let error { Text(error).foregroundStyle(.red) }
+                    Button(saving ? "正在保存…" : "记下这次进展") {
+                        saving = true
+                        Task {
+                            do {
+                                _ = try await container.database.commitDerivedTextPoint(text: reflection, sourcePointIDs: memory.records.map(\.id), modelID: nil)
+                                container.refreshEmbeddings()
+                                dismiss()
+                            } catch { self.error = "保存失败，请重试。" }
+                            saving = false
+                        }
+                    }.buttonStyle(.borderedProminent).disabled(saving || reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    NavigationLink("带着这段回忆接着想") {
+                        PointDetailView(point: memory.records.last!.point, memoryContext: Array(memory.records.dropLast()))
+                    }
+                }.padding()
+            }.navigationTitle("\(memory.name)省 · 回忆")
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } } }
         }
     }
 }
 
 private struct SemanticUniverse: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // These are numerical guards only, not user-facing zoom limits.
     private let minimumZoom: CGFloat = 0.0001
     // A numerical safety ceiling only; there is no content-based UI limit.
@@ -987,21 +1155,32 @@ private struct SemanticUniverse: View {
     let contentByPointID: [PointID: String]
     let focusRequest: PointMapFocusRequest?
     let onSelect: (PointSummary) -> Void
+    let onVisitPlanet: ([PointID]) -> Void
     private let hierarchy: CosmicHierarchy
     private let cachedPlanetLayouts: [Int: StarLayout]
+    private let cachedPlanetScopes: [Int: [EvaluationProvince]]
 
     init(layout: StarLayout,
          geographies: [PointID: PointGeographyRecord],
+         semanticScopes: [EvaluationProvince],
          contentByPointID: [PointID: String],
          focusRequest: PointMapFocusRequest?,
+         onVisitPlanet: @escaping ([PointID]) -> Void,
          onSelect: @escaping (PointSummary) -> Void) {
         self.layout = layout
         self.geographies = geographies
         self.contentByPointID = contentByPointID
         self.focusRequest = focusRequest
         self.onSelect = onSelect
+        self.onVisitPlanet = onVisitPlanet
         let hierarchy = CosmicHierarchy.make(layout: layout, geographies: geographies)
         self.hierarchy = hierarchy
+        let scopes = semanticScopes.flatMap(\.children)
+        self.cachedPlanetScopes = Dictionary(uniqueKeysWithValues: hierarchy.planets.map { planet in
+            let ids = Set(planet.nodeIndices.map { layout.nodes[$0].point.id })
+            let scope = scopes.first { Set($0.members.map(\.id)) == ids }
+            return (planet.id, scope?.children ?? [])
+        })
         self.cachedPlanetLayouts = Dictionary(uniqueKeysWithValues: hierarchy.planets.map { planet in
             let oldIndices = planet.nodeIndices
             let remap = Dictionary(uniqueKeysWithValues: oldIndices.enumerated().map { ($0.element, $0.offset) })
@@ -1037,6 +1216,13 @@ private struct SemanticUniverse: View {
     @State private var magnificationPlanetID: Int?
     @State private var magnificationPlanetScreenAnchor: CGPoint?
     @State private var cameraAnimationToken = UUID()
+    @State private var orbitElapsed: Double = 0
+    @State private var surfaceFocusRequest: PointMapFocusRequest?
+    @State private var orbitResumeAt: Double = 0
+    @State private var showingNavigator = false
+    @State private var navigationQuery = ""
+    @State private var overlappingGalaxyIDs: [Int] = []
+    @State private var showingGalaxyPicker = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -1064,9 +1250,10 @@ private struct SemanticUniverse: View {
                         SemanticGlobe(
                             layout: planetLayout(planet),
                             geographies: geographies,
+                            semanticScopes: cachedPlanetScopes[planet.id],
                             contentByPointID: contentByPointID,
                             initialZoom: 1,
-                            focusRequest: selected ? focusedPointID.map(PointMapFocusRequest.init(pointID:)) : nil,
+                            focusRequest: selected ? surfaceFocusRequest : nil,
                             onZoomOut: nil,
                             showsChrome: false,
                             externalZoom: 1,
@@ -1132,7 +1319,7 @@ private struct SemanticUniverse: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Label(levelTitle, systemImage: levelIcon)
                                 .font(.caption.bold())
-                            Text("缩放穿越：恒星系 → 行星与卫星 → 行星地图 → Point")
+                            Text("点星球直达地图 · 用目录直达分类和主题")
                                 .font(.caption2).foregroundStyle(.white.opacity(0.6))
                         }
                         Spacer()
@@ -1144,11 +1331,15 @@ private struct SemanticUniverse: View {
                     .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
                     .padding()
                     Spacer()
+                    planetShortcuts
                     HStack(spacing: 12) {
+                        Button { pauseOrbit(); showingNavigator = true } label: { Label("目录", systemImage: "list.bullet") }
+                            .font(.caption.bold()).foregroundStyle(.white)
                         universeControl("minus.magnifyingglass") { changeZoom(0.7) }
                         universeControl("plus.magnifyingglass") { changeZoom(1.45) }
                         Divider().frame(height: 22).overlay(.white.opacity(0.22))
                         Button("全景") {
+                            pauseOrbit()
                             focusedPointID = nil
                             activePlanetID = nil
                             cameraTargetPlanetID = nil
@@ -1165,8 +1356,114 @@ private struct SemanticUniverse: View {
                 }
             }
             .onChange(of: focusRequest) { _, request in focus(on: request) }
-            .onAppear { viewportSize = proxy.size; centerInitialCameraIfNeeded(size: proxy.size) }
+            .onAppear {
+                viewportSize = proxy.size; centerInitialCameraIfNeeded(size: proxy.size)
+                if focusRequest != nil { focus(on: focusRequest) }
+            }
             .onChange(of: proxy.size) { _, value in viewportSize = value }
+        }
+        .sheet(isPresented: $showingNavigator) { universeNavigator }
+        .confirmationDialog("选择要靠近的恒星系", isPresented: $showingGalaxyPicker, titleVisibility: .visible) {
+            ForEach(hierarchy.galaxies.filter { overlappingGalaxyIDs.contains($0.id) }, id: \.id) { galaxy in
+                Button("\(galaxy.name) · \(galaxy.planetIDs.count)个星球") { approachGalaxy(galaxy, size: viewportSize) }
+            }
+            Button("取消", role: .cancel) { pauseOrbit() }
+        }
+        .task(id: "\(scenePhase)-\(reduceMotion)") { await advanceOrbits() }
+    }
+
+    private var planetShortcuts: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(hierarchy.planets, id: \.id) { planet in
+                    Button { centerCamera(on: planet) } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(planet.name).font(.caption.bold())
+                            Text("\(planet.nodeIndices.count)条 · \(cachedPlanetScopes[planet.id]?.count ?? 0)个分类")
+                                .font(.caption2)
+                        }.foregroundStyle(.white).padding(10)
+                            .background(activePlanetID == planet.id ? Color.indigo.opacity(0.85) : Color.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain)
+                }
+            }.padding(.horizontal)
+        }
+    }
+
+    private struct NavigationTarget: Identifiable {
+        let id: String
+        let planetID: Int
+        let path: String
+        let scope: EvaluationProvince
+    }
+    private var navigationTargets: [NavigationTarget] {
+        hierarchy.planets.flatMap { planet in
+            (cachedPlanetScopes[planet.id] ?? []).flatMap { province in
+                [NavigationTarget(id: province.id, planetID: planet.id, path: planet.name, scope: province)]
+                + province.children.map { NavigationTarget(id: $0.id, planetID: planet.id, path: planet.name + " · " + province.name, scope: $0) }
+            }
+        }
+    }
+    private var universeNavigator: some View {
+        NavigationStack {
+            List {
+                Section("星球 · 点击直接放大") {
+                    ForEach(hierarchy.planets.filter { navigationQuery.isEmpty || $0.name.localizedCaseInsensitiveContains(navigationQuery) }, id: \.id) { planet in
+                        Button { showingNavigator = false; centerCamera(on: planet) } label: {
+                            HStack { Text(planet.name); Spacer(); Text("\(planet.nodeIndices.count)条").foregroundStyle(.secondary) }
+                        }
+                    }
+                }
+                Section("分类与主题 · 点击直接定位") {
+                    ForEach(navigationTargets.filter { navigationQuery.isEmpty || ($0.path + $0.scope.name).localizedCaseInsensitiveContains(navigationQuery) }) { target in
+                        Button {
+                            showingNavigator = false
+                            guard let member = target.scope.members.first else { return }
+                            focus(on: .init(pointID: member.id))
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(target.scope.name) · \(target.scope.members.count)条")
+                                Text(target.path).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                if !navigationQuery.isEmpty {
+                    Section("匹配的想法 · 点击打开") {
+                        ForEach(Array(layout.nodes.filter {
+                            ($0.point.title + " " + (contentByPointID[$0.point.id] ?? "")).localizedCaseInsensitiveContains(navigationQuery)
+                        }.prefix(30)), id: \.point.id) { node in
+                            Button { showingNavigator = false; onSelect(node.point) } label: {
+                                Text(node.point.title.isEmpty ? String((contentByPointID[node.point.id] ?? "未命名想法").prefix(60)) : node.point.title)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("宇宙目录")
+            .searchable(text: $navigationQuery, prompt: "搜索星球、分类、主题或内容")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("关闭") { showingNavigator = false } } }
+        }
+    }
+
+    private func pauseOrbit() {
+        orbitResumeAt = Date.timeIntervalSinceReferenceDate + UniverseInteractionPolicy.idlePause
+    }
+    @MainActor private func advanceOrbits() async {
+        var previous = Date.timeIntervalSinceReferenceDate
+        while !Task.isCancelled {
+            do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            let now = Date.timeIntervalSinceReferenceDate
+            let delta = UniverseInteractionPolicy.orbitDelta(previous: previous, now: now, resumeAt: orbitResumeAt)
+            previous = now
+            guard scenePhase == .active, !reduceMotion, !showingNavigator, !showingGalaxyPicker, delta > 0 else { continue }
+            let followed = cameraDollyPlanet
+            let before = followed.map(planetWorldPosition)
+            orbitElapsed += delta
+            if let planet = followed, let before {
+                let after = planetWorldPosition(planet)
+                camera.x += after.x - before.x; camera.y += after.y - before.y
+                if surfaceEntryCameraDistance > 0 { surfaceEntryCameraDistance += after.z - before.z }
+            }
         }
     }
 
@@ -1188,6 +1485,7 @@ private struct SemanticUniverse: View {
     }
 
     private func updateCameraMagnification(_ gestureScale: CGFloat) {
+        pauseOrbit()
         if cameraMagnificationOrigin == nil {
             cameraAnimationToken = UUID()
             cameraMagnificationOrigin = zoom
@@ -1264,6 +1562,7 @@ private struct SemanticUniverse: View {
     }
 
     private func activatePlanetSurface(_ planet: CosmicHierarchy.Planet) {
+        pauseOrbit()
         guard activePlanetID != planet.id else { return }
         if cameraTargetPlanetID != planet.id {
             let currentDistance = cameraDistance
@@ -1277,6 +1576,11 @@ private struct SemanticUniverse: View {
     }
 
     private func centerCamera(on planet: CosmicHierarchy.Planet) {
+        pauseOrbit()
+        let alreadyTargeted = cameraTargetPlanetID == planet.id
+        focusedPointID = nil
+        surfaceFocusRequest = nil
+        onVisitPlanet(planet.nodeIndices.map { layout.nodes[$0].point.id })
         if cameraTargetPlanetID != planet.id {
             let currentDistance = cameraDistance
             activePlanetID = nil
@@ -1288,7 +1592,14 @@ private struct SemanticUniverse: View {
             activatePlanetSurface(planet)
         }
         let world = planetWorldPosition(planet)
-        animateUniverseCamera(to: CGPoint(x: world.x, y: world.y), zoom: zoom, duration: 0.65)
+        let targetDiameter = CGFloat(UniverseInteractionPolicy.clickedPlanetDiameter(width: Double(viewportSize.width), height: Double(viewportSize.height)))
+        let diameter = alreadyTargeted ? max(targetDiameter, planetVisualRadius(planet, size: viewportSize) * 2) : targetDiameter
+        let targetZoom = targetDiameter > 0
+            ? zoom(forPlanetDiameter: diameter, planet: planet, size: viewportSize)
+            : zoom
+        animateUniverseCamera(to: CGPoint(x: world.x, y: world.y), zoom: targetZoom, duration: 0.65) {
+            activatePlanetSurface(planet)
+        }
     }
 
     /// Canvas does not interpolate captured camera state through
@@ -1302,7 +1613,10 @@ private struct SemanticUniverse: View {
         cameraAnimationToken = token
         let startCamera = camera
         let startZoom = zoom
-        let frameCount = max(1, Int(duration * 60))
+        // Large scale changes need travel time, not an almost instant zoom.
+        let scaleTravel = abs(log(max(0.000001, targetZoom) / max(0.000001, startZoom)))
+        let flightDuration = max(duration, min(2.4, 1.1 + Double(scaleTravel) * 0.18))
+        let frameCount = max(1, Int(flightDuration * 60))
         Task { @MainActor in
             for frame in 1...frameCount {
                 guard cameraAnimationToken == token else { return }
@@ -1312,7 +1626,8 @@ private struct SemanticUniverse: View {
                     x: startCamera.x + (targetCamera.x - startCamera.x) * progress,
                     y: startCamera.y + (targetCamera.y - startCamera.y) * progress
                 )
-                zoom = startZoom + (targetZoom - startZoom) * progress
+                zoom = CGFloat(UniverseInteractionPolicy.flightZoom(
+                    from: Double(startZoom), to: Double(targetZoom), progress: Double(linear)))
                 if frame < frameCount {
                     try? await Task.sleep(for: .milliseconds(16))
                 }
@@ -1403,17 +1718,36 @@ private struct SemanticUniverse: View {
 
     private func draw(context: inout GraphicsContext, size: CGSize) {
         drawBackdrop(context: &context, size: size)
-        // Cross-fade the hierarchy instead of replacing one canvas at a hard
-        // zoom threshold. This makes a star system visibly unfold from its
-        // galaxy while the user pinches.
-        if zoom < 2.0 {
-            var galaxyLayer = context
-            galaxyLayer.opacity = Double(min(1, max(0, (2.0 - zoom) / 0.8)))
-            drawGalaxies(context: &galaxyLayer, size: size)
+        drawGalaxies(context: &context, size: size)
+        drawPlanets(context: &context, size: size)
+    }
+
+    private func systemDetailOpacity(_ galaxy: CosmicHierarchy.Galaxy, size: CGSize) -> Double {
+        // The compact silhouette and expanded orbit share precisely this path.
+        let bounds = projectedOrbit(galaxy: galaxy, orbit: max(0, galaxy.planetIDs.count - 1), size: size).boundingRect
+        let nearPlanet = hierarchy.planets.contains {
+            $0.galaxyID == galaxy.id && planetVisualRadius($0, size: size) * 2 >= surfaceRevealDiameter(for: size)
         }
-        var systemLayer = context
-        systemLayer.opacity = Double(min(1, max(0.72, (zoom - 0.45) / 0.9)))
-        drawPlanets(context: &systemLayer, size: size)
+        if nearPlanet { return 1 }
+        return UniverseInteractionPolicy.systemDetailOpacity(projectedDiameter: Double(max(bounds.width, bounds.height)))
+    }
+
+    private func projectedOrbit(galaxy: CosmicHierarchy.Galaxy, orbit: Int, size: CGSize) -> Path {
+        var path = Path()
+        for step in 0...72 {
+            let angle = CGFloat(step) / 72 * 2 * .pi
+            let point = perspectiveProject(orbitWorldPosition(galaxy: galaxy, orbit: orbit, angle: angle), size: size).point
+            if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private func planetSystemOpacity(_ planet: CosmicHierarchy.Planet, size: CGSize) -> Double {
+        guard let galaxy = hierarchy.galaxies.first(where: { $0.id == planet.galaxyID }) else { return 1 }
+        // A nearby planet must never disappear merely because its star is behind it.
+        if planetVisualRadius(planet, size: size) * 2 >= surfaceRevealDiameter(for: size) { return 1 }
+        return systemDetailOpacity(galaxy, size: size)
     }
 
     private func drawBackdrop(context: inout GraphicsContext, size: CGSize) {
@@ -1428,25 +1762,34 @@ private struct SemanticUniverse: View {
 
     private func drawGalaxies(context: inout GraphicsContext, size: CGSize) {
         for galaxy in hierarchy.galaxies {
+            let opacity = 1 - systemDetailOpacity(galaxy, size: size)
+            guard opacity > 0 else { continue }
+            var context = context
+            context.opacity *= opacity
             let projection = perspectiveProject(galaxyWorldPosition(galaxy), size: size)
             let center = projection.point
-            let radius = max(8, starWorldRadius(galaxy) * projection.pointsPerWorldUnit * 2.4)
+            let silhouette = projectedOrbit(galaxy: galaxy, orbit: max(0, galaxy.planetIDs.count - 1), size: size)
+            let bounds = silhouette.boundingRect
+            let radius = max(bounds.width, bounds.height) / 2
             let color = cosmicColor(galaxy.id)
-            let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-            context.fill(Path(ellipseIn: rect), with: .radialGradient(
-                Gradient(colors: [.white.opacity(0.9), color.opacity(0.8), color.opacity(0.08)]),
+            context.fill(silhouette, with: .radialGradient(
+                Gradient(colors: [.white.opacity(0.55), color.opacity(0.32), color.opacity(0.04)]),
                 center: center, startRadius: 1, endRadius: radius
             ))
-            context.stroke(Path(ellipseIn: rect.insetBy(dx: -7, dy: -7)), with: .color(color.opacity(0.25)), lineWidth: 2)
+            context.stroke(silhouette, with: .color(color.opacity(0.9)), lineWidth: 1.8)
             context.draw(Text(galaxy.name).font(.caption.bold()).foregroundStyle(.white),
-                         at: CGPoint(x: center.x, y: center.y + radius + 13), anchor: .center)
+                         at: CGPoint(x: bounds.midX, y: bounds.maxY + 13), anchor: .center)
             context.draw(Text("\(galaxy.planetIDs.count) 个星球").font(.caption2).foregroundStyle(.white.opacity(0.62)),
-                         at: CGPoint(x: center.x, y: center.y + radius + 28), anchor: .center)
+                         at: CGPoint(x: bounds.midX, y: bounds.maxY + 28), anchor: .center)
         }
     }
 
     private func drawPlanets(context: inout GraphicsContext, size: CGSize) {
         for galaxy in hierarchy.galaxies {
+            let opacity = systemDetailOpacity(galaxy, size: size)
+            guard opacity > 0 else { continue }
+            var context = context
+            context.opacity *= opacity
             let starProjection = perspectiveProject(galaxyWorldPosition(galaxy), size: size)
             let galaxyCenter = starProjection.point
             let starRadius = max(5, starWorldRadius(galaxy) * starProjection.pointsPerWorldUnit)
@@ -1462,19 +1805,17 @@ private struct SemanticUniverse: View {
 
             let members = galaxy.planetIDs
             for orbit in members.indices {
-                var path = Path()
-                let orbitSegments = zoom < 1.6 ? 24 : 36
-                for step in 0...orbitSegments {
-                    let angle = CGFloat(step) / CGFloat(orbitSegments) * 2 * .pi
-                    let point = perspectiveProject(
-                        orbitWorldPosition(galaxy: galaxy, orbit: orbit, angle: angle), size: size
-                    ).point
-                    step == 0 ? path.move(to: point) : path.addLine(to: point)
-                }
-                context.stroke(path, with: .color(.white.opacity(0.12)), lineWidth: 0.8)
+                let path = projectedOrbit(galaxy: galaxy, orbit: orbit, size: size)
+                let orbitColor = cosmicColor(galaxy.id * 7 + orbit + 12)
+                context.stroke(path, with: .color(orbitColor.opacity(0.14)), lineWidth: 4)
+                context.stroke(path, with: .color(orbitColor.opacity(0.78)), lineWidth: 1.5)
             }
         }
         for planet in hierarchy.planets.sorted(by: { planetWorldPosition($0).z < planetWorldPosition($1).z }) {
+            let opacity = planetSystemOpacity(planet, size: size)
+            guard opacity > 0 else { continue }
+            var context = context
+            context.opacity *= opacity
             // Once this planet is large enough for its semantic map, the
             // overlay renders it at this exact camera-projected center/radius.
             // Do not also draw the simplified sphere underneath.
@@ -1616,9 +1957,13 @@ private struct SemanticUniverse: View {
     private func orbitWorldPosition(galaxy: CosmicHierarchy.Galaxy, orbit: Int, angle: CGFloat) -> Point3D {
         let star = galaxyWorldPosition(galaxy)
         let radius = 3.2 + CGFloat(orbit) * 2.45
-        let inclination = (CGFloat((galaxy.id * 37 + orbit * 19) % 29) / 29 - 0.5) * 0.7
-        return Point3D(x: star.x + cos(angle) * radius,
-                       y: star.y + sin(angle) * radius * cos(inclination),
+        // A system is one orbital plane, shared by its overview and all orbits.
+        let inclination = CGFloat.pi / 3
+        let direction = CGFloat(galaxy.id % 5) * 0.43 - 0.6
+        let x = cos(angle) * radius
+        let y = sin(angle) * radius * cos(inclination)
+        return Point3D(x: star.x + x * cos(direction) - y * sin(direction),
+                       y: star.y + x * sin(direction) + y * cos(direction),
                        z: star.z + sin(angle) * radius * sin(inclination))
     }
 
@@ -1627,11 +1972,12 @@ private struct SemanticUniverse: View {
               let orbit = galaxy.planetIDs.firstIndex(of: planet.id) else { return planet.center }
         let dx = planet.center.x - galaxy.center.x, dy = planet.center.y - galaxy.center.y
         let angle = abs(dx) + abs(dy) > 0.0001 ? atan2(dy, dx) : CGFloat(planet.id) * 2.399963
-        return orbitWorldPosition(galaxy: galaxy, orbit: orbit, angle: angle)
+        return orbitWorldPosition(galaxy: galaxy, orbit: orbit,
+            angle: angle + CGFloat(orbitElapsed * UniverseInteractionPolicy.orbitRate(index: orbit)))
     }
 
     private func planetWorldRadius(_ planet: CosmicHierarchy.Planet) -> CGFloat {
-        min(1.18, 0.48 + sqrt(CGFloat(planet.nodeIndices.count)) * 0.035)
+        CGFloat(UniverseInteractionPolicy.planetRadius(pointCount: planet.nodeIndices.count))
     }
 
     private func starWorldRadius(_ galaxy: CosmicHierarchy.Galaxy) -> CGFloat {
@@ -1841,6 +2187,7 @@ private struct SemanticUniverse: View {
     private func panGesture(size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 5)
             .onChanged { value in
+                pauseOrbit()
                 if surfacePlanet(at: value.startLocation, size: size) != nil {
                     // A detailed globe owns this gesture and rotates around
                     // its own projected center.
@@ -1882,6 +2229,7 @@ private struct SemanticUniverse: View {
     private func zoomGesture(size: CGSize) -> some Gesture {
         MagnifyGesture(minimumScaleDelta: 0)
             .onChanged { value in
+                pauseOrbit()
                 if zoomOrigin == nil {
                     cameraAnimationToken = UUID()
                     zoomOrigin = zoom
@@ -1890,7 +2238,8 @@ private struct SemanticUniverse: View {
                         x: value.startAnchor.x * size.width,
                         y: value.startAnchor.y * size.height
                     )
-                    if let planet = zoomTargetPlanet(at: anchor, size: size) {
+                    let collapsedTarget = collapsedGalaxyHits(at: anchor, size: size).first.flatMap { galaxyDollyPlanet($0) }
+                    if let planet = zoomTargetPlanet(at: anchor, size: size) ?? collapsedTarget {
                         beginDollyTowardPlanet(planet)
                         magnificationPlanetID = planet.id
                         magnificationPlanetScreenAnchor = planetScreenPosition(planet, size: size)
@@ -1964,7 +2313,7 @@ private struct SemanticUniverse: View {
     /// them, while still leaving empty space for whole-universe zoom.
     private func zoomTargetPlanet(at location: CGPoint, size: CGSize) -> CosmicHierarchy.Planet? {
         hierarchy.planets
-            .filter { isPlanetOnScreen($0, size: size) }
+            .filter { isPlanetOnScreen($0, size: size) && planetSystemOpacity($0, size: size) > 0.5 }
             .sorted { planetWorldPosition($0).z > planetWorldPosition($1).z }
             .first { planet in
                 let radius = max(44, planetVisualRadius(planet, size: size) + 20)
@@ -1978,6 +2327,40 @@ private struct SemanticUniverse: View {
         universeZoomBeforeEntry = zoom
         surfaceEntryCameraDistance = currentDistance
         cameraTargetPlanetID = planet.id
+    }
+
+    private func collapsedGalaxyHits(at location: CGPoint, size: CGSize) -> [CosmicHierarchy.Galaxy] {
+        hierarchy.galaxies.filter { galaxy in
+            guard systemDetailOpacity(galaxy, size: size) < 1 else { return false }
+            let path = projectedOrbit(galaxy: galaxy, orbit: max(0, galaxy.planetIDs.count - 1), size: size)
+            return path.boundingRect.insetBy(dx: -12, dy: -12).contains(location)
+        }.sorted {
+            distance(perspectiveProject(galaxyWorldPosition($0), size: size).point, location)
+                < distance(perspectiveProject(galaxyWorldPosition($1), size: size).point, location)
+        }
+    }
+
+    private func galaxyDollyPlanet(_ galaxy: CosmicHierarchy.Galaxy) -> CosmicHierarchy.Planet? {
+        hierarchy.planets.filter { $0.galaxyID == galaxy.id }.max {
+            planetWorldPosition($0).z < planetWorldPosition($1).z
+        }
+    }
+
+    private func approachGalaxy(_ galaxy: CosmicHierarchy.Galaxy, size: CGSize) {
+        guard let anchor = galaxyDollyPlanet(galaxy) else { return }
+        pauseOrbit()
+        activePlanetID = nil
+        // Keep the current frame while entering a target-relative camera curve.
+        // A different system's foreground Z plane must not stop this flight.
+        beginDollyTowardPlanet(anchor)
+        let world = galaxyWorldPosition(galaxy)
+        let extent = 3.2 + CGFloat(max(0, galaxy.planetIDs.count - 1)) * 2.45 + 1.18
+        let focal = min(size.width, size.height) * 1.15
+        let targetDistance = world.z + extent * 2 * focal / 400
+        let gap = max(0.01, targetDistance - planetWorldPosition(anchor).z)
+        let targetDiameter = planetWorldRadius(anchor) * 2 * focal / gap
+        animateUniverseCamera(to: CGPoint(x: world.x, y: world.y),
+                              zoom: zoom(forPlanetDiameter: targetDiameter, planet: anchor, size: size), duration: 0.65)
     }
 
     private func cameraKeepingPlanet(_ planet: CosmicHierarchy.Planet,
@@ -1995,6 +2378,12 @@ private struct SemanticUniverse: View {
     }
 
     private func changeZoom(_ factor: CGFloat) {
+        pauseOrbit()
+        if cameraDollyPlanet == nil, factor > 1,
+           let galaxy = collapsedGalaxyHits(at: CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2), size: viewportSize).first,
+           let anchor = galaxyDollyPlanet(galaxy) {
+            beginDollyTowardPlanet(anchor)
+        }
         var mapPlanet = cameraDollyPlanet
         if mapPlanet == nil, viewportSize.width > 0,
            let planetID = detailedPlanetID(for: viewportSize),
@@ -2041,6 +2430,17 @@ private struct SemanticUniverse: View {
     }
 
     private func handleTap(at location: CGPoint, size: CGSize) {
+        let galaxyHits = collapsedGalaxyHits(at: location, size: size)
+        if activePlanetID == nil, planetHit(at: location, size: size) == nil, !galaxyHits.isEmpty {
+            pauseOrbit()
+            if galaxyHits.count > 1 {
+                overlappingGalaxyIDs = galaxyHits.map(\.id)
+                showingGalaxyPicker = true
+            } else if let galaxy = galaxyHits.first {
+                approachGalaxy(galaxy, size: size)
+            }
+            return
+        }
         if let tappedPlanet = planetHit(at: location, size: size),
            tappedPlanet.id != activePlanetID {
             centerCamera(on: tappedPlanet)
@@ -2058,7 +2458,7 @@ private struct SemanticUniverse: View {
                 focusedPointID = layout.nodes[index].point.id
                 onSelect(layout.nodes[index].point)
             }
-        } else if let planet = hierarchy.planets.min(by: {
+        } else if let planet = hierarchy.planets.filter({ planetSystemOpacity($0, size: size) > 0.5 }).min(by: {
             distance(planetScreenPosition($0, size: size), location)
                 < distance(planetScreenPosition($1, size: size), location)
         }).flatMap({ planet in
@@ -2071,17 +2471,19 @@ private struct SemanticUniverse: View {
                 activatePlanetSurface(planet)
             }
             centerCamera(on: planet)
-        } else if zoom < 1.6, let galaxy = hierarchy.galaxies.min(by: {
+        } else if let galaxy = hierarchy.galaxies.filter({ systemDetailOpacity($0, size: size) < 1 }).min(by: {
             distance(perspectiveProject(galaxyWorldPosition($0), size: size).point, location)
                 < distance(perspectiveProject(galaxyWorldPosition($1), size: size).point, location)
-        }).flatMap({ distance(perspectiveProject(galaxyWorldPosition($0), size: size).point, location) < 80 ? $0 : nil }) {
-            let world = galaxyWorldPosition(galaxy)
-            animateUniverseCamera(to: CGPoint(x: world.x, y: world.y), zoom: 2.2, duration: 0.45)
+        }).flatMap({ galaxy in
+            let path = projectedOrbit(galaxy: galaxy, orbit: max(0, galaxy.planetIDs.count - 1), size: size)
+            return path.contains(location) || path.boundingRect.insetBy(dx: -12, dy: -12).contains(location) ? galaxy : nil
+        }) {
+            approachGalaxy(galaxy, size: size)
         }
     }
 
     private func planetHit(at location: CGPoint, size: CGSize) -> CosmicHierarchy.Planet? {
-        hierarchy.planets.min(by: {
+        hierarchy.planets.filter { planetSystemOpacity($0, size: size) > 0.5 }.min(by: {
             distance(planetScreenPosition($0, size: size), location)
                 < distance(planetScreenPosition($1, size: size), location)
         }).flatMap { planet in
@@ -2104,8 +2506,10 @@ private struct SemanticUniverse: View {
     private func focus(on request: PointMapFocusRequest?) {
         guard let request,
               let index = layout.nodes.firstIndex(where: { $0.point.id == request.pointID }) else { return }
+        pauseOrbit()
         let currentCameraDistance = cameraDistance
         focusedPointID = request.pointID
+        surfaceFocusRequest = request
         let planetID = hierarchy.nodeToPlanet[index]
         universeZoomBeforeEntry = max(1.8, min(3.2, zoom))
         surfaceEntryCameraDistance = currentCameraDistance
@@ -2115,7 +2519,7 @@ private struct SemanticUniverse: View {
             let world = planetWorldPosition(planet)
             animateUniverseCamera(
                 to: CGPoint(x: world.x, y: world.y),
-                zoom: max(zoom, 24),
+                zoom: self.zoom(forPlanetDiameter: fittedPlanetDiameter(for: viewportSize) * 2.5, planet: planet, size: viewportSize),
                 duration: 0.55
             ) {
                 planetFocusProgress = 1
@@ -2130,7 +2534,7 @@ private struct SemanticUniverse: View {
     }
 }
 
-private struct CosmicHierarchy {
+struct CosmicHierarchy {
     struct Galaxy {
         let id: Int
         let name: String
@@ -2151,17 +2555,24 @@ private struct CosmicHierarchy {
 
     static func make(layout: StarLayout, geographies: [PointID: PointGeographyRecord] = [:]) -> Self {
         guard !layout.nodes.isEmpty else { return Self(galaxies: [], planets: [], nodeToPlanet: [:]) }
-        _ = geographies // Geography still drives the map inside each planet.
+        if geographies.values.contains(where: { ClassificationMapProjection.region($0.communityID) != nil }) {
+            return classified(layout: layout, geographies: geographies)
+        }
 
         // Universe bodies are deliberately much coarser than administrative
         // regions. Aim for tens of Points per planet and cap the total so that
         // sparse/outlier Points can never become one-Point planets.
         let desiredPlanetCount = min(10, max(1, Int((sqrt(Double(layout.nodes.count) / 8)).rounded())))
-        let planetGroups = spatialGroups(
-            indices: Array(layout.nodes.indices),
-            count: desiredPlanetCount,
-            nodes: layout.nodes
-        )
+        // A persisted semantic community is an indivisible unit: a camera/layout
+        // cluster must not scatter one province over several planets.
+        let indexByID = Dictionary(uniqueKeysWithValues: layout.nodes.indices.map { (layout.nodes[$0].point.id, $0) })
+        let units = SemanticSubtopicEngine.communityUnits(memberIDs: layout.nodes.map { $0.point.id }, geographies: Array(geographies.values))
+            .map { group in group.compactMap { indexByID[$0] }.sorted() }
+        let unitNodes = units.map { group in
+            StarLayout.Node(point: layout.nodes[group[0]].point, position: center(of: group, nodes: layout.nodes), isEmbedded: true)
+        }
+        let planetGroups = spatialGroups(indices: Array(units.indices), count: min(desiredPlanetCount, units.count), nodes: unitNodes)
+            .map { group in group.flatMap { units[$0] }.sorted() }
         var planets: [Planet] = []
         var nodeToPlanet: [Int: Int] = [:]
         for (id, group) in planetGroups.enumerated() {
@@ -2188,10 +2599,42 @@ private struct CosmicHierarchy {
             let nodes = planetIDs.flatMap { planets[$0].nodeIndices }.sorted()
             galaxies.append(Galaxy(id: galaxyID,
                                    name: name(for: nodes, nodes: layout.nodes, suffix: "星系"),
-                                   nodeIndices: nodes, planetIDs: planetIDs,
+                                   nodeIndices: nodes, planetIDs: UniverseInteractionPolicy.orderedPlanetIDs(
+                                    planetIDs.map { (id: $0, count: planets[$0].nodeIndices.count) }),
                                    center: center(of: nodes, nodes: layout.nodes)))
         }
         return Self(galaxies: galaxies, planets: planets, nodeToPlanet: nodeToPlanet)
+    }
+
+    private static func classified(layout: StarLayout, geographies: [PointID: PointGeographyRecord]) -> Self {
+        let groups = Dictionary(grouping: layout.nodes.indices) { index in
+            ClassificationMapProjection.region(geographies[layout.nodes[index].point.id]?.communityID)?.planetID ?? "unassigned"
+        }
+        var planets: [Planet] = [], galaxies: [Galaxy] = [], nodeToPlanet: [Int: Int] = [:]
+        var roots: [String: [Int]] = [:], rootNames: [String: String] = [:]
+        for key in groups.keys.sorted() {
+            let indices = groups[key]!.sorted()
+            let region = ClassificationMapProjection.region(geographies[layout.nodes[indices[0]].point.id]?.communityID)
+            let root = region?.rootID ?? "unassigned"
+            let id = planets.count
+            roots[root, default: []].append(id); rootNames[root] = region?.rootName ?? "待整理"
+            indices.forEach { nodeToPlanet[$0] = id }
+            planets.append(.init(id: id, galaxyID: 0, name: (region?.planetName ?? "待整理") + "星球",
+                                 nodeIndices: indices, center: center(of: indices, nodes: layout.nodes)))
+        }
+        for root in roots.keys.sorted() {
+            let id = galaxies.count, planetIDs = roots[root]!
+            for planetID in planetIDs {
+                let old = planets[planetID]
+                planets[planetID] = .init(id: old.id, galaxyID: id, name: old.name, nodeIndices: old.nodeIndices, center: old.center)
+            }
+            let indices = planetIDs.flatMap { planets[$0].nodeIndices }.sorted()
+            galaxies.append(.init(id: id, name: (rootNames[root] ?? "待整理") + "星系", nodeIndices: indices,
+                                 planetIDs: UniverseInteractionPolicy.orderedPlanetIDs(
+                                    planetIDs.map { (id: $0, count: planets[$0].nodeIndices.count) }),
+                                 center: center(of: indices, nodes: layout.nodes)))
+        }
+        return .init(galaxies: galaxies, planets: planets, nodeToPlanet: nodeToPlanet)
     }
 
     /// Small deterministic k-means pass over the existing semantic layout.

@@ -54,6 +54,47 @@ public struct PointImage: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct SpeakerProfile: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let name: String
+}
+
+public enum RecordingVoiceState: String, CaseIterable, Codable, Sendable {
+    case calm, animated, subdued, tense, unknown
+    public var title: String {
+        switch self {
+        case .calm: "平静"
+        case .animated: "激动"
+        case .subdued: "低落"
+        case .tense: "紧张"
+        case .unknown: "未标注"
+        }
+    }
+}
+
+public struct RecordingLabels: Equatable, Sendable {
+    public let pointID: PointID
+    public let speakerID: UUID?
+    public let voiceState: RecordingVoiceState
+    public let source: String
+    public let confidence: Double?
+}
+
+public struct RecordingRecognition: Equatable, Sendable {
+    public let pointID: PointID
+    public let speakerID: UUID?
+    public let speakerSimilarity: Double?
+    public let voiceState: RecordingVoiceState
+    public let emotionScore: Double?
+    public let rawEmotion: String?
+    public let modelID: String
+}
+
+public struct SpeakerReference: Sendable {
+    public let speakerID: UUID
+    public let vector: [Float]
+}
+
 public struct RecordingResult: Sendable {
     public let temporaryURL: URL
     public let durationMilliseconds: Int
@@ -215,6 +256,61 @@ public struct RelatedPoint: Identifiable, Equatable, Sendable {
     }
 }
 
+public enum PointRelationType: String, CaseIterable, Codable, Sendable {
+    case similar
+    case extend
+    case support
+    case contradict
+    case analogy
+}
+
+public struct ConfirmedPointRelation: Equatable, Sendable {
+    public let sourcePointID: PointID
+    public let targetPointID: PointID
+    public let type: PointRelationType
+    public let createdAt: Date
+
+    public init(sourcePointID: PointID, targetPointID: PointID, type: PointRelationType, createdAt: Date) {
+        self.sourcePointID = sourcePointID
+        self.targetPointID = targetPointID
+        self.type = type
+        self.createdAt = createdAt
+    }
+}
+
+public enum RediscoveryReason: String, Codable, Sendable {
+    case olderThought
+    case relatedToRecent
+    case unfinished
+}
+
+public enum RediscoveryFeedback: String, Codable, Sendable {
+    case shown
+    case opened
+    case useful
+    case notRelated
+    case later
+    case resultSaved
+}
+
+public struct RediscoveryItem: Identifiable, Equatable, Sendable {
+    public var id: PointID { point.id }
+    public let point: PointSummary
+    public let content: String
+    public let reason: RediscoveryReason
+    public let relatedPoint: PointSummary?
+    public let relatedScore: Float?
+
+    public init(point: PointSummary, content: String, reason: RediscoveryReason,
+                relatedPoint: PointSummary? = nil, relatedScore: Float? = nil) {
+        self.point = point
+        self.content = content
+        self.reason = reason
+        self.relatedPoint = relatedPoint
+        self.relatedScore = relatedScore
+    }
+}
+
 public struct PointDetail: Equatable, Sendable {
     public let id: PointID
     public let title: String
@@ -229,6 +325,7 @@ public struct PointDetail: Equatable, Sendable {
     public let localeIdentifier: String
     public let transcriptModelID: String?
     public let titleModelID: String?
+    public var sourceModelID: String?
 
     public var effectiveTranscript: String? {
         let preferred = userText?.trimmingCharacters(in: .whitespacesAndNewlines)

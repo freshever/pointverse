@@ -5,6 +5,7 @@ import Foundation
 /// A process-wide permit that prevents two local ML runtimes from executing at
 /// the same time. Every llama, whisper and diffusion entry point shares it.
 public actor ModelExecutionGate {
+    public static let shared = ModelExecutionGate()
     private var occupied = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -35,10 +36,11 @@ public struct ModelManifest: Codable, Equatable, Sendable {
     public let mirrorDownloadURLs: [URL]
     public let displayByteCount: Int64
     public let sha256: String
+    public let gitBlobSHA1: String?
     public let license: String
     public let minimumFreeDiskBytes: Int64
 
-    public init(id: String, revision: String, filename: String, downloadURL: URL, mirrorDownloadURLs: [URL] = [], displayByteCount: Int64, sha256: String, license: String, minimumFreeDiskBytes: Int64) {
+    public init(id: String, revision: String, filename: String, downloadURL: URL, mirrorDownloadURLs: [URL] = [], displayByteCount: Int64, sha256: String, license: String, minimumFreeDiskBytes: Int64, gitBlobSHA1: String? = nil) {
         self.id = id
         self.revision = revision
         self.filename = filename
@@ -46,6 +48,7 @@ public struct ModelManifest: Codable, Equatable, Sendable {
         self.mirrorDownloadURLs = mirrorDownloadURLs
         self.displayByteCount = displayByteCount
         self.sha256 = sha256
+        self.gitBlobSHA1 = gitBlobSHA1
         self.license = license
         self.minimumFreeDiskBytes = minimumFreeDiskBytes
     }
@@ -326,11 +329,7 @@ public actor ModelRegistry {
     public func installPartial(_ manifest: ModelManifest) throws -> URL {
         let partial = partialURL(for: manifest)
         guard FileManager.default.fileExists(atPath: partial.path) else { throw PointVerseError.modelNotInstalled }
-        let digest = try sha256(of: partial)
-        guard digest == manifest.sha256.lowercased() else {
-            PointVerseLog.storage.error("Model checksum mismatch")
-            throw PointVerseError.modelChecksumMismatch
-        }
+        try verifyFile(at: partial, manifest: manifest)
 
         let destination = installedURL(for: manifest)
         if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
@@ -341,6 +340,20 @@ public actor ModelRegistry {
         try installed.setResourceValues(values)
         PointVerseLog.storage.info("Model verified and installed")
         return destination
+    }
+
+    public func verifyFile(at url: URL, manifest: ModelManifest) throws {
+        let matches: Bool
+        if let expected = manifest.gitBlobSHA1 {
+            matches = try gitBlobSHA1(of: url) == expected.lowercased()
+        } else {
+            matches = try sha256(of: url) == manifest.sha256.lowercased()
+        }
+        guard matches else {
+            PointVerseLog.storage.error("Model checksum mismatch")
+            throw PointVerseError.modelChecksumMismatch
+        }
+
     }
 
     public func remove(_ manifest: ModelManifest) throws {
@@ -356,6 +369,17 @@ public actor ModelRegistry {
             }
         }
         PointVerseLog.storage.info("Model removed")
+    }
+
+    private func gitBlobSHA1(of url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let bytes = try handle.seekToEnd()
+        try handle.seek(toOffset: 0)
+        var hasher = Insecure.SHA1()
+        hasher.update(data: Data("blob \(bytes)\0".utf8))
+        while let chunk = try handle.read(upToCount: 512 * 1024), !chunk.isEmpty { hasher.update(data: chunk) }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private func sha256(of url: URL) throws -> String {

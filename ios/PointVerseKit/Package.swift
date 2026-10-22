@@ -13,7 +13,8 @@ let package = Package(
     targets: [
         .target(
             name: "PointVerseKit",
-            dependencies: [.product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: [.product(name: "GRDB", package: "GRDB.swift")],
+            resources: [.process("Resources")]
         ),
         .testTarget(name: "PointVerseKitTests", dependencies: ["PointVerseKit"])
     ]

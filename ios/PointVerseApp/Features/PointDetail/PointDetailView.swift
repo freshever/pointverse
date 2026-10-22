@@ -14,6 +14,18 @@ struct PointDetailView: View {
     @StateObject private var player = AudioPlayerViewModel()
     @StateObject private var notePlayer = NotePreviewPlayer()
     @State private var detail: PointDetail?
+    @State private var speakers: [SpeakerProfile] = []
+    @State private var recordingSpeakerID: UUID?
+    @State private var recordingVoiceState = RecordingVoiceState.unknown
+    @State private var newSpeakerName = ""
+    @State private var addingSpeaker = false
+    @State private var deletingSpeaker: SpeakerProfile?
+    @State private var recordingLabelError: String?
+    @State private var savingLabels = false
+    @State private var recognition: RecordingRecognition?
+    @State private var recognizingRecording = false
+    @State private var recognitionError: String?
+    @AppStorage("automaticRecordingRecognition") private var automaticRecordingRecognition = false
     @State private var images: [LoadedPointImage] = []
     @State private var messages: [ConversationMessage] = []
     @State private var transcriptionCandidates: [TranscriptionCandidate] = []
@@ -22,7 +34,15 @@ struct PointDetailView: View {
     @State private var isUnderstandingAudio = false
     @State private var audioUnderstandingFailed = false
     @State private var relatedPoints: [RelatedPoint] = []
+    @State private var confirmedRelations: [PointID: PointRelationType] = [:]
     @State private var relatedLoaded = false
+    @State private var selectedEarlierPoints: [PointID: RelatedPoint] = [:]
+    @State private var progressDraft: ConversationMessage?
+    @State private var progressText = ""
+    @State private var progressError: String?
+    @State private var replySources: [UUID: [PointID]] = [:]
+    @State private var savingResultIDs: Set<UUID> = []
+    @State private var savedResultNotice = false
     @State private var editedTranscript = ""
     @State private var isEditing = false
     @State private var isSaving = false
@@ -47,13 +67,32 @@ struct PointDetailView: View {
     @AppStorage("conversationRole") private var conversationRoleRaw = ConversationRole.concise.rawValue
     @FocusState private var messageFieldFocused: Bool
     let point: PointSummary
+    let memoryContext: [PointMapEntry]
+
+    init(point: PointSummary, memoryContext: [PointMapEntry] = []) {
+        self.point = point
+        self.memoryContext = memoryContext
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if detail?.modality != "text" { audioCard }
+                if detail?.audioRelativePath != nil { recordingLabelsCard }
                 if detail?.modality != "text" { soundUnderstandingCard }
                 transcriptCard
+                if !memoryContext.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("带着这段回忆继续", systemImage: "rectangle.stack").font(.headline)
+                        ForEach(memoryContext.prefix(3)) { entry in
+                            Text(entry.point.title).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        Button("接着想") { sendMessage() }
+                            .buttonStyle(.borderedProminent).disabled(isReplying)
+                    }.padding().frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+                }
+                relatedPointsCard
                 ForEach(timelineItems) { item in
                     switch item {
                     case .photo(let photo): photoMessage(photo)
@@ -74,18 +113,55 @@ struct PointDetailView: View {
                 } else if let photoAnalysisKey {
                     AppText(photoAnalysisKey).foregroundStyle(.secondary)
                 }
-                relatedPointsCard
             }
             .padding()
         }
         .background(Color(uiColor: .systemGroupedBackground))
+        .alert("新建说话人", isPresented: $addingSpeaker) {
+            TextField("姓名或昵称", text: $newSpeakerName)
+            Button("取消", role: .cancel) { }
+            Button("保存") {
+                Task {
+                    do {
+                        recordingSpeakerID = try await container.database.createSpeakerProfile(name: newSpeakerName)
+                        speakers = try await container.database.speakerProfiles()
+                        await persistRecordingLabels()
+                    } catch { recordingLabelError = "保存失败，请重试。" }
+                }
+            }.disabled(newSpeakerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .alert("录音分类保存失败", isPresented: Binding(get: { recordingLabelError != nil }, set: { if !$0 { recordingLabelError = nil } })) {
+            Button("好") { recordingLabelError = nil }
+        } message: { Text(recordingLabelError ?? "") }
+        .confirmationDialog("删除说话人档案？", isPresented: Binding(get: { deletingSpeaker != nil }, set: { if !$0 { deletingSpeaker = nil } }), titleVisibility: .visible) {
+            Button("删除档案", role: .destructive) {
+                guard let speaker = deletingSpeaker else { return }
+                Task {
+                    do {
+                        try await container.database.deleteSpeakerProfile(id: speaker.id)
+                        speakers = try await container.database.speakerProfiles()
+                        if recordingSpeakerID == speaker.id { recordingSpeakerID = nil }
+                    } catch { recordingLabelError = "删除失败，请重试。" }
+                    deletingSpeaker = nil
+                }
+            }
+        } message: { Text("所有录音会解除与此人的关联，原始录音和想法会保留。") }
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture { messageFieldFocused = false }
         .safeAreaInset(edge: .bottom) { conversationComposer }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            for entry in memoryContext.prefix(3) {
+                selectedEarlierPoints[entry.id] = RelatedPoint(point: entry.point, content: entry.content, score: 0)
+            }
+            if !memoryContext.isEmpty {
+                messageText = "回看这段思考，我们已经考虑过什么？现在可以推进哪一步？"
+            }
             await reload()
+            if automaticRecordingRecognition, recognition == nil, detail?.audioRelativePath != nil {
+                await recognizeRecording()
+            }
             analyzeMissingPhotosIfNeeded()
         }
         .onChange(of: selectedPhotos) { _, items in prepareCrop(items.first) }
@@ -124,6 +200,34 @@ struct PointDetailView: View {
                 Task { await reload() }
             }
             .environmentObject(container)
+        }
+        .sheet(item: $progressDraft) { message in
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("整理这次的新进展，保存后可以继续追溯到原来的想法。")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    TextEditor(text: $progressText)
+                    if let progressError { Text(progressError).foregroundStyle(.red) }
+                }.padding()
+                .navigationTitle("记下这次进展")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { progressDraft = nil }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") { saveAssistantResult(message) }
+                            .disabled(progressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || savingResultIDs.contains(message.id))
+                    }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: EmbeddingService.didChangeNotification)) { _ in
+            Task { await reload() }
+        }
+        .alert("已保存为新想法", isPresented: $savedResultNotice) {
+            Button("好", role: .cancel) { }
+        } message: {
+            Text("新想法已保留当前 Point 作为来源，并建立「延伸」关系。")
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PointVersePointImagesDidChange"))) { note in
             guard note.object as? String == point.id.rawValue.uuidString else { return }
@@ -284,6 +388,114 @@ struct PointDetailView: View {
         .contentProvenance(transcriptProvenance)
     }
 
+    private var recordingLabelsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("录音分类", systemImage: "person.wave.2").font(.headline)
+            HStack {
+                Text("说话人")
+                Spacer()
+                Menu {
+                    Button("未标注") { recordingSpeakerID = nil; Task { await persistRecordingLabels() } }
+                    ForEach(speakers) { speaker in
+                        Button(speaker.name) { recordingSpeakerID = speaker.id; Task { await persistRecordingLabels() } }
+                    }
+                    Button("新建说话人…") { newSpeakerName = ""; addingSpeaker = true }
+                    if let speaker = speakers.first(where: { $0.id == recordingSpeakerID }) {
+                        Button("删除此说话人档案…", role: .destructive) { deletingSpeaker = speaker }
+                    }
+                } label: { Text(speakers.first(where: { $0.id == recordingSpeakerID })?.name ?? "未标注") }
+            }
+            HStack {
+                Text("声音状态")
+                Spacer()
+                Menu {
+                    ForEach(RecordingVoiceState.allCases, id: \.rawValue) { state in
+                        Button(state.title) { recordingVoiceState = state; Task { await persistRecordingLabels() } }
+                    }
+                } label: { Text(recordingVoiceState.title) }
+            }
+            Button(recognizingRecording ? "正在自动识别…" : "自动识别说话人与声音状态") {
+                Task { await recognizeRecording() }
+            }.buttonStyle(.bordered).disabled(recognizingRecording)
+            if let recognition {
+                Text("候选说话人：" + (speakers.first(where: { $0.id == recognition.speakerID })?.name ?? "未匹配，请手动选择说话人建立样本"))
+                    .font(.subheadline)
+                if let similarity = recognition.speakerSimilarity {
+                    Text("声纹相似度 \(similarity.formatted(.number.precision(.fractionLength(3))))（不是概率）")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let score = recognition.emotionScore {
+                    Text("声音状态候选：\(recognition.voiceState.title) · 模型分数 \(score.formatted(.number.precision(.fractionLength(3))))")
+                        .font(.subheadline)
+                    Text("原始标签：\(recognition.rawEmotion ?? "未知")").font(.caption).foregroundStyle(.secondary)
+                }
+                Button("采用候选标签") {
+                    if let speakerID = recognition.speakerID { recordingSpeakerID = speakerID }
+                    if recognition.voiceState != .unknown { recordingVoiceState = recognition.voiceState }
+                    Task { await persistRecordingLabels() }
+                }.disabled(recognition.speakerID == nil && recognition.voiceState == .unknown)
+                Text("实际模型：\(recognition.modelID)").font(.caption2).foregroundStyle(.secondary)
+            }
+            if let recognitionError { Text(recognitionError).font(.caption).foregroundStyle(.red) }
+            Text("上方标签由你确认，自动结果不会覆盖。手动选择说话人后，本次声纹可供其他录音比较。")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("声音状态是对这次录音的描述，不代表说话人的真实心理状态。")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("原型仅分析开头片段：声纹约5秒、声音状态最多10秒。说话人相似度阈值还需真实录音校准。")
+                .font(.caption).foregroundStyle(.secondary)
+        }.disabled(savingLabels)
+            .padding().frame(maxWidth: .infinity, alignment: .leading)
+            .background(.background, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func persistRecordingLabels() async {
+        savingLabels = true
+        defer { savingLabels = false }
+        do {
+            try await container.database.saveManualRecordingLabels(pointID: point.id, speakerID: recordingSpeakerID, voiceState: recordingVoiceState)
+        } catch { recordingLabelError = "保存失败，请重试。" }
+    }
+
+    private func recognizeRecording() async {
+        guard !recognizingRecording, let path = detail?.audioRelativePath else { return }
+        recognizingRecording = true; recognitionError = nil
+        defer { recognizingRecording = false }
+        do {
+            container.recordingModelManager.refresh()
+            guard detail?.effectiveTranscript?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                recognitionError = "请先完成语音转写，确认这是一段单人讲话；音乐和环境声暂不分类。"
+                return
+            }
+            let url = try await container.blobStore.url(for: path)
+            let result = try await container.recordingModelManager.recognize(audioURL: url)
+            let speakerModelID = "cam++:" + RecordingModelKind.speaker.revision
+            var candidate: UUID?
+            var similarity: Double?
+            if let vector = result.vector {
+                let references = try await container.database.speakerReferences(modelID: speakerModelID, excluding: point.id)
+                var scores: [UUID: Double] = [:]
+                for reference in references where reference.vector.count == vector.count {
+                    let dot = zip(vector, reference.vector).reduce(0.0) { $0 + Double($1.0 * $1.1) }
+                    let norm = sqrt(reference.vector.reduce(0.0) { $0 + Double($1 * $1) })
+                    if norm > 0 { scores[reference.speakerID] = max(scores[reference.speakerID] ?? -1, dot / norm) }
+                }
+                let ranked = scores.sorted { $0.value > $1.value }
+                if let best = ranked.first {
+                    similarity = best.value
+                    // Conservative initial thresholds; expose as similarity,
+                    // never as an identity probability. Require a clear margin.
+                    if best.value >= 0.75 && (ranked.count == 1 || best.value - ranked[1].value >= 0.08) { candidate = best.key }
+                }
+            }
+            try await container.database.saveRecordingRecognition(pointID: point.id, speakerID: candidate,
+                speakerSimilarity: similarity, voiceState: result.state, emotionScore: result.score,
+                rawEmotion: result.emotion, modelID: result.models, speakerModelID: speakerModelID, vector: result.vector)
+            recognition = try await container.database.recordingRecognition(pointID: point.id)
+        } catch {
+            recognitionError = "识别未完成：请先在模型页下载模型，使用至少6秒的清晰单人录音。\(error.localizedDescription)"
+        }
+    }
+
     private var soundUnderstandingCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -384,15 +596,33 @@ struct PointDetailView: View {
     }
 
     private func conversationMessage(_ message: ConversationMessage) -> some View {
-        HStack {
-            if message.role == "user" { Spacer(minLength: 42) }
-            Text(verbatim: message.text)
-                .textSelection(.enabled)
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(message.role == "user" ? Color.indigo : Color(uiColor: .secondarySystemGroupedBackground),
-                            in: RoundedRectangle(cornerRadius: 18))
-                .foregroundStyle(message.role == "user" ? .white : .primary)
-            if message.role != "user" { Spacer(minLength: 42) }
+        VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 6) {
+            HStack {
+                if message.role == "user" { Spacer(minLength: 42) }
+                Text(verbatim: message.text)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(message.role == "user" ? Color.indigo : Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 18))
+                    .foregroundStyle(message.role == "user" ? .white : .primary)
+                if message.role != "user" { Spacer(minLength: 42) }
+            }
+            if message.role == "assistant" {
+                Button {
+                    progressText = message.text
+                    progressError = nil
+                    progressDraft = message
+                } label: {
+                    if savingResultIDs.contains(message.id) {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("记下这次进展", systemImage: "square.and.pencil")
+                    }
+                }
+                .font(.caption.bold())
+                .buttonStyle(.bordered)
+                .disabled(savingResultIDs.contains(message.id))
+            }
         }
         .contentProvenance(message.role == "user"
                            ? "来源：用户输入\n生成模型：无"
@@ -449,26 +679,30 @@ struct PointDetailView: View {
     private var relatedPointsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("候选关联", systemImage: "point.3.connected.trianglepath.dotted").font(.headline)
+                Label("你以前想过这些", systemImage: "clock.arrow.circlepath").font(.headline)
                 Spacer()
-                Text("E5 多语言").font(.caption2.bold()).foregroundStyle(.mint)
+                Text("思考回忆").font(.caption2.bold()).foregroundStyle(.mint)
             }
             if !relatedLoaded {
                 HStack { ProgressView(); Text("正在分析关联") }.font(.subheadline).foregroundStyle(.secondary)
             } else if relatedPoints.isEmpty {
-                Text("暂时没有达到召回阈值的候选内容")
+                Text("暂时没有找到足够相关的旧想法。")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 ForEach(relatedPoints) { related in
-                    NavigationLink {
-                        PointDetailView(point: related.point)
-                    } label: {
+                    VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .top, spacing: 12) {
                             Circle().fill(relationColor(related.score)).frame(width: 9, height: 9).padding(.top, 6)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(related.point.title.isEmpty ? "未命名想法" : related.point.title)
-                                    .font(.subheadline.bold()).foregroundStyle(.primary).lineLimit(1)
-                                Text(related.content).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            NavigationLink {
+                                PointDetailView(point: related.point)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(related.point.title.isEmpty ? "未命名想法" : related.point.title)
+                                        .font(.subheadline.bold()).foregroundStyle(.primary).lineLimit(1)
+                                    Text(related.content).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text(related.point.createdAt, format: .dateTime.year().month().day())
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
                             }
                             Spacer(minLength: 8)
                             Text(related.score, format: .number.precision(.fractionLength(3)))
@@ -477,9 +711,50 @@ struct PointDetailView: View {
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(relationColor(related.score).opacity(0.12), in: Capsule())
                         }
+                        HStack {
+                            Button {
+                                if selectedEarlierPoints[related.id] == nil && selectedEarlierPoints.count < 3 {
+                                    selectedEarlierPoints[related.id] = related
+                                } else {
+                                    selectedEarlierPoints[related.id] = nil
+                                }
+                            } label: {
+                                Label(selectedEarlierPoints[related.id] == nil ? "一起思考" : "已选中",
+                                      systemImage: selectedEarlierPoints[related.id] == nil ? "plus.circle" : "checkmark.circle.fill")
+                            }.buttonStyle(.bordered).controlSize(.small)
+                            if let type = confirmedRelations[related.id] {
+                                Label("已确认：\(relationName(type))", systemImage: "checkmark.seal.fill")
+                                    .font(.caption.bold()).foregroundStyle(.green)
+                            } else {
+                                Text("仅为候选，请由你确认")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Menu {
+                                ForEach(PointRelationType.allCases, id: \.rawValue) { type in
+                                    Button(relationName(type)) { setRelation(related, type: type) }
+                                }
+                                if confirmedRelations[related.id] != nil {
+                                    Divider()
+                                    Button("移除已确认关系", role: .destructive) { removeRelation(related) }
+                                }
+                            } label: {
+                                Label(confirmedRelations[related.id] == nil ? "确认关系" : "修改", systemImage: "link.badge.plus")
+                                    .font(.caption.bold())
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
                     if related.id != relatedPoints.last?.id { Divider() }
+                }
+                Text("这些原文在语义上接近当前内容，是否有帮助由你判断。")
+                    .font(.caption).foregroundStyle(.secondary)
+                if !selectedEarlierPoints.isEmpty {
+                    Button {
+                        messageText = "结合这些以前的想法，我们已经考虑过什么？现在可以往前推进哪一步？"
+                        sendMessage()
+                    } label: {
+                        Label("带上 \(selectedEarlierPoints.count) 条回忆接着想", systemImage: "sparkles")
+                    }.buttonStyle(.borderedProminent).disabled(isReplying)
                 }
             }
         }
@@ -507,7 +782,10 @@ struct PointDetailView: View {
 
     private var transcriptProvenance: String {
         guard let detail else { return "来源信息加载中" }
-        if detail.modality == "text" { return "来源：用户输入\n生成模型：无" }
+        if detail.modality == "text" {
+            if let model = detail.sourceModelID { return "来源：模型生成的文本\n生成模型：\(model)" }
+            return "来源：用户输入\n生成模型：无"
+        }
         if let userText = detail.userText, !userText.isEmpty {
             return "来源：用户修正的语音转写\n原始转写模型：\(transcriptionEngineName(detail.transcriptModelID ?? "未知"))"
         }
@@ -556,10 +834,16 @@ struct PointDetailView: View {
         relatedLoaded = false
         async let related = container.database.relatedPoints(
             to: point.id, modelID: EmbeddingModelIdentity.multilingualE5Small,
-            minimumScore: 0.38, limit: 5
+            minimumScore: 0.55, limit: 3
         )
         guard let loaded = try? await container.database.pointDetail(id: point.id) else { return }
         detail = loaded
+        speakers = (try? await container.database.speakerProfiles()) ?? []
+        recognition = try? await container.database.recordingRecognition(pointID: point.id)
+        if let labels = (try? await container.database.recordingLabels())?.first(where: { $0.pointID == point.id }) {
+            recordingSpeakerID = labels.speakerID
+            recordingVoiceState = labels.voiceState
+        }
         messages = ((try? await container.database.conversationMessages(pointID: point.id)) ?? []).filter {
             !($0.role == "assistant" && ["user", "assistant"].contains($0.text.lowercased()))
         }
@@ -582,7 +866,14 @@ struct PointDetailView: View {
             for await item in group { if let item { result.append(item) } }
             return result.sorted { $0.asset.createdAt < $1.asset.createdAt }
         }
-        relatedPoints = (try? await related) ?? []
+        relatedPoints = ((try? await related) ?? []).filter { $0.point.createdAt < point.createdAt }
+        var loadedRelations: [PointID: PointRelationType] = [:]
+        for related in relatedPoints {
+            if let relation = try? await container.database.confirmedRelation(source: point.id, target: related.id) {
+                loadedRelations[related.id] = relation.type
+            }
+        }
+        confirmedRelations = loadedRelations
         visionAvailable = await container.visionGenerator.isAvailable()
         visionAvailabilityChecked = true
         relatedLoaded = true
@@ -614,21 +905,70 @@ struct PointDetailView: View {
         }
         conversationFailed = false
         conversationModelUnavailable = false
+        let selectedSources = Array(selectedEarlierPoints.keys).sorted { $0.rawValue.uuidString < $1.rawValue.uuidString }
         Task {
             let result = await container.conversationService.send(
                 pointID: point.id,
                 text: text,
                 languageIdentifier: appLanguage == "system" ? Locale.current.identifier : appLanguage,
-                role: ConversationRole(rawValue: conversationRoleRaw) ?? .concise
+                role: ConversationRole(rawValue: conversationRoleRaw) ?? .concise,
+                selectedPointIDs: selectedSources
             )
             _ = await container.transcriptionService.deriveTitle(pointID: point.id, languageIdentifier: appLanguage)
             container.refreshEmbeddings()
             conversationFailed = result != .succeeded
             conversationModelUnavailable = result == .modelUnavailable
             await reload()
+            if result == .succeeded, let reply = messages.last(where: { $0.role == "assistant" }) {
+                replySources[reply.id] = selectedSources
+            }
             withAnimation(.easeInOut(duration: 0.22)) {
                 isReplying = false
             }
+        }
+    }
+
+    private func saveAssistantResult(_ message: ConversationMessage) {
+        guard !savingResultIDs.contains(message.id) else { return }
+        savingResultIDs.insert(message.id)
+        Task {
+            if (try? await container.database.commitDerivedTextPoint(
+                text: progressText, sourcePointIDs: [point.id] + (replySources[message.id] ?? []), modelID: message.modelID
+            )) != nil {
+                try? await container.database.recordRediscoveryFeedback(
+                    pointID: point.id, feedback: .resultSaved, context: "conversation"
+                )
+                container.refreshEmbeddings()
+                progressDraft = nil
+                savedResultNotice = true
+            } else {
+                progressError = "保存失败，请重试。"
+            }
+            savingResultIDs.remove(message.id)
+        }
+    }
+
+    private func setRelation(_ related: RelatedPoint, type: PointRelationType) {
+        confirmedRelations[related.id] = type
+        Task {
+            try? await container.database.confirmRelation(source: point.id, target: related.id, type: type)
+            try? await container.database.recordRediscoveryFeedback(pointID: point.id, feedback: .useful,
+                                                                     context: "relation:\(type.rawValue)")
+        }
+    }
+
+    private func removeRelation(_ related: RelatedPoint) {
+        confirmedRelations[related.id] = nil
+        Task { try? await container.database.removeConfirmedRelation(source: point.id, target: related.id) }
+    }
+
+    private func relationName(_ type: PointRelationType) -> String {
+        switch type {
+        case .similar: return "相似"
+        case .extend: return "延伸"
+        case .support: return "支持"
+        case .contradict: return "反驳"
+        case .analogy: return "类比"
         }
     }
 

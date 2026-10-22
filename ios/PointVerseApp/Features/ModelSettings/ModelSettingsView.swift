@@ -246,6 +246,9 @@ struct ModelSettingsView: View {
                     )
                 }
             } header: { AppText("音乐与现场声音") }
+            Section {
+                RecordingModelsPanel(manager: container.recordingModelManager)
+            } header: { Text("说话人与声音状态 · 本地识别") }
         }
         .navigationTitle("模型中心")
         .onChange(of: selectedLanguageModelID) { _, _ in regenerateTitles() }
@@ -423,6 +426,46 @@ struct ModelSettingsView: View {
         externalModels.removeAll { $0.id == model.id }
         ExternalLanguageModelStore.save(externalModels)
         if selectedLanguageModelID == model.selectionID { selectedLanguageModelID = ModelSelection.disabledLanguageModelID }
+    }
+}
+
+private struct RecordingModelsPanel: View {
+    @ObservedObject var manager: RecordingModelManager
+    @AppStorage("automaticRecordingRecognition") private var automaticRecognition = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle("打开录音详情时自动识别", isOn: $automaticRecognition)
+            ForEach(RecordingModelKind.allCases) { kind in
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(kind.title).font(.subheadline.bold())
+                        Text(kind == .speaker ? "中文／英文声纹匹配 · Apache-2.0" : "中文等多语言情绪候选 · SenseVoice上游许可")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if manager.installed.contains(kind) {
+                        Label("已下载", systemImage: "checkmark.circle").font(.caption)
+                    } else {
+                        Button(manager.downloading == kind ? "下载中…" : manager.pausedKind == kind ? "继续下载" : "下载") {
+                            Task { await manager.download(kind) }
+                        }.disabled(manager.downloading != nil)
+                    }
+                }
+            }
+            if manager.downloading != nil {
+                ProgressView(value: manager.progress)
+                HStack {
+                    Text("\(Int(manager.progress * 100))% · \(ByteCountFormatter.string(fromByteCount: manager.receivedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: manager.totalBytes, countStyle: .file))")
+                        .font(.caption.monospacedDigit())
+                    Spacer()
+                    Button("暂停") { manager.pause() }
+                }
+            }
+            if !manager.phase.isEmpty { Text(manager.phase).font(.caption).foregroundStyle(.secondary) }
+            if let error = manager.error { Text(error).font(.caption).foregroundStyle(.red) }
+            Text("录音留在设备上，模型按需下载。详情页点自动识别；清晰单人讲话至少6秒，原型取开头片段。首次需手动确认说话人建立样本。")
+                .font(.caption).foregroundStyle(.secondary)
+        }.task { manager.refresh() }
     }
 }
 

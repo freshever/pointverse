@@ -12,7 +12,8 @@ actor ConversationService {
         self.generator = generator
     }
 
-    func send(pointID: PointID, text: String, languageIdentifier: String, role: ConversationRole) async -> SendResult {
+    func send(pointID: PointID, text: String, languageIdentifier: String, role: ConversationRole,
+              selectedPointIDs: [PointID] = []) async -> SendResult {
         do {
             try await repository.appendConversationMessage(pointID: pointID, role: "user", text: text, modelID: nil)
             let detail = try await repository.pointDetail(id: pointID)
@@ -24,9 +25,17 @@ actor ConversationService {
                 return "Photo \(index + 1): " + String(text.prefix(180))
             }.joined(separator: "\n")
             let primaryText = detail.modality == "text" ? (detail.sourceText ?? "") : (detail.effectiveTranscript ?? "")
-            let context = imageText.isEmpty
+            var context = imageText.isEmpty
                 ? primaryText
                 : "Attached photos:\n" + imageText + "\n\nSaved content:\n" + String(primaryText.prefix(500))
+            for id in selectedPointIDs.prefix(3) where id != pointID {
+                let previous = try await repository.pointDetail(id: id)
+                let content = previous.modality == "text" ? previous.sourceText : previous.effectiveTranscript
+                context += "\n\nUser-selected earlier thought [\(id.rawValue.uuidString)] — \(previous.title):\n" + String((content ?? "").prefix(1000))
+            }
+            if !selectedPointIDs.isEmpty {
+                context += "\n\nContinue the user's current question using these earlier thoughts. Identify what was already considered and suggest a concrete next step. Cite thought titles when drawing on them. Do not assume semantic similarity proves agreement or invent missing history."
+            }
             let reply = try await generator.generateReply(
                 context: context,
                 conversation: messages,

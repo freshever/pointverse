@@ -35,7 +35,7 @@ targets:
         PRODUCT_NAME: 点界 Watch
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 16
+        CURRENT_PROJECT_VERSION: 23
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseWatchApp/Info.plist
@@ -96,7 +96,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         PRODUCT_NAME: 点界
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 16
+        CURRENT_PROJECT_VERSION: 23
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseApp/Info.plist
@@ -117,7 +117,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.qwen-adapter
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 16
+        CURRENT_PROJECT_VERSION: 23
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
   WhisperAdapter:
@@ -133,7 +133,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.whisper-adapter
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 16
+        CURRENT_PROJECT_VERSION: 23
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
   StableDiffusion:
@@ -154,7 +154,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.stable-diffusion
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 16
+        CURRENT_PROJECT_VERSION: 23
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
 schemes:

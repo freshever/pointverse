@@ -1,0 +1,2106 @@
+{
+  "schemaVersion": 1,
+  "scheme": "LCC",
+  "snapshotID": "loc-lcco-retrieved-2026-10-19",
+  "retrievedAt": "2026-10-19T09:13:08.285784+00:00",
+  "indexURL": "https://www.loc.gov/catdir/cpso/lcco/",
+  "rightsURL": "https://www.loc.gov/legal/security-copyright-and-privacy/understanding-copyright/",
+  "coverage": "21 main classes; subclasses explicitly listed on the first page of each outline; four selected computer ranges. Not complete schedules or a current full LCC release.",
+  "sources": [
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sha256": "f186ec440e1c5711cac8062557c0654b7c1a1c4d452038adef3e058f03caf6fd",
+      "lastModified": "Wed, 11 Jul 2007 20:29:30 GMT",
+      "pageCount": 11
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sha256": "00b2f90f4bfaf1256b8f3048de917b00fec59b119b360ceda29a2d80d7e4f78a",
+      "lastModified": "Thu, 22 May 2008 20:32:14 GMT",
+      "pageCount": 23
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sha256": "f2951cfaa1a0f690143133c5af9b4338c02e09b04bf533b4742b313b9dde3cd5",
+      "lastModified": "Wed, 11 Jul 2007 20:29:30 GMT",
+      "pageCount": 11
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sha256": "b6d69e6350c291fcf9c91cc5b829b1980069e59e58a8c1682682313043336c7e",
+      "lastModified": "Fri, 13 Feb 2009 16:47:36 GMT",
+      "pageCount": 38
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_ef.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_ef.pdf",
+      "sha256": "bf5a7af6a78736f70855000b6bc2b30703eb99b0ab54472563d0a495bdc494f1",
+      "lastModified": "Tue, 30 Nov 2010 16:51:55 GMT",
+      "pageCount": 12
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sha256": "70ea61c03c2a62cf77465ce77f093161a3b2507cd7c6491e126074d64d710c41",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 13
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sha256": "89bff79a05d1b15085fee89c3062a2bbfc25b1c4cfd89a634829e3f1729a8e5f",
+      "lastModified": "Fri, 04 May 2018 20:20:18 GMT",
+      "pageCount": 22
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sha256": "1fdd1697456f64ab512355044be64166c64e9e5854405b89b2baf3dbe81e4fdb",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 14
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sha256": "ac4f8289c5b541e6fea6959b7df0be7c9ce6ab9b13b759b346fa3b3a197f7f9f",
+      "lastModified": "Wed, 16 Dec 2009 13:57:16 GMT",
+      "pageCount": 34
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sha256": "632f8473b07bf7ca158e0751987966ef55befb76a8434c92af26dfa6d6774fdf",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 14
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_m.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_m.pdf",
+      "sha256": "6f80de523fd0a005596f6e75910a1b1fb546e3891b85f80aa41850907110344b",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 4
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sha256": "daf5cb94c84251a1ee166641e4ad97e3e3f9edc372035c0933c84a01b340c099",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 9
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sha256": "e66dae8ac8d71875a138aadc50c43dab774bfac6e573ece356bda2e0c9dfb90e",
+      "lastModified": "Wed, 20 Dec 2017 20:48:31 GMT",
+      "pageCount": 31
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sha256": "34db61d912e62aa3220052e6bfb5ee64d253ee1629fdd6b24aedbf4a5c4d5fcd",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 13
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sha256": "4b1f9a6fd362f494a717ccfc4589da9b20554043d38f84318a5034adc94215f8",
+      "lastModified": "Tue, 19 Dec 2017 18:14:39 GMT",
+      "pageCount": 18
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "sha256": "43afbac54d15c026cafd66ad035ea704a1596d232c496e1c1d253110ab3ebfc4",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 9
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sha256": "7776fd8ba7fd213a44a4df28c5f207873c041d1ba89b26c82c29f6e2d9f69496",
+      "lastModified": "Fri, 04 Jun 2010 18:19:26 GMT",
+      "pageCount": 18
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sha256": "bf0e7f09f1e65ffb546a1c1f126cab64fdaa19a8743b1ff99f0d3b16f42ec8d7",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 10
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sha256": "da4b0aaac0544bc9881409a7a041ee10a00eb87cfd9991a2eedcab42e45b1844",
+      "lastModified": "Wed, 11 Jul 2007 20:29:31 GMT",
+      "pageCount": 11
+    },
+    {
+      "url": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_z.pdf",
+      "resolvedURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_z.pdf",
+      "sha256": "236ffd5a66fd212bef09c6ba1a3269df0e709b3eb695556c6133f2619d4bdcc0",
+      "lastModified": "Wed, 03 Jun 2009 15:45:35 GMT",
+      "pageCount": 5
+    }
+  ],
+  "terms": [
+    {
+      "id": "lcc:A",
+      "code": "A",
+      "englishTitle": "GENERAL WORKS",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:AC",
+      "code": "AC",
+      "englishTitle": "Collections. Series. Collected works",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AE",
+      "code": "AE",
+      "englishTitle": "Encyclopedias",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AG",
+      "code": "AG",
+      "englishTitle": "Dictionaries and other general reference works",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AI",
+      "code": "AI",
+      "englishTitle": "Indexes",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AM",
+      "code": "AM",
+      "englishTitle": "Museums. Collectors and collecting",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AN",
+      "code": "AN",
+      "englishTitle": "Newspapers",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AP",
+      "code": "AP",
+      "englishTitle": "Periodicals",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AS",
+      "code": "AS",
+      "englishTitle": "Academies and learned societies",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AY",
+      "code": "AY",
+      "englishTitle": "Yearbooks. Almanacs. Directories",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:AZ",
+      "code": "AZ",
+      "englishTitle": "History of scholarship and learning. The humanities",
+      "parentID": "lcc:A",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_a.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:B",
+      "code": "B",
+      "englishTitle": "PHILOSOPHY. PSYCHOLOGY. RELIGION",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:BC",
+      "code": "BC",
+      "englishTitle": "Logic",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BD",
+      "code": "BD",
+      "englishTitle": "Speculative philosophy",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BF",
+      "code": "BF",
+      "englishTitle": "Psychology",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BH",
+      "code": "BH",
+      "englishTitle": "Aesthetics",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BJ",
+      "code": "BJ",
+      "englishTitle": "Ethics",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BL",
+      "code": "BL",
+      "englishTitle": "Religions. Mythology. Rationalism",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BM",
+      "code": "BM",
+      "englishTitle": "Judaism",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BP",
+      "code": "BP",
+      "englishTitle": "Islam. Bahaism. Theosophy, etc.",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BQ",
+      "code": "BQ",
+      "englishTitle": "Buddhism",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BR",
+      "code": "BR",
+      "englishTitle": "Christianity",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BS",
+      "code": "BS",
+      "englishTitle": "The Bible",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BT",
+      "code": "BT",
+      "englishTitle": "Doctrinal Theology",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BV",
+      "code": "BV",
+      "englishTitle": "Practical Theology",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:BX",
+      "code": "BX",
+      "englishTitle": "Christian Denominations",
+      "parentID": "lcc:B",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_b.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:C",
+      "code": "C",
+      "englishTitle": "AUXILIARY SCIENCES OF HISTORY",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:CB",
+      "code": "CB",
+      "englishTitle": "History of Civilization",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CC",
+      "code": "CC",
+      "englishTitle": "Archaeology",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CD",
+      "code": "CD",
+      "englishTitle": "Diplomatics. Archives. Seals",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CE",
+      "code": "CE",
+      "englishTitle": "Technical Chronology. Calendar",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CJ",
+      "code": "CJ",
+      "englishTitle": "Numismatics",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CN",
+      "code": "CN",
+      "englishTitle": "Inscriptions. Epigraphy",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CR",
+      "code": "CR",
+      "englishTitle": "Heraldry",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CS",
+      "code": "CS",
+      "englishTitle": "Genealogy",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:CT",
+      "code": "CT",
+      "englishTitle": "Biography",
+      "parentID": "lcc:C",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_c.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:D",
+      "code": "D",
+      "englishTitle": "WORLD HISTORY AND HISTORY OF EUROPE, ASIA, AFRICA, AUSTRALIA, NEW ZEALAND, ETC.",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:DA",
+      "code": "DA",
+      "englishTitle": "Great Britain",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DAW",
+      "code": "DAW",
+      "englishTitle": "Central Europe",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DB",
+      "code": "DB",
+      "englishTitle": "Austria - Liechtenstein - Hungary - Czechoslovakia",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DC",
+      "code": "DC",
+      "englishTitle": "France - Andorra - Monaco",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DD",
+      "code": "DD",
+      "englishTitle": "Germany",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DE",
+      "code": "DE",
+      "englishTitle": "Greco-Roman World",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DF",
+      "code": "DF",
+      "englishTitle": "Greece",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DG",
+      "code": "DG",
+      "englishTitle": "Italy - Malta",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:DH",
+      "code": "DH",
+      "englishTitle": "Low Countries - Benelux Countries (Continued on next page)",
+      "parentID": "lcc:D",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_d.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:E",
+      "code": "E",
+      "englishTitle": "HISTORY OF THE AMERICAS",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_ef.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:F",
+      "code": "F",
+      "englishTitle": "HISTORY OF THE AMERICAS",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_ef.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:G",
+      "code": "G",
+      "englishTitle": "GEOGRAPHY. ANTHROPOLOGY. RECREATION",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:GA",
+      "code": "GA",
+      "englishTitle": "Mathematical geography. Cartography",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GB",
+      "code": "GB",
+      "englishTitle": "Physical geography",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GC",
+      "code": "GC",
+      "englishTitle": "Oceanography",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GE",
+      "code": "GE",
+      "englishTitle": "Environmental Sciences",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GF",
+      "code": "GF",
+      "englishTitle": "Human ecology. Anthropogeography",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GN",
+      "code": "GN",
+      "englishTitle": "Anthropology",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GR",
+      "code": "GR",
+      "englishTitle": "Folklore",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GT",
+      "code": "GT",
+      "englishTitle": "Manners and customs (General)",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:GV",
+      "code": "GV",
+      "englishTitle": "Recreation. Leisure",
+      "parentID": "lcc:G",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_g.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:H",
+      "code": "H",
+      "englishTitle": "SOCIAL SCIENCES",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:HA",
+      "code": "HA",
+      "englishTitle": "Statistics",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HB",
+      "code": "HB",
+      "englishTitle": "Economic theory. Demography",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HC",
+      "code": "HC",
+      "englishTitle": "Economic history and conditions",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HD",
+      "code": "HD",
+      "englishTitle": "Industries. Land use. Labor",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HE",
+      "code": "HE",
+      "englishTitle": "Transportation and communications",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HF",
+      "code": "HF",
+      "englishTitle": "Commerce",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HG",
+      "code": "HG",
+      "englishTitle": "Finance",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HJ",
+      "code": "HJ",
+      "englishTitle": "Public finance",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HM",
+      "code": "HM",
+      "englishTitle": "Sociology (General)",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HN",
+      "code": "HN",
+      "englishTitle": "Social history and conditions. Social problems. Social reform",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HQ",
+      "code": "HQ",
+      "englishTitle": "The family. Marriage. Women",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HS",
+      "code": "HS",
+      "englishTitle": "Societies: secret, benevolent, etc.",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HT",
+      "code": "HT",
+      "englishTitle": "Communities. Classes. Races",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HV",
+      "code": "HV",
+      "englishTitle": "Social pathology. Social and public welfare. Criminology",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:HX",
+      "code": "HX",
+      "englishTitle": "Socialism. Communism. Anarchism",
+      "parentID": "lcc:H",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_h.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:J",
+      "code": "J",
+      "englishTitle": "POLITICAL SCIENCE",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:JA",
+      "code": "JA",
+      "englishTitle": "Political science (General)",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JC",
+      "code": "JC",
+      "englishTitle": "Political theory",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JF",
+      "code": "JF",
+      "englishTitle": "Political institutions and public administration",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JJ",
+      "code": "JJ",
+      "englishTitle": "Political institutions and public administration (North America)",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JK",
+      "code": "JK",
+      "englishTitle": "Political institutions and public administration (United States)",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JL",
+      "code": "JL",
+      "englishTitle": "Political institutions and public administration (Canada, Latin America, etc.)",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JN",
+      "code": "JN",
+      "englishTitle": "Political institutions and public administration (Europe)",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JQ",
+      "code": "JQ",
+      "englishTitle": "Political institutions and public administration (Asia, Africa, Australia, Pacific Area, etc.)",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JS",
+      "code": "JS",
+      "englishTitle": "Local government. Municipal government",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JV",
+      "code": "JV",
+      "englishTitle": "Colonies and colonization. Emigration and immigration. International migration",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JX",
+      "code": "JX",
+      "englishTitle": "International law, see JZ and KZ (obsolete)",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:JZ",
+      "code": "JZ",
+      "englishTitle": "International relations",
+      "parentID": "lcc:J",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_j.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:K",
+      "code": "K",
+      "englishTitle": "LAW",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:KB",
+      "code": "KB",
+      "englishTitle": "Religious law in general. Comparative religious law. Jurisprudence",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KBM",
+      "code": "KBM",
+      "englishTitle": "Jewish law",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KBP",
+      "code": "KBP",
+      "englishTitle": "Islamic law",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KBR",
+      "code": "KBR",
+      "englishTitle": "History of canon law",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KBU",
+      "code": "KBU",
+      "englishTitle": "Law of the Roman Catholic Church. The Holy See Subclasses United Kingdom and Ireland KD-KDK",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KDZ",
+      "code": "KDZ",
+      "englishTitle": "America. North America",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KE",
+      "code": "KE",
+      "englishTitle": "Canada",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KF",
+      "code": "KF",
+      "englishTitle": "United States",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KG",
+      "code": "KG",
+      "englishTitle": "Latin America - Mexico and Central America - West Indies. Caribbean area",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KH",
+      "code": "KH",
+      "englishTitle": "South America Subclasses Europe KJ-KKZ Subclasses Asia and Eurasia, Africa, Pacific Area, and Antarctica KL-KWX",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:KZ",
+      "code": "KZ",
+      "englishTitle": "Law of nations",
+      "parentID": "lcc:K",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_k.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:L",
+      "code": "L",
+      "englishTitle": "EDUCATION",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:LA",
+      "code": "LA",
+      "englishTitle": "History of education",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LB",
+      "code": "LB",
+      "englishTitle": "Theory and practice of education",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LC",
+      "code": "LC",
+      "englishTitle": "Special aspects of education",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LD",
+      "code": "LD",
+      "englishTitle": "Individual institutions - United States",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LE",
+      "code": "LE",
+      "englishTitle": "Individual institutions - America (except United States)",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LF",
+      "code": "LF",
+      "englishTitle": "Individual institutions - Europe",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LG",
+      "code": "LG",
+      "englishTitle": "Individual institutions - Asia, Africa, Indian Ocean islands, Australia, New Zealand, Pacific islands",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LH",
+      "code": "LH",
+      "englishTitle": "College and school magazines and papers",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LJ",
+      "code": "LJ",
+      "englishTitle": "Student fraternities and societies, United States",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:LT",
+      "code": "LT",
+      "englishTitle": "Textbooks",
+      "parentID": "lcc:L",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_l.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:M",
+      "code": "M",
+      "englishTitle": "MUSIC AND BOOKS ON MUSIC",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_m.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:ML",
+      "code": "ML",
+      "englishTitle": "Literature on music",
+      "parentID": "lcc:M",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_m.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:MT",
+      "code": "MT",
+      "englishTitle": "Instruction and study",
+      "parentID": "lcc:M",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_m.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:N",
+      "code": "N",
+      "englishTitle": "FINE ARTS",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:NA",
+      "code": "NA",
+      "englishTitle": "Architecture",
+      "parentID": "lcc:N",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:NB",
+      "code": "NB",
+      "englishTitle": "Sculpture",
+      "parentID": "lcc:N",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:NC",
+      "code": "NC",
+      "englishTitle": "Drawing. Design. Illustration",
+      "parentID": "lcc:N",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:ND",
+      "code": "ND",
+      "englishTitle": "Painting",
+      "parentID": "lcc:N",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:NE",
+      "code": "NE",
+      "englishTitle": "Print media",
+      "parentID": "lcc:N",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:NK",
+      "code": "NK",
+      "englishTitle": "Decorative arts",
+      "parentID": "lcc:N",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:NX",
+      "code": "NX",
+      "englishTitle": "Arts in general",
+      "parentID": "lcc:N",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_n.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:P",
+      "code": "P",
+      "englishTitle": "LANGUAGE AND LITERATURE",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:PA",
+      "code": "PA",
+      "englishTitle": "Greek language and literature. Latin language and literature",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PB",
+      "code": "PB",
+      "englishTitle": "Modern languages. Celtic languages",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PC",
+      "code": "PC",
+      "englishTitle": "Roman ce languages",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PD",
+      "code": "PD",
+      "englishTitle": "Germanic languages. Scandinavian languages",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PE",
+      "code": "PE",
+      "englishTitle": "English language",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PF",
+      "code": "PF",
+      "englishTitle": "West Germanic languages",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PG",
+      "code": "PG",
+      "englishTitle": "Slavic languages. Balt ic languages. Albanian language",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PH",
+      "code": "PH",
+      "englishTitle": "Uralic languages. Basque language",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PJ",
+      "code": "PJ",
+      "englishTitle": "Oriental languages and literatures",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PK",
+      "code": "PK",
+      "englishTitle": "Indo-Iranian languages and literatures",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PL",
+      "code": "PL",
+      "englishTitle": "Languages and literatures of Eastern Asia, Africa, Oceania",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PM",
+      "code": "PM",
+      "englishTitle": "Hyperborean, Indian, and artificial languages",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PN",
+      "code": "PN",
+      "englishTitle": "Literature (General)",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PQ",
+      "code": "PQ",
+      "englishTitle": "French literature - Italian literature - Spanish literature - Portuguese literature",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PR",
+      "code": "PR",
+      "englishTitle": "English literature",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PS",
+      "code": "PS",
+      "englishTitle": "American literature",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PT",
+      "code": "PT",
+      "englishTitle": "German literature - Dutch literature - Flemish literature since 1830 - Afrikaans literature - Scandinavian literature - Old Norse literature: Old Icelandic and Old Norwegian - Modern Icelandic literature - Faroese literature - Danish literature - Norwegian literature - Swedish literature",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:PZ",
+      "code": "PZ",
+      "englishTitle": "Fiction and juvenile belles lettres",
+      "parentID": "lcc:P",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_p.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:Q",
+      "code": "Q",
+      "englishTitle": "SCIENCE",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:QA",
+      "code": "QA",
+      "englishTitle": "Mathematics",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QB",
+      "code": "QB",
+      "englishTitle": "Astronomy",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QC",
+      "code": "QC",
+      "englishTitle": "Physics",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QD",
+      "code": "QD",
+      "englishTitle": "Chemistry",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QE",
+      "code": "QE",
+      "englishTitle": "Geology",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QH",
+      "code": "QH",
+      "englishTitle": "Natural history - Biology",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QK",
+      "code": "QK",
+      "englishTitle": "Botany",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QL",
+      "code": "QL",
+      "englishTitle": "Zoology",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QM",
+      "code": "QM",
+      "englishTitle": "Human anatomy",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QP",
+      "code": "QP",
+      "englishTitle": "Physiology",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QR",
+      "code": "QR",
+      "englishTitle": "Microbiology",
+      "parentID": "lcc:Q",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:R",
+      "code": "R",
+      "englishTitle": "MEDICINE",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:RA",
+      "code": "RA",
+      "englishTitle": "Public aspects of medicine",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RB",
+      "code": "RB",
+      "englishTitle": "Pathology",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RC",
+      "code": "RC",
+      "englishTitle": "Internal medicine",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RD",
+      "code": "RD",
+      "englishTitle": "Surgery",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RE",
+      "code": "RE",
+      "englishTitle": "Ophthalmology",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RF",
+      "code": "RF",
+      "englishTitle": "Otorhinolaryngology",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RG",
+      "code": "RG",
+      "englishTitle": "Gynecology and obstetrics",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RJ",
+      "code": "RJ",
+      "englishTitle": "Pediatrics",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RK",
+      "code": "RK",
+      "englishTitle": "Dentistry",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RL",
+      "code": "RL",
+      "englishTitle": "Dermatology",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RM",
+      "code": "RM",
+      "englishTitle": "Therapeutics. Pharmacology",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RS",
+      "code": "RS",
+      "englishTitle": "Pharmacy and materia medica",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RT",
+      "code": "RT",
+      "englishTitle": "Nursing",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RV",
+      "code": "RV",
+      "englishTitle": "Botanic, Thomsonian, and eclectic medicine",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RX",
+      "code": "RX",
+      "englishTitle": "Homeopathy",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:RZ",
+      "code": "RZ",
+      "englishTitle": "Other systems of medicine",
+      "parentID": "lcc:R",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_r.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:S",
+      "code": "S",
+      "englishTitle": "AGRICULTURE",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:SB",
+      "code": "SB",
+      "englishTitle": "Plant culture",
+      "parentID": "lcc:S",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:SD",
+      "code": "SD",
+      "englishTitle": "Forestry",
+      "parentID": "lcc:S",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:SF",
+      "code": "SF",
+      "englishTitle": "Animal culture",
+      "parentID": "lcc:S",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:SH",
+      "code": "SH",
+      "englishTitle": "Aquaculture. Fisheries. Angling",
+      "parentID": "lcc:S",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:SK",
+      "code": "SK",
+      "englishTitle": "Hunting sports",
+      "parentID": "lcc:S",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_s.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:T",
+      "code": "T",
+      "englishTitle": "TECHNOLOGY",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:TA",
+      "code": "TA",
+      "englishTitle": "Engineering (General). Civil engineering",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TC",
+      "code": "TC",
+      "englishTitle": "Hydraulic engineering. Ocean engineering",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TD",
+      "code": "TD",
+      "englishTitle": "Environmental technology. Sanitary engineering",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TE",
+      "code": "TE",
+      "englishTitle": "Highway engineering. Roads and pavements",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TF",
+      "code": "TF",
+      "englishTitle": "Railroad engineering and operation",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TG",
+      "code": "TG",
+      "englishTitle": "Bridge engineering",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TH",
+      "code": "TH",
+      "englishTitle": "Building construction",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TJ",
+      "code": "TJ",
+      "englishTitle": "Mechanical engineering and machinery",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TK",
+      "code": "TK",
+      "englishTitle": "Electrical engineering. Electronics. Nuclear engineering",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TL",
+      "code": "TL",
+      "englishTitle": "Motor vehicles. Aeronautics. Astrona utics",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TN",
+      "code": "TN",
+      "englishTitle": "Mining engineering. Metallurgy",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TP",
+      "code": "TP",
+      "englishTitle": "Chemical technology",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TR",
+      "code": "TR",
+      "englishTitle": "Photography",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TS",
+      "code": "TS",
+      "englishTitle": "Manufactures",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TT",
+      "code": "TT",
+      "englishTitle": "Handicrafts. Arts a n d crafts",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:TX",
+      "code": "TX",
+      "englishTitle": "Home economics",
+      "parentID": "lcc:T",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_t.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:U",
+      "code": "U",
+      "englishTitle": "MILITARY SCIENCE",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:UA",
+      "code": "UA",
+      "englishTitle": "Armies: Organization, distribution, military situation",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:UB",
+      "code": "UB",
+      "englishTitle": "Military administration",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:UC",
+      "code": "UC",
+      "englishTitle": "Maintenance and transportation",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:UD",
+      "code": "UD",
+      "englishTitle": "Infantry",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:UE",
+      "code": "UE",
+      "englishTitle": "Cavalry. Armor",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:UF",
+      "code": "UF",
+      "englishTitle": "Artillery",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:UG",
+      "code": "UG",
+      "englishTitle": "Military engineering. Air forces",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:UH",
+      "code": "UH",
+      "englishTitle": "Other services",
+      "parentID": "lcc:U",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_u.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:V",
+      "code": "V",
+      "englishTitle": "NAVAL SCIENCE",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:VA",
+      "code": "VA",
+      "englishTitle": "Navies: Organization, distribution, naval situation",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VB",
+      "code": "VB",
+      "englishTitle": "Naval administration",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VC",
+      "code": "VC",
+      "englishTitle": "Naval maintenance",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VD",
+      "code": "VD",
+      "englishTitle": "Naval seamen",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VE",
+      "code": "VE",
+      "englishTitle": "Marines",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VF",
+      "code": "VF",
+      "englishTitle": "Naval ordnance",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VG",
+      "code": "VG",
+      "englishTitle": "Minor services of navies",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VK",
+      "code": "VK",
+      "englishTitle": "Navigation. Merchant marine",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:VM",
+      "code": "VM",
+      "englishTitle": "Naval architecture. Shipbuilding. Marine engineering",
+      "parentID": "lcc:V",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_v.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:Z",
+      "code": "Z",
+      "englishTitle": "BIBLIOGRAPHY. LIBRARY SCIENCE. INFORMATION RESOURCES (GENERAL)",
+      "parentID": null,
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_z.pdf",
+      "sourcePage": 1,
+      "kind": "main-class"
+    },
+    {
+      "id": "lcc:ZA",
+      "code": "ZA",
+      "englishTitle": "Information resources (General)",
+      "parentID": "lcc:Z",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_z.pdf",
+      "sourcePage": 1,
+      "kind": "subclass"
+    },
+    {
+      "id": "lcc:QA71-90",
+      "code": "QA71-90",
+      "englishTitle": "Instruments and machines",
+      "parentID": "lcc:QA",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 3,
+      "kind": "selected-range"
+    },
+    {
+      "id": "lcc:QA75-76.95",
+      "code": "QA75-76.95",
+      "englishTitle": "Calculating machines",
+      "parentID": "lcc:QA71-90",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 3,
+      "kind": "selected-range"
+    },
+    {
+      "id": "lcc:QA75.5-76.95",
+      "code": "QA75.5-76.95",
+      "englishTitle": "Electronic computers. Computer science",
+      "parentID": "lcc:QA75-76.95",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 3,
+      "kind": "selected-range"
+    },
+    {
+      "id": "lcc:QA76.75-76.765",
+      "code": "QA76.75-76.765",
+      "englishTitle": "Computer software",
+      "parentID": "lcc:QA75.5-76.95",
+      "sourceURL": "https://www.loc.gov/aba/cataloging/classification/lcco/lcco_q.pdf",
+      "sourcePage": 3,
+      "kind": "selected-range"
+    }
+  ]
+}

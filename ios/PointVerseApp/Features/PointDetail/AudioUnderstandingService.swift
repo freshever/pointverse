@@ -3,6 +3,408 @@ import CoreML
 import Foundation
 import PointVerseKit
 import ZIPFoundation
+import CryptoKit
+import Accelerate
+import Combine
+
+enum RecordingModelKind: String, CaseIterable, Identifiable {
+    case speaker, emotion
+    var id: String { rawValue }
+    var title: String { self == .speaker ? "CAM++ 声纹 · 约14 MB" : "SenseVoice 声音状态 · 约239 MB" }
+    var repository: String { self == .speaker ? "aufklarer/CamPlusPlus-Speaker-CoreML" : "FluidInference/sensevoice-small-coreml" }
+    var revision: String { self == .speaker ? "c3cbd83f0c1028cf753b3e3e67639854218206a1" : "74bdbe74b2258f25b5400db72f6cbfbef7c74ded" }
+    var prefixes: [String] { self == .speaker ? ["CamPlusPlus.mlmodelc/"] : ["SenseVoicePreprocessor.mlmodelc/", "SenseVoiceSmall_int8.mlmodelc/", "vocab.json"] }
+}
+
+@MainActor
+final class RecordingModelManager: ObservableObject {
+    private static var sharedManagers: [String: RecordingModelManager] = [:]
+    static func shared(rootURL: URL, executionGate: ModelExecutionGate) -> RecordingModelManager {
+        let key = rootURL.standardizedFileURL.path
+        if let existing = sharedManagers[key] { return existing }
+        let manager = RecordingModelManager(rootURL: rootURL, executionGate: executionGate)
+        sharedManagers[key] = manager
+        return manager
+    }
+
+    @Published private(set) var downloading: RecordingModelKind?
+    @Published private(set) var progress: Double = 0
+    @Published private(set) var receivedBytes: Int64 = 0
+    @Published private(set) var totalBytes: Int64 = 0
+    @Published private(set) var phase = ""
+    @Published private(set) var pausedKind: RecordingModelKind?
+    @Published private(set) var error: String?
+    @Published private(set) var installed: Set<RecordingModelKind> = []
+    private let root: URL
+    private let componentRegistry: ModelRegistry
+    let executionGate: ModelExecutionGate
+    private var componentManagers: [String: ModelDownloadManager] = [:]
+    private var activeComponent: ModelDownloadManager?
+    private var progressObserver: AnyCancellable?
+    private var packageTask: Task<Void, Never>?
+
+    init(rootURL: URL, executionGate: ModelExecutionGate) {
+        root = rootURL.appending(path: "recording-models")
+        componentRegistry = ModelRegistry(rootURL: root)
+        self.executionGate = executionGate
+        refresh()
+        // Recreate the same background sessions before iOS delivers events.
+        for kind in RecordingModelKind.allCases {
+            if let data = try? Data(contentsOf: metadataURL(kind)),
+               let repo = try? JSONDecoder().decode(Repo.self, from: data),
+               let files = try? validatedFiles(repo, kind: kind) {
+                for file in files { _ = componentManager(manifest(file, kind: kind)) }
+            }
+            if !installed.contains(kind), let state = try? String(contentsOf: pendingURL(kind), encoding: .utf8) {
+                if state == "active" { Task { await download(kind) } }
+                else { pausedKind = kind }
+            }
+        }
+    }
+
+    func modelRoot(_ kind: RecordingModelKind) -> URL { root.appending(path: kind.rawValue + "-" + kind.revision) }
+    private func metadataURL(_ kind: RecordingModelKind) -> URL { root.appending(path: kind.rawValue + "-" + kind.revision + ".manifest.json") }
+    private func pendingURL(_ kind: RecordingModelKind) -> URL { root.appending(path: kind.rawValue + ".pending") }
+    func refresh() {
+        installed = Set(RecordingModelKind.allCases.filter { FileManager.default.fileExists(atPath: modelRoot($0).appending(path: "ready.json").path) })
+    }
+
+    private struct Repo: Codable {
+        let sha: String
+        let siblings: [File]
+        struct File: Codable {
+            let rfilename: String
+            let blobId: String?
+            let size: Int64
+            let lfs: LFS?
+            struct LFS: Codable { let sha256: String; let size: Int64 }
+        }
+    }
+
+    private func validatedFiles(_ repo: Repo, kind: RecordingModelKind) throws -> [Repo.File] {
+        guard repo.sha == kind.revision else { throw PointVerseError.invalidModelOutput }
+        let files = repo.siblings.filter { file in kind.prefixes.contains { file.rfilename == $0 || file.rfilename.hasPrefix($0) } }
+        guard !files.isEmpty, files.count <= 64 else { throw PointVerseError.invalidModelOutput }
+        for file in files {
+            let parts = file.rfilename.split(separator: "/", omittingEmptySubsequences: false)
+            guard !parts.contains(".."), !parts.contains("."), !parts.contains(""),
+                  file.size > 0, file.size <= 1_000_000_000,
+                  file.blobId != nil || file.lfs != nil else { throw PointVerseError.invalidModelOutput }
+        }
+        for prefix in kind.prefixes {
+            let required = prefix.hasSuffix("/") ? ["coremldata.bin", "model.mil", "weights/weight.bin"].map { prefix + $0 } : [prefix]
+            guard required.allSatisfy({ name in files.contains(where: { $0.rfilename == name }) }) else { throw PointVerseError.invalidModelOutput }
+        }
+        return files
+    }
+
+    private func manifest(_ file: Repo.File, kind: RecordingModelKind) -> ModelManifest {
+        let pathHash = SHA256.hash(data: Data(file.rfilename.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+        let id = "recording-" + kind.rawValue + "-" + String(kind.revision.prefix(12)) + "-" + pathHash
+        let path = "\(kind.repository)/resolve/\(kind.revision)/\(file.rfilename)"
+        return ModelManifest(id: id, revision: kind.revision, filename: id + ".file",
+            downloadURL: URL(string: "https://huggingface.co/" + path)!,
+            mirrorDownloadURLs: [URL(string: "https://hf-mirror.com/" + path)!],
+            displayByteCount: file.lfs?.size ?? file.size, sha256: file.lfs?.sha256 ?? "",
+            license: kind == .speaker ? "Apache-2.0" : "SenseVoice upstream",
+            minimumFreeDiskBytes: max(20_000_000, file.size + 20_000_000),
+            gitBlobSHA1: file.lfs == nil ? file.blobId : nil)
+    }
+
+    private func componentManager(_ manifest: ModelManifest) -> ModelDownloadManager {
+        if let existing = componentManagers[manifest.id] { return existing }
+        let manager = ModelDownloadManager(registry: componentRegistry, manifest: manifest)
+        componentManagers[manifest.id] = manager
+        return manager
+    }
+
+    private func metadata(_ kind: RecordingModelKind) async throws -> Data {
+        if let data = try? Data(contentsOf: metadataURL(kind)),
+           let repo = try? JSONDecoder().decode(Repo.self, from: data),
+           (try? validatedFiles(repo, kind: kind)) != nil { return data }
+        var lastError: any Error = PointVerseError.modelNotInstalled
+        for host in ["hf-mirror.com", "huggingface.co"] {
+            for _ in 0..<2 {
+                try Task.checkCancellation()
+                phase = "读取模型清单 · \(host)"
+                var request = URLRequest(url: URL(string: "https://\(host)/api/models/\(kind.repository)/revision/\(kind.revision)?blobs=true")!)
+                request.timeoutInterval = 25
+                do {
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                        throw NSError(domain: "模型清单HTTP", code: (response as? HTTPURLResponse)?.statusCode ?? -1)
+                    }
+                    let repo = try JSONDecoder().decode(Repo.self, from: data)
+                    _ = try validatedFiles(repo, kind: kind)
+                    try data.write(to: metadataURL(kind), options: .atomic)
+                    return data
+                } catch {
+                    if Task.isCancelled { throw CancellationError() }
+                    lastError = error
+                }
+            }
+        }
+        throw lastError
+    }
+
+    func pause() {
+        guard let kind = downloading else { return }
+        pausedKind = kind
+        phase = "正在暂停并保存断点…"
+        try? "paused".write(to: pendingURL(kind), atomically: true, encoding: .utf8)
+        activeComponent?.cancel()
+        packageTask?.cancel()
+    }
+
+    func download(_ kind: RecordingModelKind) async {
+        guard downloading == nil, !installed.contains(kind) else { return }
+        downloading = kind; error = nil; progress = 0; receivedBytes = 0; totalBytes = 0; pausedKind = nil
+        let job = Task { await performDownload(kind) }
+        packageTask = job
+        await job.value
+        packageTask = nil; activeComponent = nil; progressObserver = nil; downloading = nil
+    }
+
+    private func performDownload(_ kind: RecordingModelKind) async {
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            var excluded = root
+            var resourceValues = URLResourceValues(); resourceValues.isExcludedFromBackup = true
+            try excluded.setResourceValues(resourceValues)
+            let free = try root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
+            guard free > (kind == .speaker ? 100_000_000 : 700_000_000) else { throw PointVerseError.insufficientDiskSpace }
+            try "active".write(to: pendingURL(kind), atomically: true, encoding: .utf8)
+            let data = try await metadata(kind)
+            try Task.checkCancellation()
+            let repo = try JSONDecoder().decode(Repo.self, from: data)
+            let files = try validatedFiles(repo, kind: kind)
+            totalBytes = files.reduce(0) { $0 + ($1.lfs?.size ?? $1.size) }
+            let staging = root.appending(path: kind.rawValue + "-" + kind.revision + ".partial")
+            var completed: Int64 = 0
+            for file in files {
+                try Task.checkCancellation()
+                let descriptor = manifest(file, kind: kind)
+                let target = staging.appending(path: file.rfilename)
+                try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                phase = "校验已有文件 · \(file.rfilename)"
+                // Reuse complete files written by build 19's prototype downloader.
+                if (try? await componentRegistry.verifyFile(at: target, manifest: descriptor)) != nil {
+                    completed += descriptor.displayByteCount
+                    receivedBytes = completed; progress = Double(completed) / Double(max(1, totalBytes))
+                    continue
+                }
+                let manager = componentManager(descriptor)
+                activeComponent = manager
+                let base = completed
+                progressObserver = manager.$state.sink { [weak self] state in
+                    guard let self else { return }
+                    let fraction: Double
+                    switch state {
+                    case .downloading(let value): fraction = value; self.phase = "下载 · \(file.rfilename)"
+                    case .verifying: fraction = 1; self.phase = "校验 · \(file.rfilename)"
+                    case .installed: fraction = 1
+                    default: return
+                    }
+                    self.receivedBytes = base + Int64(Double(descriptor.displayByteCount) * fraction)
+                    self.progress = min(1, Double(self.receivedBytes) / Double(max(1, self.totalBytes)))
+                }
+                let installedFile = try await manager.downloadAndWait()
+                try Task.checkCancellation()
+                phase = "安装 · \(file.rfilename)"
+                if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
+                try FileManager.default.copyItem(at: installedFile, to: target)
+                try await componentRegistry.verifyFile(at: target, manifest: descriptor)
+                completed += descriptor.displayByteCount
+                receivedBytes = completed; progress = Double(completed) / Double(max(1, totalBytes))
+                progressObserver = nil; activeComponent = nil
+            }
+            try Task.checkCancellation()
+            phase = "完成安装"
+            try data.write(to: staging.appending(path: "ready.json"), options: .atomic)
+            let destination = modelRoot(kind)
+            guard !FileManager.default.fileExists(atPath: destination.path) else { throw PointVerseError.invalidModelOutput }
+            try FileManager.default.moveItem(at: staging, to: destination)
+            try? FileManager.default.removeItem(at: pendingURL(kind))
+            refresh()
+            // Drop verified component copies; the installed bundle owns the files.
+            for file in files { try? await componentRegistry.remove(manifest(file, kind: kind)) }
+            phase = "已下载"; progress = 1
+        } catch {
+            if Task.isCancelled || (error as? PointVerseError) == .cancelled {
+                pausedKind = kind; phase = "已暂停，可继续下载"
+                try? "paused".write(to: pendingURL(kind), atomically: true, encoding: .utf8)
+            } else {
+                let detail = activeComponent?.lastErrorDescription ?? (error as? PointVerseError)?.rawValue ?? error.localizedDescription
+                self.error = "下载失败：\(detail)。重试将优先恢复断点，并自动尝试镜像和官方源。"
+                phase = "下载失败"
+                // Do not automatically loop a failed package on every launch.
+                try? "paused".write(to: pendingURL(kind), atomically: true, encoding: .utf8)
+                pausedKind = kind
+            }
+        }
+    }
+
+    func recognize(audioURL: URL) async throws -> (vector: [Float]?, state: RecordingVoiceState, score: Double?, emotion: String?, models: String) {
+        guard !installed.isEmpty else { throw PointVerseError.modelNotInstalled }
+        let speakerRoot = installed.contains(.speaker) ? modelRoot(.speaker) : nil
+        let emotionRoot = installed.contains(.emotion) ? modelRoot(.emotion) : nil
+        await executionGate.acquire()
+        do {
+            let result = try await Task.detached(priority: .utility) {
+                try RecordingCoreMLInference.run(audioURL: audioURL, speakerRoot: speakerRoot, emotionRoot: emotionRoot)
+            }.value
+            await executionGate.release()
+            return result
+        } catch { await executionGate.release(); throw error }
+    }
+}
+
+private enum RecordingCoreMLInference {
+    static func run(audioURL: URL, speakerRoot: URL?, emotionRoot: URL?) throws -> (vector: [Float]?, state: RecordingVoiceState, score: Double?, emotion: String?, models: String) {
+        let samples = try waveform(audioURL)
+        guard samples.count >= 32000 else { throw PointVerseError.audioDecodeFailed }
+        let energy = samples.reduce(0.0) { $0 + Double($1 * $1) } / Double(samples.count)
+        guard energy > 0.0001 else { throw PointVerseError.audioDecodeFailed }
+        var vector: [Float]?
+        var state = RecordingVoiceState.unknown
+        var emotion: String?
+        var score: Double?
+        var models: [String] = []
+        if let root = speakerRoot {
+            vector = try autoreleasepool {
+                let config = MLModelConfiguration(); config.computeUnits = .cpuOnly
+                let model = try MLModel(contentsOf: root.appending(path: "CamPlusPlus.mlmodelc"), configuration: config)
+                let mel = try fbank(samples)
+                let output = try model.prediction(from: MLDictionaryFeatureProvider(dictionary: ["mel_features": mel]))
+                guard let values = output.featureValue(for: "embedding")?.multiArrayValue, values.count == 192 else { throw PointVerseError.invalidModelOutput }
+                let valuesArray = (0..<192).map { values[$0].floatValue }
+                let norm = sqrt(valuesArray.reduce(Float(0)) { $0 + $1 * $1 })
+                guard norm > 0, norm.isFinite else { throw PointVerseError.invalidModelOutput }
+                return valuesArray.map { $0 / norm }
+            }
+            models.append("CAM++@" + RecordingModelKind.speaker.revision)
+        }
+        if let root = emotionRoot {
+            (state, score, emotion) = try autoreleasepool {
+                let preConfig = MLModelConfiguration(); preConfig.computeUnits = .cpuOnly
+                let pre = try MLModel(contentsOf: root.appending(path: "SenseVoicePreprocessor.mlmodelc"), configuration: preConfig)
+                let wave = try MLMultiArray(shape: [1, NSNumber(value: samples.count)], dataType: .float32)
+                for i in samples.indices { wave[i] = NSNumber(value: samples[i] * 32768) }
+                let features = try pre.prediction(from: MLDictionaryFeatureProvider(dictionary: ["waveform": wave]))
+                guard let input = features.featureValue(for: "features")?.multiArrayValue, input.shape.count == 3, input.shape[2].intValue == 560 else { throw PointVerseError.invalidModelOutput }
+                let length = input.shape[1].intValue
+                guard let bucket = [128, 256, 512, 1024, 1800].first(where: { $0 >= length }) else { throw PointVerseError.invalidModelOutput }
+                let padded = try MLMultiArray(shape: [1, NSNumber(value: bucket), 560], dataType: .float32)
+                for i in 0..<padded.count { padded[i] = i < input.count ? input[i] : 0 }
+                func scalar(_ value: Int) throws -> MLMultiArray {
+                    let array = try MLMultiArray(shape: [1], dataType: .int32); array[0] = NSNumber(value: value); return array
+                }
+                let config = MLModelConfiguration(); config.computeUnits = .cpuAndNeuralEngine
+                let model = try MLModel(contentsOf: root.appending(path: "SenseVoiceSmall_int8.mlmodelc"), configuration: config)
+                let output = try model.prediction(from: MLDictionaryFeatureProvider(dictionary: ["speech": padded, "speech_lengths": scalar(length), "language": scalar(0), "textnorm": scalar(15)]))
+                guard let logits = output.featureValue(for: "ctc_logits")?.multiArrayValue,
+                      logits.shape.count == 3, logits.shape[2].intValue == 25055 else { throw PointVerseError.invalidModelOutput }
+                let vocab = try JSONDecoder().decode([String].self, from: Data(contentsOf: root.appending(path: "vocab.json")))
+                guard vocab.count == 25055 else { throw PointVerseError.invalidModelOutput }
+                let names = ["NEUTRAL", "HAPPY", "SAD", "ANGRY", "FEARFUL", "DISGUSTED", "SURPRISED"]
+                let candidates = vocab.enumerated().filter { names.contains($0.element.replacingOccurrences(of: "<|", with: "").replacingOccurrences(of: "|>", with: "")) }
+                guard candidates.count == 7 else { throw PointVerseError.invalidModelOutput }
+                var strongestEmotionID = 0
+                var strongestValue = -Double.infinity
+                for id in 0..<25055 {
+                    let value = logits[[0, 1, NSNumber(value: id)]].doubleValue
+                    guard value.isFinite else { throw PointVerseError.invalidModelOutput }
+                    if value > strongestValue { strongestValue = value; strongestEmotionID = id }
+                }
+                guard candidates.contains(where: { $0.offset == strongestEmotionID }) else {
+                    return (.unknown, nil, vocab[strongestEmotionID])
+                }
+                // Emotion is the second query token. Normalize across emotion
+                // tokens only; this score is a model score, not calibrated truth.
+                let values = candidates.map { logits[[0, 1, NSNumber(value: $0.offset)]].doubleValue }
+                guard values.allSatisfy({ $0.isFinite }), let maximum = values.max() else { throw PointVerseError.invalidModelOutput }
+                let probabilities = values.map { exp($0 - maximum) }
+                let sum = probabilities.reduce(0, +)
+                let best = probabilities.indices.max(by: { probabilities[$0] < probabilities[$1] })!
+                let probability = probabilities[best] / sum
+                let token = candidates[best].element
+                let state: RecordingVoiceState = probability < 0.6 ? .unknown : token.contains("NEUTRAL") ? .calm : token.contains("SAD") ? .subdued : token.contains("FEARFUL") ? .tense : token.contains("HAPPY") || token.contains("ANGRY") || token.contains("SURPRISED") ? .animated : .unknown
+                return (state, probability, token)
+            }
+            models.append("SenseVoiceSmall-INT8@" + RecordingModelKind.emotion.revision)
+        }
+        return (vector, state, score, emotion, models.joined(separator: " / "))
+    }
+
+    static func waveform(_ url: URL) throws -> [Float] {
+        let file = try AVAudioFile(forReading: url)
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: file.processingFormat, to: format),
+              let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 4096),
+              let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096) else { throw PointVerseError.audioDecodeFailed }
+        var samples: [Float] = []
+        while samples.count < 160000 {
+            var conversionError: NSError?
+            let status = converter.convert(to: output, error: &conversionError) { _, state in
+                do {
+                    try file.read(into: input, frameCount: 4096)
+                    state.pointee = input.frameLength == 0 ? .endOfStream : .haveData
+                    return input.frameLength == 0 ? nil : input
+                } catch { state.pointee = .endOfStream; return nil }
+            }
+            if let conversionError { throw conversionError }
+            if let channel = output.floatChannelData {
+                samples.append(contentsOf: UnsafeBufferPointer(start: channel[0], count: Int(output.frameLength)))
+            }
+            if status == .endOfStream || status == .error { break }
+        }
+        return Array(samples.prefix(160000))
+    }
+
+    // Kaldi-compatible 16k fbank: 25ms frame / 10ms shift, Povey window,
+    // DC removal, 0.97 pre-emphasis, 512 FFT, 80 mel bins, utterance CMN.
+    static func fbank(_ samples: [Float]) throws -> MLMultiArray {
+        // The pinned export is fixed at [1, 500, 80], despite the model card's
+        // variable-length description. Require five seconds rather than pad.
+        let frames = 500
+        guard samples.count >= 400 + (frames - 1) * 160 else { throw PointVerseError.audioDecodeFailed }
+        let output = try MLMultiArray(shape: [1, NSNumber(value: frames), 80], dataType: .float16)
+        guard let setup = vDSP_create_fftsetup(9, FFTRadix(kFFTRadix2)) else { throw PointVerseError.audioDecodeFailed }
+        defer { vDSP_destroy_fftsetup(setup) }
+        func mel(_ hz: Double) -> Double { 1127 * log(1 + hz / 700) }
+        let edges = (0..<82).map { mel(20) + (mel(8000) - mel(20)) * Double($0) / 81 }
+        var means = [Double](repeating: 0, count: 80)
+        for frame in 0..<frames {
+            var real = [Float](repeating: 0, count: 512), imag = real
+            let mean = samples[(frame * 160)..<(frame * 160 + 400)].reduce(0, +) / 400
+            for i in 0..<400 {
+                let value = (samples[frame * 160 + i] - mean) * 32768
+                let previous = (samples[frame * 160 + max(0, i - 1)] - mean) * 32768
+                real[i] = (value - 0.97 * previous) * Float(pow(0.5 - 0.5 * cos(2 * Double.pi * Double(i) / 399), 0.85))
+            }
+            real.withUnsafeMutableBufferPointer { r in
+                imag.withUnsafeMutableBufferPointer { i in
+                    var split = DSPSplitComplex(realp: r.baseAddress!, imagp: i.baseAddress!)
+                    vDSP_fft_zip(setup, &split, 1, 9, FFTDirection(FFT_FORWARD))
+                }
+            }
+            for bin in 0..<80 {
+                var energy: Double = 0
+                for k in 0..<256 {
+                    let frequency = mel(Double(k) * 16000 / 512)
+                    let weight = frequency <= edges[bin + 1] ? (frequency - edges[bin]) / (edges[bin + 1] - edges[bin]) : (edges[bin + 2] - frequency) / (edges[bin + 2] - edges[bin + 1])
+                    if weight > 0 { energy += weight * Double(real[k] * real[k] + imag[k] * imag[k]) }
+                }
+                let value = log(max(energy, Double(Float.ulpOfOne)))
+                output[frame * 80 + bin] = NSNumber(value: value); means[bin] += value
+            }
+        }
+        for frame in 0..<frames {
+            for bin in 0..<80 { let index = frame * 80 + bin; output[index] = NSNumber(value: output[index].doubleValue - means[bin] / Double(frames)) }
+        }
+        return output
+    }
+}
 
 /// Runs bounded-memory acoustic analysis. CLAP is deliberately represented by
 /// an optional analyzer so recordings remain usable while its Core ML assets

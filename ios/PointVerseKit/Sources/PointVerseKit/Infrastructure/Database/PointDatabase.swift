@@ -3,15 +3,39 @@ import GRDB
 
 public final class PointDatabase: PointRepository, @unchecked Sendable {
     private let writer: any DatabaseWriter
+    private let databaseURL: URL?
 
     public init(path: String) throws {
+        databaseURL = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
         var configuration = Configuration()
         configuration.foreignKeysEnabled = true
         writer = try DatabasePool(path: path, configuration: configuration)
     }
 
     public init(inMemory: Bool) throws {
+        databaseURL = nil
         writer = try DatabaseQueue()
+    }
+
+    /// Refuses all databases except the exact isolated test database requested
+    /// by the caller. Keeps the live connection and schema intact.
+    public func clearIsolatedTestData(expectedURL: URL) async throws -> [String] {
+        let expected = expectedURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard let databaseURL, databaseURL == expected,
+              databaseURL.lastPathComponent == "pointverse-test.sqlite",
+              databaseURL.deletingLastPathComponent().lastPathComponent == "test-mode" else {
+            throw PointVerseError.databaseCommitFailed
+        }
+        return try await writer.write { db in
+            let paths = try String.fetchAll(db, sql: "SELECT relative_path FROM audio_assets")
+                + String.fetchAll(db, sql: "SELECT relative_path FROM point_images")
+            try db.execute(sql: "DELETE FROM point_search")
+            try db.execute(sql: "DELETE FROM durable_tasks")
+            try db.execute(sql: "DELETE FROM points")
+            try db.execute(sql: "DELETE FROM speaker_profiles")
+            try db.execute(sql: "DELETE FROM province_evaluations")
+            return paths
+        }
     }
 
     public func migrate() async throws {
@@ -119,6 +143,86 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 table.add(column: "model_id", .text)
             }
         }
+        migrator.registerMigration("v11-rediscovery-loop") { db in
+            try db.execute(sql: """
+                CREATE TABLE rediscovery_events (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    event_type TEXT NOT NULL CHECK (event_type IN ('shown','opened','useful','notRelated','later','resultSaved')),
+                    context TEXT,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX rediscovery_events_point_time ON rediscovery_events(point_id, created_at);
+                CREATE TABLE confirmed_point_relations (
+                    source_point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    target_point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    relation_type TEXT NOT NULL CHECK (relation_type IN ('similar','extend','support','contradict','analogy')),
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY(source_point_id, target_point_id)
+                );
+                CREATE TABLE point_origins (
+                    point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    source_point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    origin_type TEXT NOT NULL CHECK (origin_type IN ('playResult','continuedThought')),
+                    model_id TEXT,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY(point_id, source_point_id)
+                );
+                """)
+        }
+        migrator.registerMigration("v12-recording-labels") { db in
+            try db.execute(sql: """
+                CREATE TABLE speaker_profiles (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, created_at REAL NOT NULL);
+                CREATE TABLE recording_labels (
+                    point_id TEXT PRIMARY KEY NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    speaker_id TEXT REFERENCES speaker_profiles(id) ON DELETE SET NULL,
+                    voice_state TEXT NOT NULL DEFAULT 'unknown',
+                    source TEXT NOT NULL DEFAULT 'manual', confidence REAL, updated_at REAL NOT NULL
+                );
+                """)
+        }
+        migrator.registerMigration("v13-recording-recognition") { db in
+            try db.execute(sql: """
+                CREATE TABLE recording_recognition (
+                    point_id TEXT PRIMARY KEY NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    speaker_id TEXT REFERENCES speaker_profiles(id) ON DELETE SET NULL,
+                    speaker_similarity REAL, voice_state TEXT NOT NULL, emotion_score REAL,
+                    raw_emotion TEXT, model_id TEXT NOT NULL, updated_at REAL NOT NULL
+                );
+                CREATE TABLE recording_voiceprints (
+                    point_id TEXT PRIMARY KEY NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    model_id TEXT NOT NULL, vector BLOB NOT NULL, dimension INTEGER NOT NULL
+                );
+                """)
+        }
+        migrator.registerMigration("v14-province-evaluations") { db in
+            try db.execute(sql: """
+                CREATE TABLE province_evaluations (
+                    id TEXT PRIMARY KEY NOT NULL, province_id TEXT NOT NULL,
+                    created_at REAL NOT NULL, payload BLOB NOT NULL
+                );
+                CREATE INDEX province_evaluations_region ON province_evaluations(province_id, created_at);
+                """)
+        }
+        migrator.registerMigration("v15-point-facets") { db in
+            try db.execute(sql: """
+                CREATE TABLE point_facet_overrides (
+                    point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    dimension TEXT NOT NULL, values_json BLOB NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual', updated_at REAL NOT NULL,
+                    PRIMARY KEY (point_id, dimension)
+                );
+                """)
+        }
+        migrator.registerMigration("v16-lcc-classification-reviews") { db in
+            try db.execute(sql: """
+                CREATE TABLE lcc_classification_reviews (
+                    point_id TEXT PRIMARY KEY NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    payload BLOB NOT NULL
+                );
+                """)
+        }
         try migrator.migrate(writer)
         try await writer.write { db in
             let modelID = EmbeddingModelIdentity.multilingualE5Small
@@ -134,6 +238,85 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             }
         }
         PointVerseLog.database.info("Database migrations completed")
+    }
+
+    public func saveProvinceEvaluation(_ evaluation: ProvinceEvaluation) async throws {
+        let data = try JSONEncoder().encode(evaluation)
+        try await writer.write { db in
+            try db.execute(sql: "INSERT INTO province_evaluations (id, province_id, created_at, payload) VALUES (?, ?, ?, ?)",
+                           arguments: [evaluation.id.uuidString, evaluation.provinceID, evaluation.createdAt.timeIntervalSince1970, data])
+        }
+    }
+
+    public func provinceEvaluations(provinceID: String) async throws -> [ProvinceEvaluation] {
+        try await writer.read { db in
+            try Data.fetchAll(db, sql: "SELECT payload FROM province_evaluations WHERE province_id = ? ORDER BY created_at DESC",
+                              arguments: [provinceID]).map { try JSONDecoder().decode(ProvinceEvaluation.self, from: $0) }
+        }
+    }
+
+    public func evaluatedScopeIDs() async throws -> Set<String> {
+        try await writer.read { db in
+            Set(try String.fetchAll(db, sql: "SELECT DISTINCT province_id FROM province_evaluations"))
+        }
+    }
+
+    public func facetOverrides() async throws -> [PointFacetOverride] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT point_id, dimension, values_json FROM point_facet_overrides").compactMap { row in
+                guard let uuid = UUID(uuidString: row["point_id"]),
+                      let dimension = PointFacetDimension(rawValue: row["dimension"]) else { return nil }
+                let data: Data = row["values_json"]
+                return PointFacetOverride(pointID: PointID(rawValue: uuid), dimension: dimension,
+                                          values: try JSONDecoder().decode([String].self, from: data))
+            }
+        }
+    }
+
+    public func lccClassificationReviews() async throws -> [LCCClassificationReview] {
+        try await writer.read { db in
+            try Data.fetchAll(db, sql: "SELECT payload FROM lcc_classification_reviews")
+                .map { try JSONDecoder().decode(LCCClassificationReview.self, from: $0) }
+        }
+    }
+
+    /// Suggestions are separate from manual assignments; saving never changes membership.
+    public func saveLCCClassificationReview(_ review: LCCClassificationReview) async throws {
+        let data = try JSONEncoder().encode(review)
+        try await writer.write { db in
+            try db.execute(sql: """
+                INSERT INTO lcc_classification_reviews (point_id, payload) VALUES (?, ?)
+                ON CONFLICT(point_id) DO UPDATE SET payload = excluded.payload
+                """, arguments: [review.pointID.rawValue.uuidString, data])
+        }
+        NotificationCenter.default.post(name: ClassificationMapProjection.didChange, object: nil)
+    }
+
+    /// Nil restores rule suggestions; [] records a user's explicit empty selection.
+    public func saveFacetOverride(pointID: PointID, dimension: PointFacetDimension, values: [String]?) async throws {
+        let clean = values.map { Array(Set($0.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted() }
+        if let clean {
+            guard clean.count <= 40, clean.allSatisfy({ $0.count <= 80 }),
+                  dimension == .project || clean.allSatisfy({ value in
+                      (dimension == .topic && PointThemeClassifier.themeFromID(value) != nil)
+                          || PointFacetEngine.terms.contains { $0.id == value && $0.dimension == dimension }
+                  }) else {
+                throw PointVerseError.invalidModelOutput
+            }
+        }
+        let data = try clean.map { try JSONEncoder().encode($0) }
+        try await writer.write { db in
+            if let data {
+                try db.execute(sql: """
+                    INSERT INTO point_facet_overrides (point_id, dimension, values_json, updated_at) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(point_id, dimension) DO UPDATE SET values_json = excluded.values_json, updated_at = excluded.updated_at
+                    """, arguments: [pointID.rawValue.uuidString, dimension.rawValue, data, Date().timeIntervalSince1970])
+            } else {
+                try db.execute(sql: "DELETE FROM point_facet_overrides WHERE point_id = ? AND dimension = ?",
+                               arguments: [pointID.rawValue.uuidString, dimension.rawValue])
+            }
+        }
+        NotificationCenter.default.post(name: ClassificationMapProjection.didChange, object: nil)
     }
 
     public func commitVoiceCapture(_ command: VoiceCaptureCommand) async throws -> PointID {
@@ -243,6 +426,117 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
+    public func markTestTextProvenance(pointID: PointID, modelID: String) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "UPDATE messages SET model_id = ? WHERE point_id = ? AND sequence = 1",
+                           arguments: [modelID, pointID.rawValue.uuidString])
+        }
+    }
+
+    public func speakerProfiles() async throws -> [SpeakerProfile] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT id, name FROM speaker_profiles ORDER BY created_at").compactMap { row in
+                guard let id = UUID(uuidString: row["id"]) else { return nil }
+                return SpeakerProfile(id: id, name: row["name"])
+            }
+        }
+    }
+
+    public func createSpeakerProfile(name: String) async throws -> UUID {
+        let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 60 else { throw PointVerseError.invalidModelOutput }
+        return try await writer.write { db in
+            let id = UUID()
+            try db.execute(sql: "INSERT INTO speaker_profiles (id, name, created_at) VALUES (?, ?, ?)",
+                           arguments: [id.uuidString, value, Date().timeIntervalSince1970])
+            return id
+        }
+    }
+
+    public func deleteSpeakerProfile(id: UUID) async throws {
+        try await writer.write { db in
+            try db.execute(sql: """
+                DELETE FROM recording_voiceprints WHERE point_id IN (
+                    SELECT point_id FROM recording_labels WHERE speaker_id = ?
+                    UNION SELECT point_id FROM recording_recognition WHERE speaker_id = ?
+                )
+                """, arguments: [id.uuidString, id.uuidString])
+            try db.execute(sql: "DELETE FROM speaker_profiles WHERE id = ?", arguments: [id.uuidString])
+        }
+    }
+
+    public func recordingLabels() async throws -> [RecordingLabels] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT point_id, speaker_id, voice_state, source, confidence FROM recording_labels").compactMap { row in
+                guard let id = UUID(uuidString: row["point_id"]) else { return nil }
+                let speaker: String? = row["speaker_id"]
+                return RecordingLabels(pointID: PointID(rawValue: id), speakerID: speaker.flatMap(UUID.init(uuidString:)),
+                    voiceState: RecordingVoiceState(rawValue: row["voice_state"]) ?? .unknown,
+                    source: row["source"], confidence: row["confidence"])
+            }
+        }
+    }
+
+    public func speakerReferences(modelID: String, excluding pointID: PointID) async throws -> [SpeakerReference] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT l.speaker_id, v.vector, v.dimension FROM recording_voiceprints v
+                JOIN recording_labels l ON l.point_id = v.point_id
+                WHERE l.speaker_id IS NOT NULL AND l.source = 'manual' AND v.model_id = ? AND v.point_id != ?
+                """, arguments: [modelID, pointID.rawValue.uuidString]).compactMap { row in
+                    guard let id = UUID(uuidString: row["speaker_id"]),
+                          let vector = EmbeddingMath.decodeFloat16(row["vector"], dimension: row["dimension"]) else { return nil }
+                    return SpeakerReference(speakerID: id, vector: vector)
+                }
+        }
+    }
+
+    public func recordingRecognition(pointID: PointID) async throws -> RecordingRecognition? {
+        try await writer.read { db in
+            guard let row = try Row.fetchOne(db, sql: "SELECT * FROM recording_recognition WHERE point_id = ?", arguments: [pointID.rawValue.uuidString]) else { return nil }
+            let speaker: String? = row["speaker_id"]
+            return RecordingRecognition(pointID: pointID, speakerID: speaker.flatMap(UUID.init(uuidString:)),
+                speakerSimilarity: row["speaker_similarity"], voiceState: RecordingVoiceState(rawValue: row["voice_state"]) ?? .unknown,
+                emotionScore: row["emotion_score"], rawEmotion: row["raw_emotion"], modelID: row["model_id"])
+        }
+    }
+
+    public func saveRecordingRecognition(pointID: PointID, speakerID: UUID?, speakerSimilarity: Double?,
+                                          voiceState: RecordingVoiceState, emotionScore: Double?, rawEmotion: String?,
+                                          modelID: String, speakerModelID: String, vector: [Float]?) async throws {
+        try await writer.write { db in
+            try db.execute(sql: """
+                INSERT INTO recording_recognition (point_id, speaker_id, speaker_similarity, voice_state, emotion_score, raw_emotion, model_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(point_id) DO UPDATE SET speaker_id = excluded.speaker_id,
+                    speaker_similarity = excluded.speaker_similarity, voice_state = excluded.voice_state,
+                    emotion_score = excluded.emotion_score, raw_emotion = excluded.raw_emotion,
+                    model_id = excluded.model_id, updated_at = excluded.updated_at
+                """, arguments: [pointID.rawValue.uuidString, speakerID?.uuidString, speakerSimilarity,
+                                  voiceState.rawValue, emotionScore, rawEmotion, modelID, Date().timeIntervalSince1970])
+            if let vector, !vector.isEmpty, vector.allSatisfy({ $0.isFinite }) {
+                try db.execute(sql: """
+                    INSERT INTO recording_voiceprints (point_id, model_id, vector, dimension) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(point_id) DO UPDATE SET model_id = excluded.model_id, vector = excluded.vector, dimension = excluded.dimension
+                    """, arguments: [pointID.rawValue.uuidString, speakerModelID, EmbeddingMath.encodeFloat16(vector), vector.count])
+            }
+        }
+    }
+
+    public func saveManualRecordingLabels(pointID: PointID, speakerID: UUID?, voiceState: RecordingVoiceState) async throws {
+        try await writer.write { db in
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages m JOIN audio_assets a ON a.message_id = m.id WHERE m.point_id = ?",
+                                        arguments: [pointID.rawValue.uuidString]) ?? 0
+            guard count > 0 else { throw PointVerseError.invalidModelOutput }
+            try db.execute(sql: """
+                INSERT INTO recording_labels (point_id, speaker_id, voice_state, source, confidence, updated_at)
+                VALUES (?, ?, ?, 'manual', NULL, ?)
+                ON CONFLICT(point_id) DO UPDATE SET speaker_id = excluded.speaker_id,
+                    voice_state = excluded.voice_state, source = 'manual', confidence = NULL, updated_at = excluded.updated_at
+                """, arguments: [pointID.rawValue.uuidString, speakerID?.uuidString, voiceState.rawValue, Date().timeIntervalSince1970])
+        }
+    }
+
     public func pointMapEntries() async throws -> [PointMapEntry] {
         try await writer.read { db in
             try Row.fetchAll(db, sql: """
@@ -286,7 +580,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         try await writer.read { db in
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title,
-                       m.modality, m.user_text AS source_text,
+                       m.modality, m.user_text AS source_text, m.model_id AS source_model_id,
                        a.relative_path, a.duration_ms,
                        CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state,
                        t.engine_text, t.user_text, COALESCE(t.locale, '') AS locale, t.error_code, t.model_id,
@@ -300,7 +594,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 """, arguments: [id.rawValue.uuidString]) else {
                 throw PointVerseError.databaseCommitFailed
             }
-            return PointDetail(
+            var detail = PointDetail(
                 id: id,
                 title: row["title"],
                 modality: row["modality"],
@@ -315,6 +609,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 transcriptModelID: row["model_id"],
                 titleModelID: row["title_model_id"]
             )
+            detail.sourceModelID = row["source_model_id"]
+            return detail
         }
     }
 
@@ -784,6 +1080,151 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         return hits.compactMap { hit in
             guard let entry = byID[hit.pointID] else { return nil }
             return RelatedPoint(point: entry.point, content: entry.content, score: hit.score)
+        }
+    }
+
+    public func rediscoveryItems(referenceDate: Date = Date(), limit: Int = 4) async throws -> [RediscoveryItem] {
+        guard limit > 0 else { return [] }
+        let cutoff = referenceDate.addingTimeInterval(-7 * 24 * 60 * 60).timeIntervalSince1970
+        let recentEventCutoff = referenceDate.addingTimeInterval(-24 * 60 * 60).timeIntervalSince1970
+        let candidates: [PointMapEntry] = try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT p.id, COALESCE(p.accepted_title, d.title, '') AS title, p.created_at,
+                       CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state,
+                       TRIM(COALESCE(m.user_text, t.user_text, t.engine_text, '')) AS content,
+                       COALESCE(t.locale, '') AS locale
+                FROM points p
+                JOIN messages m ON m.point_id = p.id AND m.sequence = 1
+                LEFT JOIN audio_assets a ON a.message_id = m.id
+                LEFT JOIN transcripts t ON t.asset_id = a.id
+                LEFT JOIN derivations d ON d.id = (
+                    SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded'
+                    ORDER BY created_at DESC, rowid DESC LIMIT 1
+                )
+                WHERE p.created_at <= ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM rediscovery_events e
+                    WHERE e.point_id = p.id AND e.created_at >= ?
+                      AND e.event_type IN ('shown','opened','useful','notRelated','later','resultSaved')
+                  )
+                ORDER BY p.created_at ASC
+                LIMIT ?
+                """, arguments: [cutoff, recentEventCutoff, max(limit * 4, limit)]).compactMap { row in
+                    guard let uuid = UUID(uuidString: row["id"]) else { return nil }
+                    return PointMapEntry(
+                        point: PointSummary(id: PointID(rawValue: uuid), title: row["title"],
+                                           createdAt: Date(timeIntervalSince1970: row["created_at"]),
+                                           transcriptState: row["transcript_state"]),
+                        content: row["content"], localeIdentifier: row["locale"]
+                    )
+                }
+        }
+        guard !candidates.isEmpty else { return [] }
+
+        let allPoints = try await listPoints(matching: "")
+        let recentIDs = Set(allPoints.filter { $0.createdAt > Date(timeIntervalSince1970: cutoff) }.map(\.id))
+        let pointByID = Dictionary(uniqueKeysWithValues: allPoints.map { ($0.id, $0) })
+        let records = try await embeddings(modelID: EmbeddingModelIdentity.multilingualE5Small)
+        var result: [RediscoveryItem] = []
+        for candidate in candidates {
+            let hit = EmbeddingMath.relativeTopK(records: records, query: candidate.id, limit: 12)
+                .first { recentIDs.contains($0.pointID) && $0.score >= 0.55 }
+            if let hit, let related = pointByID[hit.pointID] {
+                result.append(RediscoveryItem(point: candidate.point, content: candidate.content,
+                                              reason: .relatedToRecent, relatedPoint: related,
+                                              relatedScore: hit.score))
+            } else {
+                result.append(RediscoveryItem(point: candidate.point, content: candidate.content,
+                                              reason: .olderThought))
+            }
+            if result.count == limit { break }
+        }
+        return result
+    }
+
+    public func recordRediscoveryFeedback(pointID: PointID, feedback: RediscoveryFeedback,
+                                          context: String? = nil) async throws {
+        try await writer.write { db in
+            try db.execute(sql: """
+                INSERT INTO rediscovery_events (id, point_id, event_type, context, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [UUID().uuidString, pointID.rawValue.uuidString, feedback.rawValue,
+                                  context, Date().timeIntervalSince1970])
+        }
+    }
+
+    public func confirmedRelation(source: PointID, target: PointID) async throws -> ConfirmedPointRelation? {
+        try await writer.read { db in
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT relation_type, created_at FROM confirmed_point_relations
+                WHERE source_point_id = ? AND target_point_id = ?
+                """, arguments: [source.rawValue.uuidString, target.rawValue.uuidString]),
+                  let type = PointRelationType(rawValue: row["relation_type"]) else { return nil }
+            return ConfirmedPointRelation(sourcePointID: source, targetPointID: target, type: type,
+                                          createdAt: Date(timeIntervalSince1970: row["created_at"]))
+        }
+    }
+
+    public func confirmRelation(source: PointID, target: PointID, type: PointRelationType) async throws {
+        guard source != target else { return }
+        try await writer.write { db in
+            let now = Date().timeIntervalSince1970
+            try db.execute(sql: """
+                INSERT INTO confirmed_point_relations
+                    (source_point_id, target_point_id, relation_type, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(source_point_id, target_point_id) DO UPDATE SET
+                    relation_type = excluded.relation_type, updated_at = excluded.updated_at
+                """, arguments: [source.rawValue.uuidString, target.rawValue.uuidString,
+                                  type.rawValue, now, now])
+        }
+    }
+
+    public func removeConfirmedRelation(source: PointID, target: PointID) async throws {
+        try await writer.write { db in
+            try db.execute(sql: """
+                DELETE FROM confirmed_point_relations
+                WHERE source_point_id = ? AND target_point_id = ?
+                """, arguments: [source.rawValue.uuidString, target.rawValue.uuidString])
+        }
+    }
+
+    public func commitDerivedTextPoint(text: String, sourcePointIDs: [PointID],
+                                       modelID: String? = nil) async throws -> PointID {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, !sourcePointIDs.isEmpty else { throw PointVerseError.databaseCommitFailed }
+        return try await writer.write { db in
+            let pointID = PointID()
+            let messageID = UUID()
+            let now = Date().timeIntervalSince1970
+            try db.execute(sql: "INSERT INTO points (id, created_at, updated_at) VALUES (?, ?, ?)",
+                           arguments: [pointID.rawValue.uuidString, now, now])
+            try db.execute(sql: """
+                INSERT INTO messages (id, operation_id, point_id, sequence, role, modality, user_text, created_at, model_id)
+                VALUES (?, ?, ?, 1, 'user', 'text', ?, ?, ?)
+                """, arguments: [messageID.uuidString, "derived:" + messageID.uuidString,
+                                  pointID.rawValue.uuidString, cleaned, now, modelID])
+            try db.execute(sql: """
+                INSERT INTO derivations (id, point_id, input_revision, model_id, model_sha256, prompt_version, title, state, adoption, created_at)
+                VALUES (?, ?, 1, 'rule-title-v1', 'builtin', 'rule-title-v1', ?, 'succeeded', 'candidate', ?)
+                """, arguments: [UUID().uuidString, pointID.rawValue.uuidString,
+                                  Self.fallbackTitle(from: cleaned), now])
+            for source in Set(sourcePointIDs) {
+                try db.execute(sql: """
+                    INSERT INTO point_origins (point_id, source_point_id, origin_type, model_id, created_at)
+                    VALUES (?, ?, 'continuedThought', ?, ?)
+                    """, arguments: [pointID.rawValue.uuidString, source.rawValue.uuidString, modelID, now])
+                try db.execute(sql: """
+                    INSERT INTO confirmed_point_relations
+                        (source_point_id, target_point_id, relation_type, created_at, updated_at)
+                    VALUES (?, ?, 'extend', ?, ?)
+                    ON CONFLICT(source_point_id, target_point_id) DO UPDATE SET
+                        relation_type = 'extend', updated_at = excluded.updated_at
+                    """, arguments: [source.rawValue.uuidString, pointID.rawValue.uuidString, now, now])
+            }
+            try refreshSearch(pointID: pointID, db: db)
+            try enqueueEmbedding(pointID: pointID, revision: 1, db: db, timestamp: now)
+            return pointID
         }
     }
 

@@ -2,6 +2,31 @@ import Foundation
 import Testing
 @testable import PointVerseKit
 
+@Test func modelComponentUsesGitBlobChecksumAndRejectsCorruption() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "git-blob-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let descriptor = ModelManifest(id: "git-component", revision: "1", filename: "component.file",
+        downloadURL: URL(string: "https://example.invalid/component")!, displayByteCount: 5, sha256: "",
+        license: "fixture", minimumFreeDiskBytes: 0,
+        gitBlobSHA1: "b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0")
+    let registry = ModelRegistry(rootURL: root)
+    let partial = try await registry.prepareForDownload(descriptor)
+    try Data("hello".utf8).write(to: partial)
+    let installed = try await registry.installPartial(descriptor)
+    try await registry.verifyFile(at: installed, manifest: descriptor)
+    try Data("hell0".utf8).write(to: installed)
+    await #expect(throws: PointVerseError.modelChecksumMismatch) {
+        try await registry.verifyFile(at: installed, manifest: descriptor)
+    }
+}
+
+@Test func legacyManifestWithoutGitChecksumStillDecodes() throws {
+    let descriptor = ModelManifest.qwen3_0_6BQ8
+    let data = try JSONEncoder().encode(descriptor)
+    #expect(!String(decoding: data, as: UTF8.self).contains("gitBlobSHA1"))
+    #expect(try JSONDecoder().decode(ModelManifest.self, from: data) == descriptor)
+}
+
 @Test func qwenManifestIsPinnedAndFitsModelDirectory() {
     let manifest = ModelManifest.qwen3_0_6BQ8
     #expect(manifest.id == "qwen3-0.6b-q8_0")

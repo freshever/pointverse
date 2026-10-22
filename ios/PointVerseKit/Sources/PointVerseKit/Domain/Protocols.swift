@@ -60,6 +60,12 @@ public protocol PointRepository: Sendable {
     func geographies(version: String) async throws -> [PointGeographyRecord]
     func saveGeographies(_ records: [PointGeographyRecord]) async throws
     func relatedPoints(to pointID: PointID, modelID: String, minimumScore: Float, limit: Int) async throws -> [RelatedPoint]
+    func rediscoveryItems(referenceDate: Date, limit: Int) async throws -> [RediscoveryItem]
+    func recordRediscoveryFeedback(pointID: PointID, feedback: RediscoveryFeedback, context: String?) async throws
+    func confirmedRelation(source: PointID, target: PointID) async throws -> ConfirmedPointRelation?
+    func confirmRelation(source: PointID, target: PointID, type: PointRelationType) async throws
+    func removeConfirmedRelation(source: PointID, target: PointID) async throws
+    func commitDerivedTextPoint(text: String, sourcePointIDs: [PointID], modelID: String?) async throws -> PointID
 }
 
 public protocol PointEmbedding: Sendable {
