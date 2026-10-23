@@ -250,6 +250,7 @@ public enum ExternalModelConnectionTester {
 
 public enum LanguageModelRoute: Sendable {
     case disabled
+    case pointVerseCloud
     case builtIn(ModelManifest)
     case edge0
     case localGGUF(ExternalLanguageModel)
@@ -262,6 +263,7 @@ public enum LanguageModelRouter {
     public static func selectedRoute(defaults: UserDefaults = .standard) throws -> LanguageModelRoute {
         let selectedID = ModelSelection.selectedLanguageModelID(defaults: defaults)
         if selectedID == ModelSelection.disabledLanguageModelID { return .disabled }
+        if selectedID == ModelSelection.pointVerseCloudLanguageModelID { return .pointVerseCloud }
         if let external = ExternalLanguageModelStore.selected(defaults: defaults) {
             switch external.kind {
             case .localGGUF: return .localGGUF(external)
@@ -306,7 +308,8 @@ public actor QwenTitleGenerator {
     private var engine: LlamaEngine?
     private var edge0Engine: Edge0ChatEngine?
     private var loadedModelPath: String?
-    private var networkModel: ExternalLanguageModel?
+    private var networkProvider: OpenAICompatibleProvider?
+    private var pointVerseCloudProvider: OpenAICompatibleProvider?
 
     public init(registry: ModelRegistry, executionGate: ModelExecutionGate) {
         self.registry = registry
@@ -317,8 +320,23 @@ public actor QwenTitleGenerator {
         engine = nil
         edge0Engine = nil
         loadedModelPath = nil
-        networkModel = nil
+        networkProvider = nil
         PointVerseLog.storage.info("Language model resources released")
+    }
+
+    public func configurePointVerseCloud(baseURL: URL?, accessToken: String?) {
+        guard let baseURL, let accessToken, !accessToken.isEmpty else {
+            pointVerseCloudProvider = nil
+            return
+        }
+        let model = ExternalLanguageModel(
+            name: "点界云端 AI", kind: .openAICompatible, provider: .custom,
+            baseURL: baseURL.appending(path: "v1/ai").absoluteString,
+            remoteModel: "pointverse"
+        )
+        pointVerseCloudProvider = OpenAICompatibleProvider(
+            model: model, apiKeyOverride: accessToken, requiresPrivacyApproval: false
+        )
     }
 
     public func generateTitle(transcript: String, conversation: [ConversationMessage], localeIdentifier: String) async throws -> String {
@@ -355,7 +373,7 @@ public actor QwenTitleGenerator {
         defer { releaseAfterExecution() }
         let manifest = try await prepareSelectedEngine()
         let language = Self.languageName(for: localeIdentifier)
-        if let networkModel {
+        if let networkProvider {
             let messages: [LanguageModelRequest.Message] = [
                 .init(
                     role: "system",
@@ -365,7 +383,7 @@ public actor QwenTitleGenerator {
             ] + conversation.suffix(8).map {
                 .init(role: $0.role == "assistant" ? "assistant" : "user", content: String($0.text.prefix(600)))
             }
-            let completion = try await OpenAICompatibleProvider(model: networkModel).completeWithMetadata(
+            let completion = try await networkProvider.completeWithMetadata(
                 .init(prompt: "", messages: messages, maximumTokens: role.maximumTokens)
             )
             let reply = Self.cleanReply(completion.text)
@@ -439,8 +457,8 @@ public actor QwenTitleGenerator {
         let manifest = try await prepareSelectedEngine()
         let instruction = PointThemeClassifier.instruction
         let input = "笔记：\(String((entry.point.title + "\n" + entry.content).prefix(600)))\n主题："
-        if let networkModel {
-            let completion = try await OpenAICompatibleProvider(model: networkModel).completeWithMetadata(
+        if let networkProvider {
+            let completion = try await networkProvider.completeWithMetadata(
                 .init(prompt: "", messages: [.init(role: "system", content: instruction), .init(role: "user", content: input)],
                       maximumTokens: 48, temperature: 0))
             return .init(text: Self.cleanReply(completion.text), modelID: completion.modelID)
@@ -470,8 +488,8 @@ public actor QwenTitleGenerator {
         引用成员编号。区分同主题与跨主题关联。证据不足就说不确定。不要编造其他省份或执行任何修改。
         """
         let input = "区域层级：\(level)；名称：\(String(name.prefix(80)))\n内容片段（每条最多320字符）：\n\(evidence)"
-        if let networkModel {
-            let completion = try await OpenAICompatibleProvider(model: networkModel).completeWithMetadata(
+        if let networkProvider {
+            let completion = try await networkProvider.completeWithMetadata(
                 .init(prompt: "", messages: [.init(role: "system", content: instruction), .init(role: "user", content: input)], maximumTokens: 640))
             let text = Self.cleanReply(completion.text)
             guard !text.isEmpty else { throw PointVerseError.invalidModelOutput }
@@ -520,7 +538,7 @@ public actor QwenTitleGenerator {
         defer { releaseAfterExecution() }
         // This test action is explicitly local, even if chat uses a network model.
         switch try LanguageModelRouter.selectedRoute() {
-        case .network, .disabled: throw PointVerseError.modelNotInstalled
+        case .network, .pointVerseCloud, .disabled: throw PointVerseError.modelNotInstalled
         default: break
         }
         let manifest = try await prepareSelectedEngine()
@@ -619,7 +637,7 @@ public actor QwenTitleGenerator {
     }
 
     private func complete(prompt: String, maximumTokens: Int, stopAtNewline: Bool = true) async throws -> String? {
-        if let networkModel { return try await completeRemotely(prompt: prompt, maximumTokens: maximumTokens, model: networkModel) }
+        if let networkProvider { return try await completeRemotely(prompt: prompt, maximumTokens: maximumTokens, provider: networkProvider) }
         if let edge0Engine {
             // PointVerse requests are independent jobs. Resetting avoids leaking
             // one Point's context into the next title, judge, or prompt task.
@@ -634,7 +652,7 @@ public actor QwenTitleGenerator {
         engine = nil
         edge0Engine = nil
         loadedModelPath = nil
-        networkModel = nil
+        networkProvider = nil
         Task { await executionGate.release() }
     }
 
@@ -643,6 +661,12 @@ public actor QwenTitleGenerator {
         switch route {
         case .disabled:
             throw PointVerseError.modelNotInstalled
+        case .pointVerseCloud:
+            guard let pointVerseCloudProvider else { throw ExternalModelConnectionError.server(status: 401, message: "请先登录点界账户。") }
+            engine = nil
+            edge0Engine = nil
+            networkProvider = pointVerseCloudProvider
+            return nil
         case .network(let provider):
             let external = provider.model
                 guard URL(string: external.baseURL ?? "") != nil, !(external.remoteModel ?? "").isEmpty else {
@@ -650,13 +674,13 @@ public actor QwenTitleGenerator {
                 }
             engine = nil
             edge0Engine = nil
-            networkModel = external
+            networkProvider = provider
             return nil
         case .localGGUF(let external):
             guard let path = external.localPath, FileManager.default.fileExists(atPath: path) else {
                 throw PointVerseError.modelNotInstalled
             }
-            networkModel = nil
+            networkProvider = nil
             try loadEngine(modelURL: URL(fileURLWithPath: path))
             return nil
         case .edge0:
@@ -681,8 +705,8 @@ public actor QwenTitleGenerator {
         }
     }
 
-    private func completeRemotely(prompt: String, maximumTokens: Int, model: ExternalLanguageModel) async throws -> String {
-        try await OpenAICompatibleProvider(model: model).complete(
+    private func completeRemotely(prompt: String, maximumTokens: Int, provider: OpenAICompatibleProvider) async throws -> String {
+        try await provider.complete(
             .init(prompt: prompt, maximumTokens: maximumTokens)
         )
     }

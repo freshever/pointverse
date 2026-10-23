@@ -1,0 +1,53 @@
+# Local development only: credentials and exposed ports are not production settings.
+x-app: &app
+  image: pointverse-server:dev
+  build: .
+  environment:
+    HTTP_ADDR: :8080
+    CLOUD_STORAGE_DIR: /data/cloud
+    GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+    APPLE_CLIENT_IDS: ${APPLE_CLIENT_IDS:-}
+    DATABASE_URL: postgres://pointverse:pointverse_dev@db:5432/pointverse?sslmode=disable
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pointverse
+      POSTGRES_USER: pointverse
+      POSTGRES_PASSWORD: pointverse_dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pointverse -d pointverse"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  migrate:
+    <<: *app
+    entrypoint: ["/app/migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    <<: *app
+    volumes:
+      - cloud_data:/data/cloud
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "8090:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  cloud_data:

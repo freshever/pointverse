@@ -1,0 +1,9 @@
+.git
+.env
+app.env
+bin
+coverage.out
+._*
+**/._*
+.DS_Store
+**/.DS_Store

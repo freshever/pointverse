@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>点界 PointVerse · 账户</title><link rel="icon" type="image/png" sizes="32x32" href="/account/favicon-v1.png"><link rel="apple-touch-icon" sizes="180x180" href="/account/apple-touch-icon-v1.png">
+  <link rel="stylesheet" href="/account/style.css">
+  <link rel="stylesheet" href="/account/library.css">
+  <script src="/account/app.js" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <section class="intro" aria-label="点界">
+      <a href="/account/" class="brand" aria-label="点界账户首页"><img class="brand-mark" src="/account/app-icon-v1.png" width="40" height="40" alt="" aria-hidden="true"><span>点界 <span class="wordmark">PointVerse</span></span></a>
+      <div class="intro-main">
+        <div class="eyebrow"><span></span> 留住每一次灵光</div>
+        <h1>从一个点，<br>到你的<span>思想宇宙。</span></h1>
+        <p class="intro-copy">记录片刻的想法，发现它们之间的联系。<br>为不断生长的思考，留一个属于自己的位置。</p>
+        <div class="universe" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div><span class="sun"></span><span class="planet p-one"></span><span class="planet p-two"></span><span class="planet p-three"></span><span class="tiny t-one"></span><span class="tiny t-two"></span><span class="star s-one">✦</span><span class="star s-two">✧</span><span class="universe-caption">每一个想法，都有自己的引力。</span></div>
+      </div>
+      <p class="intro-foot">你的原话值得被保留，你的思考值得被延续。</p>
+    </section>
+    <main>
+      <div class="mobile-brand"><img class="brand-mark" src="/account/app-icon-v1.png" width="40" height="40" alt="" aria-hidden="true"><span class="brand-name">点界 <span class="wordmark">PointVerse</span></span></div>
+      <section class="card" id="auth-panel" aria-labelledby="form-title">
+        <div class="step-label">你的点界账户</div>
+        <h2 id="form-title">让想法，有个归处。</h2>
+        <p id="form-description" class="description">用邮箱创建账户，开始连接你的点界。</p>
+        <div class="tabs" role="group" aria-label="账户操作">
+          <button type="button" id="register-tab" class="tab active" aria-pressed="true">创建账户</button>
+          <button type="button" id="login-tab" class="tab" aria-pressed="false">已有账户</button>
+        </div>
+        <form id="account-form">
+          <div class="field"><label for="email">邮箱地址</label><input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" maxlength="254" required></div>
+          <div class="field"><label for="password">密码</label><div class="password-wrap"><input id="password" name="password" type="password" autocomplete="new-password" placeholder="至少 12 个字符" minlength="12" maxlength="128" aria-describedby="password-help" required><button id="show-password" class="visibility" type="button" aria-label="显示密码" aria-pressed="false">显示</button></div><p class="field-help" id="password-help">12–128 个字符，建议使用不与其他账户重复的密码。</p></div>
+          <div class="field" id="confirmation-field"><label for="confirmation">确认密码</label><input id="confirmation" name="confirmation" type="password" autocomplete="new-password" placeholder="再次输入密码" maxlength="128" required></div>
+          <p id="form-message" class="message" role="status" aria-live="polite" hidden></p>
+          <button id="submit" class="primary" type="submit"><span id="submit-label">创建账户</span><span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="verification-note" id="verification-note">当前注册不会发送验证邮件，邮箱会暂时标记为未验证。</p>
+      </section>
+      <section class="card" id="account-panel" aria-labelledby="account-title" hidden>
+        <div class="success-mark" aria-hidden="true">✓</div>
+        <div class="step-label">POINTVERSE ACCOUNT</div>
+        <h2 id="account-title">欢迎回到点界。</h2>
+        <p class="description" id="welcome-message">你的账户已登录。</p>
+        <dl class="account-details"><div><dt>邮箱地址</dt><dd id="account-email"></dd></div><div><dt>邮箱状态</dt><dd id="account-verification"></dd></div><div><dt>加入点界</dt><dd id="account-created"></dd></div></dl>
+        <p id="account-message" class="message" role="status" aria-live="polite" hidden></p>
+        <a class="gallery-link" href="/account/library.html">查看云端想法 →</a>
+        <button id="logout" class="secondary" type="button">退出登录</button>
+      </section>
+      <div class="privacy-note"><span aria-hidden="true">◇</span><p>登录不会自动上传想法、录音或图片。<br>本地记录始终可用。</p></div>
+      <noscript><p>请开启浏览器 JavaScript，以注册或登录账户。</p></noscript>
+    </main>
+  </div>
+</body>
+</html>

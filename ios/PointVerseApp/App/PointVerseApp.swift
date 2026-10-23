@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct PointVerseApp: App {
@@ -6,6 +7,7 @@ struct PointVerseApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var container = AppContainer()
     @StateObject private var testContainer = AppContainer(storageMode: .test)
+    @StateObject private var account = AccountSessionStore()
     @AppStorage("appLanguage") private var appLanguage = "system"
     @State private var isTestMode = false
 
@@ -13,6 +15,8 @@ struct PointVerseApp: App {
         WindowGroup {
             RootView(isTestMode: $isTestMode)
                 .environmentObject(isTestMode ? testContainer : container)
+                .environmentObject(account)
+                .onOpenURL { url in _ = GIDSignIn.sharedInstance.handle(url) }
                 .environment(\.appLanguage, appLanguage)
                 .environment(\.locale, displayLocale)
                 .id(appLanguage)
@@ -29,6 +33,12 @@ struct PointVerseApp: App {
                         // delivered immediately when WCSession activates.
                         container.startWatchConnectivity()
                     }
+                }
+                .task(id: account.session?.accessToken) {
+                    await container.configurePointVerseCloud(
+                        baseURL: account.serviceURL,
+                        accessToken: account.session?.accessToken
+                    )
                 }
                 .onChange(of: scenePhase) { _, phase in
                     guard phase == .active, !isTestMode else { return }

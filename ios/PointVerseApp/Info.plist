@@ -41,5 +41,22 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+    <key>PointVerseAppleSignInEnabled</key>
+    <false/>
+    <key>GIDClientID</key>
+    <string>$(POINTVERSE_GOOGLE_CLIENT_ID)</string>
+    <key>GIDServerClientID</key>
+    <string>$(POINTVERSE_GOOGLE_SERVER_CLIENT_ID)</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array><string>$(POINTVERSE_GOOGLE_REVERSED_CLIENT_ID)</string></array>
+        </dict>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>点界需要访问同一网络中的账户服务，以登录并上传你选择的想法。</string>
+    <key>NSAppTransportSecurity</key>
+    <dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>

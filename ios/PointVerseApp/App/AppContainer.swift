@@ -107,7 +107,11 @@ final class AppContainer: ObservableObject {
         }
     }
 
-    func analyzeLCC(_ entry: PointMapEntry, useJudge: Bool,
+    func configurePointVerseCloud(baseURL: URL?, accessToken: String?) async {
+        await promptTranslator.configurePointVerseCloud(baseURL: baseURL, accessToken: accessToken)
+    }
+
+    func analyzeLCC(_ entry: PointMapEntry, useJudge: Bool, persist: Bool = true,
                     progress: @escaping @MainActor @Sendable (String) -> Void) async throws -> LCCClassificationReview {
         if useJudge {
             await progress("提取内容主题…")
@@ -137,7 +141,7 @@ final class AppContainer: ObservableObject {
             let review = LCCClassificationReview(entry: entry, embeddingModelID: "未使用（中文主题提取）",
                 judgeModelID: modelID, candidates: [], decision: decision,
                 theme: theme?.theme, rawTheme: theme?.rawTheme, mappingVersion: PointThemeClassifier.mappingVersion)
-            try await database.saveLCCClassificationReview(review)
+            if persist { try await database.saveLCCClassificationReview(review) }
             return review
         }
         guard let provider = embeddingProvider else {
@@ -152,7 +156,7 @@ final class AppContainer: ObservableObject {
         try Task.checkCancellation()
         let review = LCCClassificationReview(entry: entry, embeddingModelID: provider.modelID,
                                              judgeModelID: nil, candidates: candidates, decision: decision)
-        try await database.saveLCCClassificationReview(review)
+        if persist { try await database.saveLCCClassificationReview(review) }
         return review
     }
 
@@ -165,10 +169,13 @@ final class AppContainer: ObservableObject {
     }
 
     func deletePoint(_ id: PointID) async throws {
-        let imagePaths = try await database.images(pointID: id).map(\.relativePath)
-        let path = try await database.deletePoint(id: id)
-        if let path { try await blobStore.delete(relativePath: path) }
-        for imagePath in imagePaths { try? await imageBlobStore.delete(relativePath: imagePath) }
+        try await database.moveToTrash([.init(pointID: id, reason: "用户手动移入回收站")])
+    }
+
+    func restorePoints(_ ids: [PointID]) async throws {
+        try await database.restoreFromTrash(ids)
+        refreshEmbeddings()
+        Task { await transcriptionService.resumePending() }
     }
 
     func refreshEmbeddings() {

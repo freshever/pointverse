@@ -1,6 +1,10 @@
 import Foundation
 
 public enum UniverseInteractionPolicy {
+    /// Target-relative dolly inversion, independent of unrelated foreground bodies.
+    public static func dollyZoom(entryZoom: Double, entryGap: Double, targetGap: Double) -> Double {
+        entryZoom * pow(max(0.000001, entryGap) / max(0.000001, targetGap), 1 / 0.72)
+    }
     /// Constant relative magnification, eased at takeoff and arrival.
     public static func flightZoom(from: Double, to: Double, progress: Double) -> Double {
         guard from > 0, to > 0, from.isFinite, to.isFinite else { return from }

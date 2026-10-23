@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 public final class PointDatabase: PointRepository, @unchecked Sendable {
-    private let writer: any DatabaseWriter
+    let writer: any DatabaseWriter
     private let databaseURL: URL?
 
     public init(path: String) throws {
@@ -223,6 +223,13 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 );
                 """)
         }
+        migrator.registerMigration("v17-point-trash") { db in
+            try db.alter(table: "points") { table in
+                table.add(column: "trashed_at", .double)
+                table.add(column: "trash_reason", .text)
+            }
+            try db.execute(sql: "CREATE INDEX points_trashed_at ON points(trashed_at)")
+        }
         try migrator.migrate(writer)
         try await writer.write { db in
             let modelID = EmbeddingModelIdentity.multilingualE5Small
@@ -231,7 +238,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 WHERE kind = 'embedding' AND state IN ('queued', 'running')
                   AND operation_id NOT LIKE '%' || ?
                 """, arguments: [Date().timeIntervalSince1970, modelID])
-            for row in try Row.fetchAll(db, sql: "SELECT id, head_revision, updated_at FROM points") {
+            for row in try Row.fetchAll(db, sql: "SELECT id, head_revision, updated_at FROM points WHERE trashed_at IS NULL") {
                 guard let uuid = UUID(uuidString: row["id"]) else { continue }
                 try enqueueEmbedding(pointID: PointID(rawValue: uuid), revision: row["head_revision"],
                                      db: db, timestamp: row["updated_at"])
@@ -280,16 +287,24 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
-    /// Suggestions are separate from manual assignments; saving never changes membership.
-    public func saveLCCClassificationReview(_ review: LCCClassificationReview) async throws {
+    /// Automatic results remain separate from manual assignments. Batch callers
+    /// can reject stale results without overwriting newer content's classification.
+    @discardableResult public func saveLCCClassificationReview(_ review: LCCClassificationReview,
+        expectedRevision: Int? = nil, notifyChange: Bool = true) async throws -> Bool {
         let data = try JSONEncoder().encode(review)
-        try await writer.write { db in
+        let saved = try await writer.write { db in
+            if let expectedRevision {
+                guard try Int.fetchOne(db, sql: "SELECT head_revision FROM points WHERE id = ? AND trashed_at IS NULL",
+                    arguments: [review.pointID.rawValue.uuidString]) == expectedRevision else { return false }
+            }
             try db.execute(sql: """
                 INSERT INTO lcc_classification_reviews (point_id, payload) VALUES (?, ?)
                 ON CONFLICT(point_id) DO UPDATE SET payload = excluded.payload
                 """, arguments: [review.pointID.rawValue.uuidString, data])
+            return true
         }
-        NotificationCenter.default.post(name: ClassificationMapProjection.didChange, object: nil)
+        if saved && notifyChange { NotificationCenter.default.post(name: ClassificationMapProjection.didChange, object: nil) }
+        return saved
     }
 
     /// Nil restores rule suggestions; [] records a user's explicit empty selection.
@@ -316,6 +331,85 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                                arguments: [pointID.rawValue.uuidString, dimension.rawValue])
             }
         }
+        NotificationCenter.default.post(name: ClassificationMapProjection.didChange, object: nil)
+    }
+
+    public func organizationRecords() async throws -> [PointOrganizationRecord] {
+        let entries = try await pointMapEntries()
+        let metadata = try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT p.id, p.head_revision,
+                    (EXISTS(SELECT 1 FROM point_images i WHERE i.point_id = p.id)
+                     OR EXISTS(SELECT 1 FROM messages m JOIN audio_assets a ON a.message_id = m.id WHERE m.point_id = p.id)) AS has_media,
+                    EXISTS(SELECT 1 FROM messages m WHERE m.point_id = p.id AND m.sequence > 1) AS has_conversation
+                FROM points p WHERE p.trashed_at IS NULL
+                """).reduce(into: [String: (Int, Bool, Bool)]()) { result, row in
+                    result[row["id"]] = (row["head_revision"], row["has_media"], row["has_conversation"])
+                }
+        }
+        return entries.compactMap { entry in
+            guard let info = metadata[entry.id.rawValue.uuidString] else { return nil }
+            return .init(entry: entry, revision: info.0, hasMedia: info.1, hasConversation: info.2)
+        }
+    }
+
+    /// Logical removal only: all content, media, relations and classifications survive.
+    /// Optional revisions protect cleanup previews from concurrent edits.
+    @discardableResult public func moveToTrash(_ requests: [PointTrashRequest]) async throws -> Int {
+        let count = try await writer.write { db in
+            var changed = 0
+            for request in requests {
+                try Task.checkCancellation()
+                try db.execute(sql: """
+                    UPDATE points SET trashed_at = ?, trash_reason = ?
+                    WHERE id = ? AND trashed_at IS NULL AND (? IS NULL OR head_revision = ?)
+                    """, arguments: [Date().timeIntervalSince1970, String(request.reason.prefix(400)),
+                        request.pointID.rawValue.uuidString, request.expectedRevision, request.expectedRevision])
+                changed += db.changesCount
+            }
+            return changed
+        }
+        if count > 0 { notifyPointAvailabilityChanged() }
+        return count
+    }
+
+    @discardableResult public func restoreFromTrash(_ ids: [PointID]) async throws -> Int {
+        let count = try await writer.write { db in
+            var changed = 0
+            for id in ids {
+                try db.execute(sql: "UPDATE points SET trashed_at = NULL, trash_reason = NULL WHERE id = ? AND trashed_at IS NOT NULL",
+                               arguments: [id.rawValue.uuidString])
+                changed += db.changesCount
+            }
+            return changed
+        }
+        if count > 0 { notifyPointAvailabilityChanged() }
+        return count
+    }
+
+    public func trashedPoints() async throws -> [TrashedPoint] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT p.id, COALESCE(p.accepted_title, d.title, m.user_text, '') AS title,
+                       p.created_at, p.trashed_at, COALESCE(p.trash_reason, '') AS reason,
+                       CASE WHEN m.modality = 'text' THEN 'text' ELSE t.state END AS transcript_state
+                FROM points p
+                LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
+                LEFT JOIN audio_assets a ON a.message_id = m.id
+                LEFT JOIN transcripts t ON t.asset_id = a.id
+                LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
+                WHERE p.trashed_at IS NOT NULL ORDER BY p.trashed_at DESC
+                """).compactMap { row in
+                    guard let uuid = UUID(uuidString: row["id"]) else { return nil }
+                    return TrashedPoint(point: .init(id: PointID(rawValue: uuid), title: row["title"],
+                        createdAt: Date(timeIntervalSince1970: row["created_at"]), transcriptState: row["transcript_state"]),
+                        reason: row["reason"], trashedAt: Date(timeIntervalSince1970: row["trashed_at"]))
+                }
+        }
+    }
+
+    private func notifyPointAvailabilityChanged() {
+        NotificationCenter.default.post(name: PointOrganization.didChange, object: nil)
         NotificationCenter.default.post(name: ClassificationMapProjection.didChange, object: nil)
     }
 
@@ -393,6 +487,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
                     LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
+                    WHERE p.trashed_at IS NULL
                     ORDER BY p.created_at DESC
                     """)
             } else {
@@ -405,12 +500,12 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     LEFT JOIN audio_assets a ON a.message_id = m.id
                     LEFT JOIN transcripts t ON t.asset_id = a.id
                     LEFT JOIN derivations d ON d.id = (SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1)
-                    WHERE COALESCE(p.accepted_title, d.title, '') LIKE ? ESCAPE '\\'
+                    WHERE p.trashed_at IS NULL AND (COALESCE(p.accepted_title, d.title, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(m.user_text, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(t.user_text, t.engine_text, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(d.summary, '') LIKE ? ESCAPE '\\'
                        OR COALESCE(d.tags_json, '') LIKE ? ESCAPE '\\'
-                       OR EXISTS (SELECT 1 FROM point_images pi WHERE pi.point_id = p.id AND COALESCE(pi.recognized_text, '') LIKE ? ESCAPE '\\')
+                       OR EXISTS (SELECT 1 FROM point_images pi WHERE pi.point_id = p.id AND COALESCE(pi.recognized_text, '') LIKE ? ESCAPE '\\'))
                     ORDER BY p.created_at DESC
                     """, arguments: [pattern, pattern, pattern, pattern, pattern, pattern])
             }
@@ -556,6 +651,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded'
                     ORDER BY created_at DESC, rowid DESC LIMIT 1
                 )
+                WHERE p.trashed_at IS NULL
                 ORDER BY p.created_at DESC
                 """).compactMap { row in
                     guard let uuid = UUID(uuidString: row["id"]) else { return nil }
@@ -624,7 +720,8 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 -- Watch audio can arrive while iOS only grants a short
                 -- background execution window. Treat a transiently failed
                 -- recognition as resumable the next time the app prepares.
-                WHERE t.state IN ('queued', 'running', 'failed')
+                JOIN points p ON p.id = m.point_id
+                WHERE p.trashed_at IS NULL AND t.state IN ('queued', 'running', 'failed')
                 ORDER BY t.created_at
                 """).compactMap(UUID.init(uuidString:)).map(PointID.init(rawValue:))
         }
@@ -638,7 +735,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 JOIN audio_assets a ON a.message_id = m.id
                 JOIN transcripts t ON t.asset_id = a.id AND t.state = 'succeeded'
-                WHERE NOT EXISTS (
+                WHERE p.trashed_at IS NULL AND NOT EXISTS (
                     SELECT 1 FROM derivations d
                     WHERE d.point_id = p.id AND d.model_id = ? AND d.state = 'succeeded'
                 )
@@ -964,7 +1061,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 LEFT JOIN messages m ON m.point_id = p.id AND m.sequence = 1
                 LEFT JOIN audio_assets a ON a.message_id = m.id
                 LEFT JOIN transcripts t ON t.asset_id = a.id
-                WHERE NOT EXISTS (
+                WHERE p.trashed_at IS NULL AND NOT EXISTS (
                     SELECT 1 FROM point_embeddings e
                     WHERE e.point_id = p.id
                       AND e.model_id = ?
@@ -1002,7 +1099,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
             try Row.fetchAll(db, sql: """
                 SELECT e.point_id, e.content_revision, e.model_id, e.dimension, e.vector
                 FROM point_embeddings e JOIN points p ON p.id = e.point_id
-                WHERE e.model_id = ? AND e.content_revision = p.head_revision
+                WHERE p.trashed_at IS NULL AND e.model_id = ? AND e.content_revision = p.head_revision
                 """, arguments: [modelID]).compactMap { row in
                     guard let uuid = UUID(uuidString: row["point_id"]),
                           let vector = EmbeddingMath.decodeFloat16(row["vector"], dimension: row["dimension"]) else { return nil }
@@ -1018,7 +1115,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                 SELECT point_id, geography_version, content_revision, community_id,
                        latitude, longitude, altitude, placement_confidence, is_pinned
                 FROM point_geography
-                WHERE geography_version = ?
+                WHERE geography_version = ? AND point_id IN (SELECT id FROM points WHERE trashed_at IS NULL)
                 """, arguments: [version]).compactMap { row in
                     guard let uuid = UUID(uuidString: row["point_id"]) else { return nil }
                     return PointGeographyRecord(
@@ -1101,7 +1198,7 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
                     SELECT id FROM derivations WHERE point_id = p.id AND state = 'succeeded'
                     ORDER BY created_at DESC, rowid DESC LIMIT 1
                 )
-                WHERE p.created_at <= ?
+                WHERE p.trashed_at IS NULL AND p.created_at <= ?
                   AND NOT EXISTS (
                     SELECT 1 FROM rediscovery_events e
                     WHERE e.point_id = p.id AND e.created_at >= ?

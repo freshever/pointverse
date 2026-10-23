@@ -2,6 +2,31 @@ import Foundation
 import Testing
 @testable import PointVerseKit
 
+@Test func switchingPlanetKeepsSignedCloseRangeCameraPosition() {
+    for cameraZ in [-120.0, 0, 120] {
+        let targetZ = cameraZ - 0.02
+        let gap = cameraZ - targetZ
+        let rebasedZoom = UniverseInteractionPolicy.dollyZoom(entryZoom: 900, entryGap: gap, targetGap: gap)
+        #expect(abs(rebasedZoom - 900) < 0.000001)
+        let reconstructedZ = targetZ + gap / pow(rebasedZoom / 900, 0.72)
+        #expect(abs(reconstructedZ - cameraZ) < 0.000001)
+        // Tiny near-surface gaps must not be inflated to the old 0.35 floor.
+        let closer = UniverseInteractionPolicy.dollyZoom(entryZoom: 900, entryGap: gap, targetGap: gap / 2)
+        #expect(abs((targetZ + gap / pow(closer / 900, 0.72)) - (targetZ + gap / 2)) < 0.000001)
+    }
+}
+
+@Test func targetRelativeDollyCanPassAnUnrelatedForegroundPlane() {
+    // A selected system can be behind another system: its desired gap remains
+    // reachable without clamping against the other system's world-space Z.
+    let entryGap = 100.0, entryZoom = 2.0
+    for gap in [100.0, 10, 1, 0.01] {
+        let zoom = UniverseInteractionPolicy.dollyZoom(entryZoom: entryZoom, entryGap: entryGap, targetGap: gap)
+        let reconstructedGap = entryGap / pow(zoom / entryZoom, 0.72)
+        #expect(abs(reconstructedGap - gap) < 0.000001)
+    }
+}
+
 @Test func cameraFlightUsesProgressiveRelativeMagnification() {
     #expect(abs(UniverseInteractionPolicy.flightZoom(from: 1, to: 10000, progress: 0.5) - 100) < 0.001)
     #expect(UniverseInteractionPolicy.flightZoom(from: 2, to: 200, progress: 0) == 2)

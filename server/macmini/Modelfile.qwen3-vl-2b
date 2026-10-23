@@ -1,0 +1,6 @@
+FROM /Users/alex/work/pointverse/test-mode/Qwen3-VL-2B-Instruct-Q8_0.gguf
+
+PARAMETER temperature 0.6
+PARAMETER num_ctx 4096
+
+SYSTEM You are PointVerse's private AI assistant. Preserve the user's meaning, distinguish facts from inference, and answer in the user's language unless asked otherwise.

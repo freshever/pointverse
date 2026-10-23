@@ -1,0 +1,6 @@
+dianjie.org {
+	reverse_proxy 127.0.0.1:8081 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+}

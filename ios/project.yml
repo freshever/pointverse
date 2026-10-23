@@ -5,6 +5,9 @@ options:
     iOS: "17.0"
     watchOS: "10.0"
 packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS.git
+    exactVersion: 9.2.0
   PointVerseKit:
     path: PointVerseKit
   SwiftTransformers:
@@ -35,7 +38,7 @@ targets:
         PRODUCT_NAME: 点界 Watch
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 23
+        CURRENT_PROJECT_VERSION: 25
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseWatchApp/Info.plist
@@ -57,6 +60,10 @@ targets:
       - package: PointVerseKit
       - package: SwiftTransformers
         product: Tokenizers
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: GoogleSignIn
+        product: GoogleSignInSwift
       - target: QwenAdapter
       - target: WhisperAdapter
       - target: StableDiffusion
@@ -92,11 +99,14 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv
+        POINTVERSE_GOOGLE_CLIENT_ID: ""
+        POINTVERSE_GOOGLE_SERVER_CLIENT_ID: ""
+        POINTVERSE_GOOGLE_REVERSED_CLIENT_ID: org.dianjie.pv.google-unconfigured
         DEVELOPMENT_TEAM: SS4H5JZU3H
         CODE_SIGN_STYLE: Automatic
         PRODUCT_NAME: 点界
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 23
+        CURRENT_PROJECT_VERSION: 25
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PointVerseApp/Info.plist
@@ -117,7 +127,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.qwen-adapter
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 23
+        CURRENT_PROJECT_VERSION: 25
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
   WhisperAdapter:
@@ -133,7 +143,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.whisper-adapter
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 23
+        CURRENT_PROJECT_VERSION: 25
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
   StableDiffusion:
@@ -154,7 +164,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.dianjie.pv.stable-diffusion
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 23
+        CURRENT_PROJECT_VERSION: 25
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
 schemes:

@@ -183,6 +183,7 @@ public enum ModelSelection {
     public static let languageDefaultsKey = "selectedLanguageModelID"
     public static let imageDefaultsKey = "selectedImageModelID"
     public static let disabledLanguageModelID = "disabled"
+    public static let pointVerseCloudLanguageModelID = "pointverse-cloud"
     public static let edge0LanguageModelID = "edge0-8b-a1b-preview"
     public static let speechModels: [ModelManifest] = [.whisperTinyQ5, .whisperBaseQ5, .whisperSmallQ5]
     public static let languageModels: [ModelManifest] = [.qwen3_0_6BQ8, .qwen3_1_7BQ8, .qwen3VL2BQ8]
@@ -197,13 +198,13 @@ public enum ModelSelection {
     }
 
     public static func selectedLanguageModel(defaults: UserDefaults = .standard) -> ModelManifest? {
-        let id = defaults.string(forKey: languageDefaultsKey) ?? ModelManifest.qwen3_0_6BQ8.id
-        guard id != disabledLanguageModelID, id != edge0LanguageModelID else { return nil }
+        let id = defaults.string(forKey: languageDefaultsKey) ?? pointVerseCloudLanguageModelID
+        guard id != disabledLanguageModelID, id != edge0LanguageModelID, id != pointVerseCloudLanguageModelID else { return nil }
         return languageModels.first(where: { $0.id == id }) ?? .qwen3_0_6BQ8
     }
 
     public static func selectedLanguageModelID(defaults: UserDefaults = .standard) -> String {
-        defaults.string(forKey: languageDefaultsKey) ?? ModelManifest.qwen3_0_6BQ8.id
+        defaults.string(forKey: languageDefaultsKey) ?? pointVerseCloudLanguageModelID
     }
 
     public static func selectedImageModel(defaults: UserDefaults = .standard) -> ModelManifest {

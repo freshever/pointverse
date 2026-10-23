@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>云端想法 · 点界 PointVerse</title><link rel="icon" type="image/png" sizes="32x32" href="/account/favicon-v1.png"><link rel="apple-touch-icon" sizes="180x180" href="/account/apple-touch-icon-v1.png"><link rel="stylesheet" href="/account/style.css"><link rel="stylesheet" href="/account/library.css"><script src="/account/library.js" defer></script></head>
+<body class="library-body">
+<header class="library-header"><a class="brand" href="/account/"><img class="brand-mark" src="/account/app-icon-v1.png" width="40" height="40" alt="" aria-hidden="true"><span>点界 <span class="wordmark">PointVerse</span></span></a><a class="profile-link" href="/account/" id="profile">我的账户</a></header>
+<main class="library-main">
+ <div class="library-heading"><div><div class="eyebrow">YOUR THOUGHTS, CONNECTED</div><h1>云端想法<span>。</span></h1><p>在手机上选中上传，在这里继续浏览。</p></div><button class="refresh" id="refresh" type="button">↻ 刷新</button></div>
+ <div class="library-controls"><div class="filters" role="group" aria-label="内容类型"><button type="button" data-filter="all" class="chosen" aria-pressed="true">全部</button><button type="button" data-filter="image" aria-pressed="false">图片</button><button type="button" data-filter="audio" aria-pressed="false">录音</button><button type="button" data-filter="text" aria-pressed="false">文字</button></div><label class="search-label" for="search"><span>搜索</span><input id="search" type="search" placeholder="搜索标题或内容" autocomplete="off"></label></div>
+ <p class="count" id="count" aria-live="polite">正在读取云端内容…</p><p class="message" id="library-message" role="status" hidden></p>
+ <section class="cloud-grid" id="cloud-grid" aria-label="云端想法"></section>
+ <section class="empty" id="empty" hidden><span aria-hidden="true">☁</span><h2 id="empty-title">还没有云端想法</h2><p id="empty-message">在 iOS 登录同一账户，选中一条或多条想法上传后，会显示在这里。</p></section>
+ <p class="library-foot">仅展示当前账户上传的内容 · 不会自动读取手机资料</p>
+</main>
+<dialog id="detail"><div class="detail-top"><span id="detail-date"></span><button type="button" id="close-detail" aria-label="关闭详情">✕</button></div><h2 id="detail-title"></h2><p class="detail-meta" id="detail-meta"></p><select id="detail-version" aria-label="查看上传版本" hidden></select><div id="detail-body"></div><p class="message" id="detail-message" role="status" hidden></p></dialog>
+</body></html>

@@ -72,6 +72,7 @@ struct PointFacetPrototypeView: View {
         List {
             Section {
                 Text("分类浏览原型 · \(container.storageMode == .test ? "测试数据库" : "正式数据库")").font(.headline)
+                NavigationLink { PointOrganizationView() } label: { Label("全部重新整理与回收站", systemImage: "tray.2") }
                 Text("主题和有效目录分类生成后直接生效，脑图与宇宙同步更新。可以随时修改，人工分类优先；仅相似度召回不自动采用。")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("按什么组织", selection: $dimension) {

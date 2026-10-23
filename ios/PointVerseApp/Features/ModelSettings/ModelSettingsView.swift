@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 struct ModelSettingsView: View {
     @AppStorage("appLanguage") private var appLanguage = "system"
     @AppStorage(ModelSelection.speechDefaultsKey) private var selectedSpeechModelID = ModelManifest.whisperBaseQ5.id
-    @AppStorage(ModelSelection.languageDefaultsKey) private var selectedLanguageModelID = ModelManifest.qwen3_0_6BQ8.id
+    @AppStorage(ModelSelection.languageDefaultsKey) private var selectedLanguageModelID = ModelSelection.pointVerseCloudLanguageModelID
     @AppStorage(ModelSelection.imageDefaultsKey) private var selectedImageModelID = ModelManifest.stableDiffusion21Base6Bit.id
     @AppStorage("selectedExternalModel.imageGeneration") private var imageGenerationRoute = "local"
     @AppStorage("selectedExternalModel.embedding") private var embeddingRoute = "local"
@@ -14,6 +14,7 @@ struct ModelSettingsView: View {
     @AppStorage("selectedExternalModel.speech") private var speechRoute = "local"
     @AppStorage("selectedExternalModel.audioUnderstanding") private var audioUnderstandingRoute = "local"
     @EnvironmentObject private var container: AppContainer
+    @EnvironmentObject private var account: AccountSessionStore
     @State private var externalModels = ExternalLanguageModelStore.load()
     @State private var showingNetworkModelEditor = false
     @State private var showingGGUFImporter = false
@@ -32,6 +33,7 @@ struct ModelSettingsView: View {
 
     private var currentAssistantName: String {
         if selectedLanguageModelID == ModelSelection.disabledLanguageModelID { return "未启用" }
+        if selectedLanguageModelID == ModelSelection.pointVerseCloudLanguageModelID { return "点界云端 AI" }
         if selectedLanguageModelID == ModelSelection.edge0LanguageModelID { return "Edge0 8B A1B" }
         if let model = selectedExternalModel { return model.name }
         if let manifest = ModelSelection.languageModels.first(where: { $0.id == selectedLanguageModelID }) {
@@ -42,6 +44,9 @@ struct ModelSettingsView: View {
 
     private var currentAssistantLocation: String {
         guard let model = selectedExternalModel else {
+            if selectedLanguageModelID == ModelSelection.pointVerseCloudLanguageModelID {
+                return account.session == nil ? "登录点界后可用" : "由点界私有计算节点运行"
+            }
             return selectedLanguageModelID == ModelSelection.disabledLanguageModelID ? "不会生成标题或对话回复" : "在这台设备上运行 · 内容不离开设备"
         }
         return model.kind == .openAICompatible
@@ -51,6 +56,24 @@ struct ModelSettingsView: View {
 
     var body: some View {
         List {
+            if container.storageMode == .production {
+                Section {
+                    NavigationLink { AccountView(library: .init(database: container.database, audio: container.blobStore, images: container.imageBlobStore)) } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.crop.circle.fill").font(.title2).foregroundStyle(.indigo)
+                            VStack(alignment: .leading, spacing: 3) {
+                                AppText(account.user == nil ? "登录点界" : "我的账户").font(.headline)
+                                if let user = account.user {
+                                    Text(verbatim: user.displayName.isEmpty ? (user.identities.first?.email ?? "PointVerse") : user.displayName)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                } else {
+                                    AppText("通过 Apple 或 Google 登录").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                } header: { AppText("账户") }
+            }
             Section {
                 Button {
                     NotificationCenter.default.post(name: AppContainer.enterTestMode, object: nil)
@@ -88,6 +111,9 @@ struct ModelSettingsView: View {
 
                 Picker(selection: Binding(get: { selectedLanguageModelID }, set: selectLanguageModel)) {
                     AppText("关闭 AI 助手").tag(ModelSelection.disabledLanguageModelID)
+                    Section("点界") {
+                        Text(verbatim: "点界云端 AI · 默认").tag(ModelSelection.pointVerseCloudLanguageModelID)
+                    }
                     Section("设备端") {
                         ForEach(ModelSelection.languageModels, id: \.id) { manifest in
                             Text(verbatim: languageName(manifest)).tag(manifest.id)

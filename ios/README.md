@@ -57,3 +57,7 @@ xcodegen generate
 若 Watch 不出现在运行设备列表，先确认 Xcode 支持手表当前 watchOS 版本，再重新解锁、连接和配对设备。WatchConnectivity 的后台交付只能以真实配对设备作为验收依据。
 
 当前 Watch 已排队发送文件，但 iPhone 端的幂等导入与业务回执属于下一批 W2/W3；在接收端完成前，Watch 会一直显示“等待同步”并保留本地原音。
+
+## 账户登录
+
+正式模式的模型页顶部提供账户入口，支持 Google / Apple 登录对接。配置步骤和当前联调边界见 [账户登录](AccountLogin.md)。

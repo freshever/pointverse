@@ -40,6 +40,7 @@ struct PointDetailView: View {
     @State private var progressDraft: ConversationMessage?
     @State private var progressText = ""
     @State private var progressError: String?
+    @State private var trashError: String?
     @State private var replySources: [UUID: [PointID]] = [:]
     @State private var savingResultIDs: Set<UUID> = []
     @State private var savedResultNotice = false
@@ -269,15 +270,21 @@ struct PointDetailView: View {
                     Button { understandAudio() } label: {
                         Label("理解音乐或现场声音", systemImage: "waveform.badge.magnifyingglass")
                     }.disabled(isUnderstandingAudio)
-                    Button(role: .destructive) { confirmingDelete = true } label: { Label("删除", systemImage: "trash") }
+                    Button(role: .destructive) { confirmingDelete = true } label: { Label("移入回收站", systemImage: "trash") }
                 } label: { Image(systemName: "ellipsis.circle") }
             }
         }
-        .confirmationDialog("删除这条想法？", isPresented: $confirmingDelete) {
-            Button("删除", role: .destructive) {
-                Task { try? await container.deletePoint(point.id); dismiss() }
+        .confirmationDialog("将这条想法移入回收站？", isPresented: $confirmingDelete) {
+            Button("移入回收站", role: .destructive) {
+                Task {
+                    do { try await container.deletePoint(point.id); dismiss() }
+                    catch { trashError = error.localizedDescription }
+                }
             }
-        } message: { Text("原音、转写和照片都会被永久删除。") }
+        } message: { Text("原音、转写、照片和分类都会保留，可在“想法 → 整理 → 回收站”恢复。") }
+        .alert("无法移入回收站", isPresented: Binding(get: { trashError != nil }, set: { if !$0 { trashError = nil } })) {
+            Button("好") { trashError = nil }
+        } message: { Text(trashError ?? "请稍后重试") }
     }
 
     private var audioCard: some View {

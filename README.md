@@ -32,3 +32,7 @@ npm run dev
 ```
 
 POC 定义与技术方案位于 `docs/`。
+
+## 服务端
+
+Go + PostgreSQL 服务端初始工程位于 `server/`，支持 Docker Compose 启动、健康检查与版本化数据库迁移。启动和开发说明见 [服务端 README](server/README.md)。

@@ -42,17 +42,22 @@
 		5EAA3BCB289517246E1E543E /* TextEncoderXL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 827ABCDFD59C1B331A255524 /* TextEncoderXL.swift */; };
 		61587BBA6359215EBDCA518D /* CGImage+vImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808A88A153216C5EBC837445 /* CGImage+vImage.swift */; };
 		68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC1CB606858B87E1316B5A6 /* CaptureView.swift */; };
+		6E55C9342BA57EE867838818 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 85E84D7850ED5E6BFF07FBE4 /* GoogleSignInSwift */; };
+		73587A49CCE083144EF4BC42 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
 		74303CB0F04AC4BE3D6B9FC0 /* TextEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36FF9CC8B9C00D935D7408F /* TextEncoder.swift */; };
+		777CB9CFE7284C7A71B8511B /* CloudSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 241AF7AB30AED14B0A54ECA2 /* CloudSyncView.swift */; };
 		7974CDE5998A4B7AD5BAB10A /* StableDiffusionPipeline+Resources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C02B961CB05C9089228FB2 /* StableDiffusionPipeline+Resources.swift */; };
 		79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */; };
 		7C0EDD35A754BF1CEC505B4E /* ControlNet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2647D26123734C582B6CB2FB /* ControlNet.swift */; };
 		7DB0542E14D8D47D913839D5 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F7CF371D851D0C7732EA8C /* TranscriptionService.swift */; };
+		7E303169FEC1A46E2C8862D1 /* AppleLoginCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362F4306038C2A4D777E5CDC /* AppleLoginCoordinator.swift */; };
 		8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E117BAE13164C24CE628D0 /* AppLocalization.swift */; };
 		854DEB3CC1EB4F769E275404 /* MultilingualTextEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5614BE0FEF48738B5275B52F /* MultilingualTextEncoder.swift */; };
 		86ECCF7F5A5CC64FC721261A /* WatchCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52ADCDDCA3DB1E1FB444C28E /* WatchCaptureView.swift */; };
 		8846D339929A6F0653028413 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4808D14C615FE1EA8DA614 /* PhotoLibrarySaver.swift */; };
 		8D390012226C3DDB60426E45 /* LocalImageGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E13DE3C5353C03058293C2C /* LocalImageGenerator.swift */; };
-		8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6011DC563607EA13BFF8E848 /* ZIPFoundation */; };
+		8EE373F31044C1F943E30122 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 7DF414896AAF5A1DC725A09B /* GoogleSignIn */; };
+		902DC94F89AEB64B1DA5CC02 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C4C85CDCF003140D7E5E8F /* AccountView.swift */; };
 		94435D8810214C8FC7F63198 /* SquarePhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36F16698FFC6BFB2734DCC /* SquarePhotoCropView.swift */; };
 		95954644EAA1D1837CD48006 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = B430E296F7E046097A251A8A /* llama */; };
 		9B023FB90A85549F4B82EBCE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4B70F36F5A1D8993B8D44B9 /* Assets.xcassets */; };
@@ -63,6 +68,7 @@
 		A9698B83131CD1FF7285C3B0 /* WhisperAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */; };
 		A99D35AC9101FDD62C5004E9 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = CAD222DEB5F332B46BC5EA07 /* special_tokens_map.json */; };
 		AE065FB9DB6A08BCE1A96473 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = 271D595FD56333A5080F43AC /* tokenizer.json */; };
+		AE45D73409FB6955D0FF9746 /* CloudSyncModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1068FC3F3DCE1B1A40F346 /* CloudSyncModel.swift */; };
 		AEDF4B2B7527A4E9F346CFCF /* SafetyChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15EAE6A70FE425CC80E32226 /* SafetyChecker.swift */; };
 		B0E438EF98EDBBA74F0D46E7 /* ManagedMLModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60A72C3D22FFA14B1554CC7 /* ManagedMLModel.swift */; };
 		B51B349C350A7715739D1A9F /* PointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DFFB2A54AF6E33D666F99E /* PointDetailView.swift */; };
@@ -81,6 +87,7 @@
 		DEB22754FC8E1E6C3011AF91 /* ImageGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */; };
 		E22551A6E939122221FCD9FF /* ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD50731098248359D1259BC /* ModelDownloadManager.swift */; };
 		E39193ECCC490EF044C0BBFC /* ImageTextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46EB586B79573D8CC06601B /* ImageTextRecognizer.swift */; };
+		E4AD26C7E366B9F270DAAA06 /* AccountSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C03BDA2EC7DBC22D491342 /* AccountSessionStore.swift */; };
 		E81F8EF9E9C3CA0CC94591F8 /* whisper in Frameworks */ = {isa = PBXBuildFile; productRef = 5345C31724AE01318A8530F0 /* whisper */; };
 		EF0EABC50D816343D7FEDE60 /* NvRandomSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663CB78A60E539C05531657D /* NvRandomSource.swift */; };
 		F39E94764FB17533DF598918 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAEA797E538F30926794551 /* AppContainer.swift */; };
@@ -156,7 +163,9 @@
 		1295EBA18DDFC6F925F284D4 /* PointVerse.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PointVerse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13C7FA764E75EB27D312BC1D /* WhisperAdapter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = WhisperAdapter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		15EAE6A70FE425CC80E32226 /* SafetyChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyChecker.swift; sourceTree = "<group>"; };
+		19C4C85CDCF003140D7E5E8F /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		1EE918645FF1E1C0CEBED59B /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
+		241AF7AB30AED14B0A54ECA2 /* CloudSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncView.swift; sourceTree = "<group>"; };
 		24E265A97970E7093BC60BA7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		2647D26123734C582B6CB2FB /* ControlNet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlNet.swift; sourceTree = "<group>"; };
 		26CC55A416E6C0509DD5F1A4 /* NumPyRandomSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumPyRandomSource.swift; sourceTree = "<group>"; };
@@ -165,8 +174,10 @@
 		2B2085183CD43466B8E2F5B7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		34BD4179DB63AFDEFE18B5BD /* AudioUnderstandingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioUnderstandingService.swift; sourceTree = "<group>"; };
 		350717BAF15B6D474531ACEB /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
+		362F4306038C2A4D777E5CDC /* AppleLoginCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleLoginCoordinator.swift; sourceTree = "<group>"; };
 		39E7F1E746A15F829D7C58B6 /* RandomSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomSource.swift; sourceTree = "<group>"; };
 		3D89E5819041E4CFD5EFC610 /* Unet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Unet.swift; sourceTree = "<group>"; };
+		3F1068FC3F3DCE1B1A40F346 /* CloudSyncModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncModel.swift; sourceTree = "<group>"; };
 		420192E345B90F0B7C1669BC /* QwenTitleGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QwenTitleGenerator.swift; sourceTree = "<group>"; };
 		4BBDC78A40E54C9A91860E9B /* WhisperRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WhisperRuntime; path = Vendor/WhisperRuntime; sourceTree = SOURCE_ROOT; };
 		4BD327E4695085ADD59280A8 /* BPETokenizer+Reading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BPETokenizer+Reading.swift"; sourceTree = "<group>"; };
@@ -219,6 +230,7 @@
 		D160DE426EF06F3C85AAC7B6 /* AudioPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerViewModel.swift; sourceTree = "<group>"; };
 		D24866F69BF5BF289664746B /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
 		D36FF9CC8B9C00D935D7408F /* TextEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextEncoder.swift; sourceTree = "<group>"; };
+		D5C03BDA2EC7DBC22D491342 /* AccountSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSessionStore.swift; sourceTree = "<group>"; };
 		DBB549BAC0CB8D339CA6C41B /* WatchAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioRecorder.swift; sourceTree = "<group>"; };
 		DF4CE814ADC2DA9B2A01C155 /* ResourceManaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceManaging.swift; sourceTree = "<group>"; };
 		E23D9255CEF715935BBCF82D /* StableDiffusionXLPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StableDiffusionXLPipeline.swift; sourceTree = "<group>"; };
@@ -249,10 +261,12 @@
 			files = (
 				57EC78122B4B5FDE5C301F4A /* PointVerseKit in Frameworks */,
 				09AE63B68223FE04E8EE49A3 /* Tokenizers in Frameworks */,
+				8EE373F31044C1F943E30122 /* GoogleSignIn in Frameworks */,
+				6E55C9342BA57EE867838818 /* GoogleSignInSwift in Frameworks */,
 				B605428A4B68511E9FED8AC7 /* QwenAdapter.framework in Frameworks */,
 				A9698B83131CD1FF7285C3B0 /* WhisperAdapter.framework in Frameworks */,
 				0A93B5C11B1AA271C609E1EB /* StableDiffusion.framework in Frameworks */,
-				8EE373F31044C1F943E30122 /* ZIPFoundation in Frameworks */,
+				73587A49CCE083144EF4BC42 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -349,6 +363,16 @@
 				FA7E1B00DBCA6497FE780965 /* WhisperRecognizer.swift */,
 			);
 			path = PointDetail;
+			sourceTree = "<group>";
+		};
+		45809A4871651AF88E7F6348 /* Account */ = {
+			isa = PBXGroup;
+			children = (
+				D5C03BDA2EC7DBC22D491342 /* AccountSessionStore.swift */,
+				19C4C85CDCF003140D7E5E8F /* AccountView.swift */,
+				362F4306038C2A4D777E5CDC /* AppleLoginCoordinator.swift */,
+			);
+			path = Account;
 			sourceTree = "<group>";
 		};
 		47D89E5B19BBD80C35145E80 /* Storage */ = {
@@ -451,7 +475,9 @@
 		BD3C738103908198E1B62E75 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				45809A4871651AF88E7F6348 /* Account */,
 				FC153A3B722ECC263F440A3D /* Capture */,
+				EE0EB31070B832837A56916B /* CloudSync */,
 				21EA5E19DAD9F8106EE36010 /* Embedding */,
 				F118855ED00548C902C2640A /* ImageGeneration */,
 				5900BEFDD6595398DEFECE2F /* ModelSettings */,
@@ -512,6 +538,15 @@
 				3D89E5819041E4CFD5EFC610 /* Unet.swift */,
 			);
 			path = pipeline;
+			sourceTree = "<group>";
+		};
+		EE0EB31070B832837A56916B /* CloudSync */ = {
+			isa = PBXGroup;
+			children = (
+				3F1068FC3F3DCE1B1A40F346 /* CloudSyncModel.swift */,
+				241AF7AB30AED14B0A54ECA2 /* CloudSyncView.swift */,
+			);
+			path = CloudSync;
 			sourceTree = "<group>";
 		};
 		F118855ED00548C902C2640A /* ImageGeneration */ = {
@@ -620,6 +655,8 @@
 			packageProductDependencies = (
 				EF1601925276AADCFA77677C /* PointVerseKit */,
 				7A2F90E93A7921822C385A42 /* Tokenizers */,
+				7DF414896AAF5A1DC725A09B /* GoogleSignIn */,
+				85E84D7850ED5E6BFF07FBE4 /* GoogleSignInSwift */,
 				6011DC563607EA13BFF8E848 /* ZIPFoundation */,
 			);
 			productName = PointVerse;
@@ -675,6 +712,7 @@
 			mainGroup = A994A31E2C289E4E910AB9C5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				4CB144B69D46411371BB986F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				89D6598E16B2F01A7EFB4353 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				0F6D1162200E257A31D84139 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 				3372A849F4EEC482ED544163 /* XCLocalSwiftPackageReference "Vendor/Edge0Runtime" */,
@@ -815,12 +853,17 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E4AD26C7E366B9F270DAAA06 /* AccountSessionStore.swift in Sources */,
+				902DC94F89AEB64B1DA5CC02 /* AccountView.swift in Sources */,
 				F39E94764FB17533DF598918 /* AppContainer.swift in Sources */,
 				8503B2FC4C369E7476ED8268 /* AppLocalization.swift in Sources */,
+				7E303169FEC1A46E2C8862D1 /* AppleLoginCoordinator.swift in Sources */,
 				79D63B3F4893E3C2D806C78A /* AudioPlayerViewModel.swift in Sources */,
 				3E2050931E5FCBCA3C9EF3C5 /* AudioUnderstandingService.swift in Sources */,
 				40EA3A8264FAF4DE3B63E177 /* BackgroundSessionEvents.swift in Sources */,
 				68F6B492E852B9CBD7016C04 /* CaptureView.swift in Sources */,
+				AE45D73409FB6955D0FF9746 /* CloudSyncModel.swift in Sources */,
+				777CB9CFE7284C7A71B8511B /* CloudSyncView.swift in Sources */,
 				5B60BCE45A0C1F03A5D05B72 /* ConversationService.swift in Sources */,
 				CCCE03F54AEE4B8EEE36C22A /* E5CoreMLEmbedding.swift in Sources */,
 				5CE3534A344439BA6FECB414 /* Edge0DownloadManager.swift in Sources */,
@@ -915,7 +958,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
@@ -924,6 +967,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
+				POINTVERSE_GOOGLE_CLIENT_ID = "";
+				POINTVERSE_GOOGLE_REVERSED_CLIENT_ID = "org.dianjie.pv.google-unconfigured";
+				POINTVERSE_GOOGLE_SERVER_CLIENT_ID = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
@@ -938,7 +984,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
@@ -1021,7 +1067,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseApp/Info.plist;
@@ -1030,6 +1076,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
+				POINTVERSE_GOOGLE_CLIENT_ID = "";
+				POINTVERSE_GOOGLE_REVERSED_CLIENT_ID = "org.dianjie.pv.google-unconfigured";
+				POINTVERSE_GOOGLE_SERVER_CLIENT_ID = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.dianjie.pv;
 				PRODUCT_NAME = "点界";
 				SDKROOT = iphoneos;
@@ -1043,7 +1092,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -1068,7 +1117,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -1094,7 +1143,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = SS4H5JZU3H;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PointVerseWatchApp/Info.plist;
@@ -1168,7 +1217,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -1193,7 +1242,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -1218,7 +1267,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -1243,7 +1292,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -1351,6 +1400,14 @@
 				version = 0.9.20;
 			};
 		};
+		4CB144B69D46411371BB986F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = exactVersion;
+				version = 9.2.0;
+			};
+		};
 		89D6598E16B2F01A7EFB4353 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/huggingface/swift-transformers.git";
@@ -1383,6 +1440,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 89D6598E16B2F01A7EFB4353 /* XCRemoteSwiftPackageReference "swift-transformers" */;
 			productName = Tokenizers;
+		};
+		7DF414896AAF5A1DC725A09B /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4CB144B69D46411371BB986F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		85E84D7850ED5E6BFF07FBE4 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4CB144B69D46411371BB986F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
 		};
 		99170E9CBFC6906D4197B35C /* Edge0MLX */ = {
 			isa = XCSwiftPackageProductDependency;
