@@ -16,6 +16,7 @@ extension AccountAPI {
         return versions
     }
     public func uploadCloudAsset(url: URL, asset: CloudSnapshotAsset, token: String, progress: @escaping @Sendable (Int64, Int64) -> Void) async throws {
+        guard allowsNetwork() else { throw NetworkPolicyError.cloudDisabled }
         guard asset.byteCount > 0, asset.byteCount <= 128 * 1024 * 1024 else { throw CloudSyncError.tooLarge }
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         guard Int64(values.fileSize ?? 0) == asset.byteCount else { throw CloudSyncError.missingLocalAsset }
@@ -31,6 +32,7 @@ extension AccountAPI {
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.setValue(String(asset.byteCount), forHTTPHeaderField: "Content-Length")
         let delegate = CloudUploadProgress(progress: progress)
+        guard allowsNetwork() else { throw NetworkPolicyError.cloudDisabled }
         let (data, response) = try await session.upload(for: request, fromFile: url, delegate: delegate)
         try checkResponse(data, response: response, token: token)
     }

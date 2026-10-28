@@ -1,5 +1,6 @@
 import SwiftUI
 import GoogleSignIn
+import PointVerseKit
 
 @main
 struct PointVerseApp: App {
@@ -10,13 +11,19 @@ struct PointVerseApp: App {
     @StateObject private var account = AccountSessionStore()
     @AppStorage("appLanguage") private var appLanguage = "system"
     @State private var isTestMode = false
+    @AppStorage(AppNetworkPolicy.modeKey) private var usageMode = AppUsageMode.privacy.rawValue
+    @AppStorage(AppNetworkPolicy.acquisitionKey) private var acquisition = LocalModelAcquisition.browser.rawValue
+    @AppStorage(AppNetworkPolicy.configuredKey) private var modeChosen = false
 
     var body: some Scene {
         WindowGroup {
             RootView(isTestMode: $isTestMode)
                 .environmentObject(isTestMode ? testContainer : container)
                 .environmentObject(account)
-                .onOpenURL { url in _ = GIDSignIn.sharedInstance.handle(url) }
+                .onOpenURL { url in
+                    guard AppNetworkPolicy.allowsCloud() else { return }
+                    _ = GIDSignIn.sharedInstance.handle(url)
+                }
                 .environment(\.appLanguage, appLanguage)
                 .environment(\.locale, displayLocale)
                 .id(appLanguage)
@@ -34,10 +41,13 @@ struct PointVerseApp: App {
                         container.startWatchConnectivity()
                     }
                 }
-                .task(id: account.session?.accessToken) {
+                .task(id: "\(usageMode)-\(acquisition)-\(modeChosen)-\(account.session?.accessToken ?? "")") {
+                    container.applyNetworkPolicy()
+                    testContainer.applyNetworkPolicy()
+                    account.applyUsageMode()
                     await container.configurePointVerseCloud(
-                        baseURL: account.serviceURL,
-                        accessToken: account.session?.accessToken
+                        baseURL: AppNetworkPolicy.allowsCloud() ? account.serviceURL : nil,
+                        accessToken: AppNetworkPolicy.allowsCloud() ? account.session?.accessToken : nil
                     )
                 }
                 .onChange(of: scenePhase) { _, phase in
@@ -59,15 +69,25 @@ struct PointVerseApp: App {
 private struct RootView: View {
     @Binding var isTestMode: Bool
     @EnvironmentObject private var container: AppContainer
+    @EnvironmentObject private var account: AccountSessionStore
     @State private var isGeneratingTestData = false
     @State private var testPointCount = 0
     @State private var testDataRevision = 0
     @State private var testDataError: String?
     @State private var showingMemoryGenerationResult = false
     @State private var confirmingClearTestData = false
+    @AppStorage(AppNetworkPolicy.modeKey) private var usageMode = AppUsageMode.privacy.rawValue
+    @AppStorage(AppNetworkPolicy.acquisitionKey) private var acquisition = LocalModelAcquisition.browser.rawValue
+    @AppStorage(AppNetworkPolicy.configuredKey) private var modeChosen = false
+    @AppStorage("pointverse.lastAIExecution") private var lastExecution = ""
 
     var body: some View {
         VStack(spacing: 0) {
+            Label(usageMode == AppUsageMode.privacy.rawValue
+                  ? (acquisition == LocalModelAcquisition.browser.rawValue ? "强隐私 · 本机处理 · 点界不主动联网" : "隐私版 · 本机处理 · 内容不上传")
+                  : (lastExecution == "local" ? "登录版 · 上次 AI 在本机处理" : (account.session == nil ? "登录版 · 登录后使用云端 AI" : "登录版 · 云端 AI 可用")),
+                  systemImage: usageMode == AppUsageMode.privacy.rawValue ? "lock.shield.fill" : "cloud")
+                .font(.caption).foregroundStyle(.secondary).padding(.vertical, 6)
             if isTestMode { testModeBanner }
             TabView {
                 NavigationStack { CaptureView() }
@@ -83,6 +103,12 @@ private struct RootView: View {
             }
         }
         .id("\(isTestMode)-\(testDataRevision)")
+        .fullScreenCover(isPresented: Binding(get: { !modeChosen }, set: { _ in })) {
+            NavigationStack {
+                Form { AppModeControls(onboarding: true) }
+                    .navigationTitle("欢迎使用点界")
+            }.interactiveDismissDisabled()
+        }
         .tint(.indigo)
         .task(id: isTestMode) {
             guard isTestMode else { return }

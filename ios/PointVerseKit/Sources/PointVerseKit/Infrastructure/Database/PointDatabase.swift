@@ -287,6 +287,31 @@ public final class PointDatabase: PointRepository, @unchecked Sendable {
         }
     }
 
+    /// Learn only explicit confirmations made after a theme was extracted.
+    /// Conflicting placements remain unresolved and require a new model suggestion.
+    public func confirmedDomain(forTheme theme: String) async throws -> String? {
+        try await writer.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT r.payload, o.values_json, o.updated_at FROM lcc_classification_reviews r
+                JOIN point_facet_overrides o ON o.point_id=r.point_id AND o.dimension='domain'
+                JOIN points p ON p.id=r.point_id WHERE p.trashed_at IS NULL
+                """)
+            var domains = Set<String>()
+            for row in rows {
+                let payload: Data = row["payload"]
+                let review = try JSONDecoder().decode(LCCClassificationReview.self, from: payload)
+                let updated: Double = row["updated_at"]
+                guard review.theme?.caseInsensitiveCompare(theme) == .orderedSame,
+                      updated >= review.createdAt.timeIntervalSince1970 else { continue }
+                let values: Data = row["values_json"]
+                let ids = try JSONDecoder().decode([String].self, from: values)
+                guard ids.count == 1, let id = ids.first, LCCCatalog.byID[id] != nil else { continue }
+                domains.insert(id)
+            }
+            return domains.count == 1 ? domains.first : nil
+        }
+    }
+
     /// Automatic results remain separate from manual assignments. Batch callers
     /// can reject stale results without overwriting newer content's classification.
     @discardableResult public func saveLCCClassificationReview(_ review: LCCClassificationReview,

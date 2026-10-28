@@ -47,9 +47,12 @@ public enum AccountAPIError: Error, LocalizedError, Sendable {
 public actor AccountAPI {
     let baseURL: URL
     let session: URLSession
-    public init(baseURL: URL, allowLocalHTTP: Bool = false, session: URLSession? = nil) throws {
+    let allowsNetwork: @Sendable () -> Bool
+    public init(baseURL: URL, allowLocalHTTP: Bool = false, session: URLSession? = nil,
+                allowsNetwork: @escaping @Sendable () -> Bool = { AppNetworkPolicy.allowsCloud() }) throws {
         guard Self.isAllowed(baseURL, allowLocalHTTP: allowLocalHTTP) else { throw AccountAPIError.invalidAddress }
         self.baseURL = baseURL
+        self.allowsNetwork = allowsNetwork
         if let session { self.session = session } else {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 15
@@ -57,8 +60,10 @@ public actor AccountAPI {
             configuration.urlCache = nil
             self.session = URLSession(configuration: configuration, delegate: AccountRedirectGuard(), delegateQueue: nil)
         }
+        AccountNetworkSessions.shared.register(self.session)
     }
     deinit { session.invalidateAndCancel() }
+    public nonisolated static func cancelAllRequests() { AccountNetworkSessions.shared.cancelAll() }
     public nonisolated static func isAllowed(_ url: URL, allowLocalHTTP: Bool) -> Bool {
         guard let host = url.host?.lowercased(), !host.isEmpty,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return false }
@@ -105,6 +110,7 @@ public actor AccountAPI {
         return try Self.decoder().decode(T.self, from: data)
     }
     func request(_ path: String, method: String, body: Data? = nil, token: String? = nil, query: [URLQueryItem] = []) async throws -> Data {
+        guard allowsNetwork() else { throw NetworkPolicyError.cloudDisabled }
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!)
@@ -149,6 +155,26 @@ public actor AccountAPI {
         return decoder
     }
 }
+private final class AccountNetworkSessions: @unchecked Sendable {
+    static let shared = AccountNetworkSessions()
+    private final class Entry { weak var session: URLSession?; init(_ session: URLSession) { self.session = session } }
+    private let lock = NSLock()
+    private var entries: [Entry] = []
+    func register(_ session: URLSession) {
+        lock.lock()
+        entries.removeAll { $0.session == nil }
+        entries.append(Entry(session))
+        lock.unlock()
+    }
+    func cancelAll() {
+        lock.lock()
+        let sessions = entries.compactMap(\.session)
+        entries.removeAll()
+        lock.unlock()
+        sessions.forEach { $0.invalidateAndCancel() }
+    }
+}
+
 private final class AccountRedirectGuard: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         completionHandler(nil)

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd /home/alex/pointverse/server
+if [[ -f PROXY_ONLY ]]; then
+  echo "This VPS is proxy-only. Deploy the application to the Mac data node instead." >&2
+  exit 1
+fi
 export PATH=/usr/local/go/bin:$PATH
 export GOMAXPROCS=1
 install -d /home/alex/pointverse/bin

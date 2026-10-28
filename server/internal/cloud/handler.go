@@ -44,6 +44,8 @@ func New(pool *pgxpool.Pool, root string, authentication *auth.Handler) (*Handle
 	return &Handler{pool, absolute, authentication}, nil
 }
 func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("PUT /web/sync/assets/{hash}", h.authentication.RequireWebMutation(h.uploadAsset))
+	mux.HandleFunc("POST /web/sync/points", h.authentication.RequireWebMutation(h.commit))
 	mux.HandleFunc("GET /web/sync/points", h.authentication.RequireWebUser(h.list))
 	mux.HandleFunc("GET /web/sync/assets/{hash}", h.authentication.RequireWebUser(h.downloadAsset))
 	mux.HandleFunc("GET /web/sync/points/{point}/versions/{hash}", h.authentication.RequireWebUser(h.downloadManifest))

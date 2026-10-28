@@ -828,6 +828,7 @@ struct PointDetailView: View {
     }
 
     private func transcriptionEngineName(_ modelID: String) -> String {
+        if modelID.hasPrefix("pointverse-cloud-whisper-") { return "点界云端 · " + modelID.replacingOccurrences(of: "pointverse-cloud-", with: "") }
         if modelID == "apple-speech-on-device" {
             return AppLocalization.string("Apple 系统语音识别（设备端）", language: appLanguage)
         }
@@ -857,6 +858,7 @@ struct PointDetailView: View {
         transcriptionCandidates = (try? await container.database.transcriptionCandidates(pointID: point.id)) ?? []
         audioUnderstanding = try? await container.database.audioUnderstanding(pointID: point.id)
         installedSpeechModelIDs = await container.installedSpeechModelIDs()
+        if AppNetworkPolicy.allowsCloud() { installedSpeechModelIDs.insert("pointverse-cloud-whisper-small", at: 0) }
         if let path = loaded.audioRelativePath,
            let url = try? await container.blobStore.url(for: path) { player.prepare(url: url) }
         let assets = (try? await container.database.images(pointID: point.id)) ?? []
@@ -1048,6 +1050,7 @@ struct PointDetailView: View {
     }
 
     private func analyzeMissingPhotosIfNeeded() {
+        guard !AppNetworkPolicy.allowsCloud() else { return }
         guard visionAvailabilityChecked, visionAvailable, !isAnalyzingPhotos else { return }
         let pending = images.filter {
             $0.asset.recognizedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
@@ -1138,7 +1141,8 @@ struct PointDetailView: View {
     }
 
     private func retryTranscription() {
-        generateTranscription(using: "apple-speech-on-device")
+        generateTranscription(using: AppNetworkPolicy.allowsCloud() && UserDefaults.standard.string(forKey: "selectedExternalModel.speech") != "local"
+                              ? "pointverse-cloud-whisper-small" : "apple-speech-on-device")
     }
 
     private func understandAudio() {
@@ -1381,6 +1385,7 @@ private struct PointManifestationView: View {
     @State private var generatedImage: UIImage?
     @State private var generatedPrompt = ""
     @State private var generatedModelID: String?
+    @State private var generationTask: Task<Void, Never>?
     @State private var isGenerating = false
     @State private var diffusionStarted = false
     @State private var progress = 0.0
@@ -1438,16 +1443,17 @@ private struct PointManifestationView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { AppText("取消") }
+                    Button { generationTask?.cancel(); dismiss() } label: { AppText("取消") }
                 }
             }
         }
+        .onDisappear { generationTask?.cancel() }
     }
 
     private func generate() {
         guard !sourceContext.isEmpty else { return }
         isGenerating = true; diffusionStarted = false; progress = 0; errorKey = nil; generatedPrompt = ""
-        Task {
+        generationTask = Task {
             do {
                 let locale = appLanguage == "system" ? Locale.current.identifier : appLanguage
                 let result = try await container.imageGenerationWorkflow.generate(
@@ -1460,6 +1466,8 @@ private struct PointManifestationView: View {
                 generatedImage = UIImage(contentsOfFile: result.artifact.url.path)
                 generatedModelID = result.artifact.modelID
                 progress = 1
+            } catch is CancellationError {
+                errorKey = "已取消生成"
             } catch PointVerseError.modelNotInstalled {
                 errorKey = "请先安装语言模型和图片模型"
             } catch {

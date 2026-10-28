@@ -1582,26 +1582,28 @@ private struct SemanticUniverse: View {
 
     private func centerCamera(on planet: CosmicHierarchy.Planet) {
         pauseOrbit()
-        let alreadyTargeted = cameraTargetPlanetID == planet.id
+        cameraAnimationToken = UUID()
+        let previousDistance = cameraDistance
         focusedPointID = nil
         surfaceFocusRequest = nil
         onVisitPlanet(planet.nodeIndices.map { layout.nodes[$0].point.id })
-        if cameraTargetPlanetID != planet.id {
-            let currentDistance = cameraDistance
-            activePlanetID = nil
-            universeZoomBeforeEntry = zoom
-            surfaceEntryCameraDistance = currentDistance
-            cameraTargetPlanetID = planet.id
-        }
-        if viewportSize.width > 0, isPlanetInteractive(planet) {
-            activatePlanetSurface(planet)
-        }
         let world = planetWorldPosition(planet)
         let targetDiameter = CGFloat(UniverseInteractionPolicy.clickedPlanetDiameter(width: Double(viewportSize.width), height: Double(viewportSize.height)))
-        let diameter = alreadyTargeted ? max(targetDiameter, planetVisualRadius(planet, size: viewportSize) * 2) : targetDiameter
-        let targetZoom = targetDiameter > 0
-            ? zoom(forPlanetDiameter: diameter, planet: planet, size: viewportSize)
-            : zoom
+        guard targetDiameter > 0 else { return }
+        let focalLength = min(viewportSize.width, viewportSize.height) * 1.15
+        let fittedGap = planetWorldRadius(planet) * 2 * focalLength / targetDiameter
+        let entryGap = CGFloat(UniverseInteractionPolicy.navigationEntryGap(
+            cameraDistance: Double(previousDistance), planetDepth: Double(world.z), fittedGap: Double(fittedGap)))
+        // Normalize the zoom reference as well: a prior deep zoom must not
+        // clamp the next planet's fitted zoom to the global minimum/maximum.
+        universeZoomBeforeEntry = 1
+        surfaceEntryCameraDistance = world.z + entryGap
+        cameraTargetPlanetID = planet.id
+        activePlanetID = nil
+        planetFocusProgress = 0
+        surfaceZoom = 1
+        zoom = 1
+        let targetZoom = zoom(forPlanetDiameter: targetDiameter, planet: planet, size: viewportSize)
         animateUniverseCamera(to: CGPoint(x: world.x, y: world.y), zoom: targetZoom, duration: 0.65) {
             activatePlanetSurface(planet)
         }

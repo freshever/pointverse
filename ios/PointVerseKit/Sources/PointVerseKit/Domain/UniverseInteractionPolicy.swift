@@ -5,6 +5,11 @@ public enum UniverseInteractionPolicy {
     public static func dollyZoom(entryZoom: Double, entryGap: Double, targetGap: Double) -> Double {
         entryZoom * pow(max(0.000001, entryGap) / max(0.000001, targetGap), 1 / 0.72)
     }
+    /// A shortcut can select a body in front of the previous camera. Rebase
+    /// its dolly curve outside the body instead of collapsing depth to epsilon.
+    public static func navigationEntryGap(cameraDistance: Double, planetDepth: Double, fittedGap: Double) -> Double {
+        max(0.000001, max(cameraDistance - planetDepth, fittedGap))
+    }
     /// Constant relative magnification, eased at takeoff and arrival.
     public static func flightZoom(from: Double, to: Double, progress: Double) -> Double {
         guard from > 0, to > 0, from.isFinite, to.isFinite else { return from }

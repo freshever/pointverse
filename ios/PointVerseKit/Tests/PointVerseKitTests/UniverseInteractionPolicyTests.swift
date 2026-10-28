@@ -74,3 +74,20 @@ import Testing
     #expect(UniverseInteractionPolicy.orbitRate(index: 0) > UniverseInteractionPolicy.orbitRate(index: 1))
     #expect(UniverseInteractionPolicy.orbitRate(index: 5) > 0)
 }
+
+@Test func shortcutFitsPlanetsEvenWhenPreviousCameraIsBehindThem() {
+    for depth in [-20.0, 0, 20] {
+        for distance in [-40.0, 0, 50] {
+            for count in [1, 100, 10000] {
+                let diameter = UniverseInteractionPolicy.clickedPlanetDiameter(width: 390, height: 750)
+                let radius = UniverseInteractionPolicy.planetRadius(pointCount: count)
+                let fittedGap = radius * 2 * 390 * 1.15 / diameter
+                let entryGap = UniverseInteractionPolicy.navigationEntryGap(cameraDistance: distance, planetDepth: depth, fittedGap: fittedGap)
+                let zoom = UniverseInteractionPolicy.dollyZoom(entryZoom: 1, entryGap: entryGap, targetGap: fittedGap)
+                let finalGap = entryGap / pow(zoom, 0.72)
+                #expect(finalGap > radius)
+                #expect(abs(radius * 2 * 390 * 1.15 / finalGap - diameter) < 0.00001)
+            }
+        }
+    }
+}

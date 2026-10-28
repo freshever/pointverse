@@ -83,6 +83,18 @@ func (h *Handler) Register(mux *http.ServeMux) {
 		return
 	}
 	mux.HandleFunc("POST /v1/ai/chat/completions", h.authentication.RequireUser(h.chat))
+	mux.HandleFunc("POST /v1/ai/audio/transcriptions", h.authentication.RequireUser(h.transcribe))
+	for _, route := range []string{"/v1/ai/embeddings", "/v1/ai/audio/classifications", "/v1/ai/audio/speech", "/v1/ai/audio/analysis", "/v1/ai/images/generations"} {
+		mux.HandleFunc("POST "+route, h.authentication.RequireUser(h.media))
+	}
+	mux.HandleFunc("GET /v1/ai/jobs/{jobID}", h.authentication.RequireUser(h.media))
+	mux.HandleFunc("POST /v1/ai/jobs/{jobID}/cancel", h.authentication.RequireUser(h.media))
+	mux.HandleFunc("GET /v1/ai/capabilities", h.authentication.RequireUser(h.media))
+	// Browser requests use only the HttpOnly session and same-origin mutation guard.
+	mux.HandleFunc("POST /web/ai/audio/transcriptions", h.authentication.RequireWebMutation(h.transcribe))
+	mux.HandleFunc("POST /web/ai/images/generations", h.authentication.RequireWebMutation(h.webMedia))
+	mux.HandleFunc("GET /web/ai/jobs/{jobID}", h.authentication.RequireWebUser(h.webMedia))
+	mux.HandleFunc("POST /web/ai/jobs/{jobID}/cancel", h.authentication.RequireWebMutation(h.webMedia))
 }
 
 func (h *Handler) selectNode(excluded map[*nodeState]bool) *nodeState {
@@ -134,7 +146,9 @@ func retryableStatus(status int) bool {
 	return status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
 }
 
-func (h *Handler) chat(w http.ResponseWriter, r *http.Request, _ auth.User) {
+func (h *Handler) chat(w http.ResponseWriter, r *http.Request, user auth.User) {
+	// Overwrite any caller-supplied identity with the authenticated account.
+	r.Header.Set("X-PointVerse-Authenticated-User", user.ID)
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	var payload map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -146,27 +160,90 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request, _ auth.User) {
 		writeError(w, http.StatusBadRequest, "messages_required")
 		return
 	}
-	payload["model"] = h.model
+	switch payload["model"] {
+	case "pointverse-cloud", "pointverse-cloud-enhanced":
+		// Public model aliases are resolved by the private worker allowlist.
+	default:
+		payload["model"] = h.model
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
 
+	h.forward(w, r, body, "")
+}
+
+// The first speech contract accepts bounded base64 PCM16 mono 16kHz WAV.
+// It deliberately accepts no user-provided URL or worker destination.
+func (h *Handler) transcribe(w http.ResponseWriter, r *http.Request, _ auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<20)
+	var payload struct { Audio string `json:"audio"` }
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.Audio == "" {
+		writeError(w, http.StatusBadRequest, "audio_required")
+		return
+	}
+	body, _ := json.Marshal(payload)
+	h.forward(w, r, body, "/v1/audio/transcriptions")
+}
+
+func (h *Handler) webMedia(w http.ResponseWriter, r *http.Request, user auth.User) {
+	r.URL.Path = strings.Replace(r.URL.Path, "/web/ai/", "/v1/ai/", 1)
+	w.Header().Set("Cache-Control", "no-store")
+	h.media(w, r, user)
+}
+
+func (h *Handler) media(w http.ResponseWriter, r *http.Request, user auth.User) {
+	r.Header.Set("X-PointVerse-Authenticated-User", user.ID)
+	var destination string
+	limit := int64(65536)
+	switch r.URL.Path {
+	case "/v1/ai/embeddings": destination = "/v1/embeddings"
+	case "/v1/ai/audio/classifications": destination = "/v1/audio/classifications"; limit = 8 << 20
+	case "/v1/ai/audio/analysis": destination = "/v1/audio/analysis"; limit = 8 << 20
+	case "/v1/ai/audio/speech": destination = "/v1/audio/speech"
+	case "/v1/ai/images/generations": destination = "/v1/images/generations"
+	case "/v1/ai/capabilities": destination = "/v1/capabilities"
+	default:
+		id := r.PathValue("jobID")
+		if len(id) != 36 || id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' || strings.ContainsAny(id, "/?%") {
+			writeError(w, http.StatusBadRequest, "invalid_job_id"); return
+		}
+		for _, ch := range strings.ReplaceAll(id, "-", "") {
+			if !strings.ContainsRune("0123456789abcdefABCDEF", ch) { writeError(w, http.StatusBadRequest, "invalid_job_id"); return }
+		}
+		destination = "/v1/jobs/" + id
+		if r.Method == http.MethodPost { destination += "/cancel" }
+	}
+	var body []byte
+	if r.Method == http.MethodPost {
+		var err error
+		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+		if err != nil { writeError(w, http.StatusRequestEntityTooLarge, "request_too_large"); return }
+	}
+	h.forward(w, r, body, destination)
+}
+
+func (h *Handler) forward(w http.ResponseWriter, r *http.Request, body []byte, path string) {
 	excluded := make(map[*nodeState]bool, len(h.nodes))
 	var resp *http.Response
+	var err error
 	for range h.nodes {
 		node := h.selectNode(excluded)
 		if node == nil {
 			break
 		}
 		excluded[node] = true
-		req, requestErr := http.NewRequestWithContext(r.Context(), http.MethodPost, node.url.String(), bytes.NewReader(body))
+		destination := *node.url
+		if path != "" { destination.Path = path; destination.RawPath = ""; destination.RawQuery = "" }
+		req, requestErr := http.NewRequestWithContext(r.Context(), r.Method, destination.String(), bytes.NewReader(body))
 		if requestErr != nil {
 			h.recordResult(node, 0, true)
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-PointVerse-Authenticated-User", r.Header.Get("X-PointVerse-Authenticated-User"))
 		if h.token != "" {
 			req.Header.Set("Authorization", "Bearer "+h.token)
 		}
@@ -174,10 +251,12 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request, _ auth.User) {
 		resp, err = h.client.Do(req)
 		latency := time.Since(started)
 		failed := err != nil || (resp != nil && retryableStatus(resp.StatusCode))
-		h.recordResult(node, latency, failed)
 		if err == nil && !retryableStatus(resp.StatusCode) {
+			// Keep the reservation until the entire response finishes, not just headers.
+			defer h.recordResult(node, latency, false)
 			break
 		}
+		h.recordResult(node, latency, failed)
 		if resp != nil {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 			_ = resp.Body.Close()

@@ -52,6 +52,10 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     func download() {
+        guard AppNetworkPolicy.allowsModelDownloads() else {
+            lastErrorDescription = NetworkPolicyError.downloadsDisabled.localizedDescription
+            return
+        }
         guard task == nil else { return }
         sourceIndex = 0
         attemptedResumeData = false
@@ -107,6 +111,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     private func startCurrentSource() {
+        guard AppNetworkPolicy.allowsModelDownloads() else { cancel(); return }
         if !attemptedResumeData {
             attemptedResumeData = true
             let resumeURL = registry.modelsDirectory.appending(path: manifest.filename + ".resume")
@@ -177,6 +182,26 @@ final class ModelDownloadManager: NSObject, ObservableObject {
             }
         }
     }
+
+    func importLocalFile(_ url: URL) async {
+        guard task == nil else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        state = .verifying
+        do {
+            let partial = try await registry.prepareForDownload(manifest)
+            try await Task.detached(priority: .utility) {
+                if FileManager.default.fileExists(atPath: partial.path) { try FileManager.default.removeItem(at: partial) }
+                try FileManager.default.copyItem(at: url, to: partial)
+            }.value
+            _ = try await registry.installPartial(manifest)
+            state = .installed
+            lastErrorDescription = nil
+        } catch {
+            lastErrorDescription = "导入失败，请选择对应版本的模型文件：\(error.localizedDescription)"
+            state = .failed((error as? PointVerseError) ?? .modelNotInstalled)
+        }
+    }
 }
 
 private extension ModelDownloadManager {
@@ -185,6 +210,14 @@ private extension ModelDownloadManager {
     func restoreBackgroundTask() {
         session.getAllTasks { tasks in
             Task { @MainActor in
+                if !AppNetworkPolicy.allowsModelDownloads() {
+                    for task in tasks { task.cancel() }
+                    await self.refresh()
+                    self.restorationComplete = true
+                    self.restorationWaiters.forEach { $0.resume() }
+                    self.restorationWaiters = []
+                    return
+                }
                 if let active = tasks.compactMap({ $0 as? URLSessionDownloadTask })
                     .first(where: { $0.taskDescription == self.manifest.id || $0.taskDescription == nil }) {
                     self.task = active

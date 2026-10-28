@@ -19,6 +19,7 @@ final class AccountSessionStore: ObservableObject {
 
     init() {
         serverAddress = Self.productionServiceURL.absoluteString
+        guard AppNetworkPolicy.allowsCloud() else { return }
         do {
             if let stored = try AccountKeychain.read(), stored.origin == serverAddress, stored.session.expiresAt > Date() {
                 session = stored.session
@@ -47,7 +48,21 @@ final class AccountSessionStore: ObservableObject {
         return value
     }
     func api() throws -> AccountAPI {
-        try AccountAPI(baseURL: Self.productionServiceURL)
+        try AppNetworkPolicy.requireCloud()
+        return try AccountAPI(baseURL: Self.productionServiceURL)
+    }
+    func applyUsageMode() {
+        guard UserDefaults.standard.bool(forKey: AppNetworkPolicy.configuredKey) else { return }
+        if !AppNetworkPolicy.allowsCloud() {
+            AccountAPI.cancelAllRequests()
+            try? AccountKeychain.remove()
+            session = nil; user = nil; providers = nil; isVerified = false
+        } else if session == nil,
+                  let stored = try? AccountKeychain.read(), stored.origin == serverAddress,
+                  stored.session.expiresAt > Date() {
+            session = stored.session
+            user = stored.session.user
+        }
     }
     func refresh() async {
         guard !isBusy else { return }
@@ -131,6 +146,7 @@ final class AccountSessionStore: ObservableObject {
         } catch { errorMessage = "暂时无法退出，请联网后重试。" }
     }
     private func save(_ value: AccountSession) throws {
+        try AppNetworkPolicy.requireCloud()
         try AccountKeychain.write(.init(origin: serverAddress, session: value))
         session = value; user = value.user; isVerified = true
     }

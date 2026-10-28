@@ -1,0 +1,63 @@
+name: pointverse-dr
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: pointverse_dr
+      POSTGRES_PASSWORD: ${DR_POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:15433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pointverse_dr -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+  api:
+    profiles: [failover]
+    image: pointverse-server:production
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HTTP_ADDR: :8080
+      DATABASE_URL: postgres://pointverse_dr:${DR_POSTGRES_PASSWORD}@db:5432/pointverse_standby?sslmode=disable
+      CLOUD_STORAGE_DIR: /data/cloud
+      GOOGLE_CLIENT_IDS: ""
+      APPLE_CLIENT_IDS: ""
+      TRUSTED_PROXY_IP: 172.31.53.1
+    ports:
+      - "127.0.0.1:18081:8080"
+    volumes:
+      - ../assets.current/cloud:/data/cloud
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      default:
+        ipv4_address: 172.31.53.3
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.53.0/24
+volumes:
+  postgres_data:

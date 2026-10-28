@@ -240,3 +240,8 @@ func (h *Handler) RequireWebUser(next func(http.ResponseWriter, *http.Request, U
 		next(w, r, user)
 	}
 }
+
+// RequireWebMutation validates the origin before accepting browser credentials.
+func (h *Handler) RequireWebMutation(next func(http.ResponseWriter, *http.Request, User)) http.HandlerFunc {
+	return h.sameOrigin(h.RequireWebUser(next))
+}

@@ -1,3 +1,4 @@
+import CryptoKit
 import CoreML
 import Foundation
 import PointVerseKit
@@ -17,9 +18,8 @@ struct GeneratedImageWorkflowResult: Sendable {
 }
 
 /// One shared image-generation pipeline for every screen and every provider.
-/// The selected language route prepares the English prompt; the selected image
-/// route consumes that exact prompt. Local and network image providers therefore
-/// differ only in the final rendering implementation.
+/// PointVerse cloud jobs translate on the server. Other routes prepare the
+/// English prompt using the selected language model before rendering.
 actor ImageGenerationWorkflow {
     private let promptTranslator: QwenTitleGenerator
     private let imageGenerator: LocalImageGenerator
@@ -35,6 +35,12 @@ actor ImageGenerationWorkflow {
         promptHandler: @escaping @MainActor @Sendable (String) -> Void,
         progressHandler: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> GeneratedImageWorkflowResult {
+        if await imageGenerator.usesPointVerseCloud() {
+            let prompt = String(source.prefix(600))
+            await promptHandler(prompt)
+            let artifact = try await imageGenerator.generate(prompt: prompt, progressHandler: progressHandler)
+            return GeneratedImageWorkflowResult(artifact: artifact, prompt: prompt)
+        }
         let prompt = try await promptTranslator.translateImagePromptToEnglish(
             source,
             localeIdentifier: localeIdentifier
@@ -49,6 +55,17 @@ actor LocalImageGenerator {
     private let registry: ModelRegistry
     private let rootURL: URL
     private let executionGate: ModelExecutionGate
+    private var cloudAPI: AccountAPI?
+    private var cloudToken: String?
+
+    func configureCloud(baseURL: URL?, accessToken: String?) {
+        cloudAPI = baseURL.flatMap { try? AccountAPI(baseURL: $0) }
+        cloudToken = accessToken
+    }
+
+    func usesPointVerseCloud() -> Bool {
+        AppNetworkPolicy.allowsCloud() && UserDefaults.standard.string(forKey: "selectedExternalModel.imageGeneration") == "pointverse-cloud"
+    }
 
     init(registry: ModelRegistry, rootURL: URL, executionGate: ModelExecutionGate) {
         self.registry = registry
@@ -57,6 +74,8 @@ actor LocalImageGenerator {
     }
 
     func generate(prompt: String, progressHandler: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> GeneratedImageArtifact {
+        if usesPointVerseCloud() { return try await generateInCloud(prompt: prompt) }
+        try Task.checkCancellation()
         await executionGate.acquire()
         defer { Task { await executionGate.release() } }
         if let networkModel = try selectedNetworkModel() {
@@ -91,8 +110,9 @@ actor LocalImageGenerator {
         let results = try pipeline.generateImages(configuration: configuration) { progress in
             let total = max(1, progress.stepCount)
             progressHandler(min(1, max(0, Double(progress.step) / Double(total))))
-            return true
+            return !Task.isCancelled
         }
+        try Task.checkCancellation()
         guard let optionalImage = results.first, let cgImage = optionalImage,
               let data = UIImage(cgImage: cgImage).pngData() else { throw PointVerseError.invalidModelOutput }
 
@@ -101,6 +121,53 @@ actor LocalImageGenerator {
         let outputURL = outputDirectory.appending(path: UUID().uuidString + ".png")
         try data.write(to: outputURL, options: Data.WritingOptions.atomic)
         return GeneratedImageArtifact(url: outputURL, modelID: manifest.id)
+    }
+
+    private func generateInCloud(prompt: String) async throws -> GeneratedImageArtifact {
+        try AppNetworkPolicy.requireCloud()
+        guard let api = cloudAPI, let token = cloudToken else { throw AccountAPIError.unauthorized }
+        // Store per account token hash indirectly via an API origin + session-specific key;
+        // the token itself is never persisted in defaults.
+        let sessionKey = "pointverse.imageJob." + SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
+        let defaults = UserDefaults.standard
+        let saved = defaults.dictionary(forKey: sessionKey)
+        let requestID = (saved?["prompt"] as? String) == prompt ? (saved?["requestID"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID() : UUID()
+        defaults.set(["prompt": prompt, "requestID": requestID.uuidString], forKey: sessionKey)
+        var jobID: String?
+        do {
+            var job = try await api.createImage(prompt: prompt, requestID: requestID, token: token)
+            jobID = job.id
+            for _ in 0..<200 {
+                try Task.checkCancellation()
+                try AppNetworkPolicy.requireCloud()
+                switch job.status {
+                case "succeeded":
+                    guard let encoded = job.data?.first?.b64Json, encoded.count <= 6_000_000,
+                          let data = Data(base64Encoded: encoded), UIImage(data: data) != nil else { throw PointVerseError.invalidModelOutput }
+                    let directory = rootURL.appending(path: "generated-images", directoryHint: .isDirectory)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let url = directory.appending(path: UUID().uuidString + ".png")
+                    try data.write(to: url, options: .atomic)
+                    defaults.removeObject(forKey: sessionKey)
+                    return GeneratedImageArtifact(url: url, modelID: job.model ?? "pointverse-image")
+                case "failed", "cancelled":
+                    defaults.removeObject(forKey: sessionKey)
+                    throw CloudImageGenerationError.failed
+                case "queued", "running": break
+                default: throw PointVerseError.invalidModelOutput
+                }
+                try await Task.sleep(for: .seconds(3))
+                job = try await api.imageJob(id: job.id, token: token)
+            }
+            throw CloudImageGenerationError.pending
+        } catch {
+            if Task.isCancelled, let jobID {
+                defaults.removeObject(forKey: sessionKey)
+                // Cleanup has its own task so cancellation does not cancel the cancel request.
+                _ = await Task.detached { try? await api.cancelImageJob(id: jobID, token: token) }.value
+            }
+            throw error
+        }
     }
 
     private func selectedNetworkModel(defaults: UserDefaults = .standard) throws -> ExternalLanguageModel? {
@@ -233,5 +300,15 @@ actor LocalImageGenerator {
             if FileManager.default.fileExists(atPath: directory.appending(path: "VAEDecoder.mlmodelc").path) { return directory }
         }
         return nil
+    }
+}
+
+private enum CloudImageGenerationError: Error, LocalizedError {
+    case failed, pending
+    var errorDescription: String? {
+        switch self {
+        case .failed: "生成未完成或图片未通过检查，请调整描述后重试。"
+        case .pending: "任务仍在处理中，请稍后使用相同描述继续查询。"
+        }
     }
 }

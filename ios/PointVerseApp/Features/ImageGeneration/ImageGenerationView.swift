@@ -11,6 +11,7 @@ struct ImageGenerationView: View {
     @State private var prompt = ""
     @State private var image: UIImage?
     @State private var translatedPrompt = ""
+    @State private var generationTask: Task<Void, Never>?
     @State private var isGenerating = false
     @State private var generationProgress = 0.0
     @State private var diffusionStarted = false
@@ -26,6 +27,7 @@ struct ImageGenerationView: View {
     @AppStorage("selectedExternalModel.imageGeneration") private var imageGenerationRoute = "local"
 
     private var selectedImageGeneratorName: String {
+        if AppNetworkPolicy.allowsCloud(), imageGenerationRoute == "pointverse-cloud" { return "Stable Diffusion 1.5 · 点界云端" }
         guard imageGenerationRoute != "local",
               let model = ExternalLanguageModelStore.load().first(where: { $0.selectionID == imageGenerationRoute }) else {
             return "Stable Diffusion 2.1 · 设备端"
@@ -40,6 +42,7 @@ struct ImageGenerationView: View {
                 TextField(AppLocalization.string("描述想生成的图片", language: appLanguage), text: $prompt, axis: .vertical)
                     .lineLimit(3...6).textFieldStyle(.roundedBorder)
                     .focused($focusedField, equals: .prompt)
+                    .disabled(isGenerating)
                 Button(action: generate) {
                     if isGenerating { HStack { ProgressView(); Text("正在使用 \(selectedImageGeneratorName) 生成") } }
                     else { Label { AppText("生成图片") } icon: { Image(systemName: "sparkles") } }
@@ -47,8 +50,13 @@ struct ImageGenerationView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(isGenerating || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if isGenerating {
+                    Button("取消生成", role: .cancel) { generationTask?.cancel() }
                     VStack(alignment: .leading, spacing: 5) {
-                        if isTranslatingPrompt {
+                        if imageGenerationRoute == "pointverse-cloud" {
+                            ProgressView()
+                            Text("云端排队或生成中，通常需要几十秒。")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else if isTranslatingPrompt {
                             ProgressView()
                             AppText("正在生成英文提示词").font(.caption).foregroundStyle(.secondary)
                         } else if diffusionStarted {
@@ -79,6 +87,10 @@ struct ImageGenerationView: View {
                     .buttonStyle(.bordered)
                 }
                 if let errorKey { AppText(errorKey).foregroundStyle(.red).font(.footnote) }
+                if imageGenerationRoute == "pointverse-cloud" {
+                    Text("描述将发送到点界云端。网络中断后，使用相同描述再次生成可继续查询任务。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 Label(selectedImageGeneratorName,
                       systemImage: imageGenerationRoute == "local" ? "iphone.gen3" : "cloud")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -112,6 +124,7 @@ struct ImageGenerationView: View {
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture { focusedField = nil }
         .navigationTitle(AppLocalization.string("图片生成", language: appLanguage))
+        .onDisappear { generationTask?.cancel() }
         .onChange(of: prompt) { _, _ in translatedPrompt = "" }
         .onChange(of: selectedPhoto) { _, item in loadAndRecognize(item) }
         .alert(AppLocalization.string(noticeKey ?? "好", language: appLanguage), isPresented: Binding(
@@ -134,7 +147,7 @@ struct ImageGenerationView: View {
         isTranslatingPrompt = true
         errorKey = nil
         generatedModelID = nil
-        Task {
+        generationTask = Task {
             do {
                 let localeIdentifier = appLanguage == "system" ? Locale.current.identifier : appLanguage
                 let result = try await container.imageGenerationWorkflow.generate(
@@ -153,7 +166,8 @@ struct ImageGenerationView: View {
                 image = UIImage(contentsOfFile: result.artifact.url.path)
                 generatedModelID = result.artifact.modelID
                 generationProgress = 1
-            } catch PointVerseError.modelNotInstalled { errorKey = "请先在模型页下载图片模型" }
+            } catch is CancellationError { errorKey = "已取消生成" }
+            catch PointVerseError.modelNotInstalled { errorKey = "请先在模型页下载图片模型" }
             catch { errorKey = "图片生成失败：\(error.localizedDescription)" }
             isTranslatingPrompt = false
             isGenerating = false

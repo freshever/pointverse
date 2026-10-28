@@ -3,6 +3,7 @@ import PointVerseKit
 import QwenAdapter
 import WhisperAdapter
 import Speech
+import AVFoundation
 
 actor TranscriptionService {
     static let didChangeNotification = Notification.Name("PointVerseTranscriptionDidChange")
@@ -11,6 +12,12 @@ actor TranscriptionService {
     private let recognizer: OnDeviceSpeechRecognizer
     private let whisperRecognizer: WhisperRecognizer
     private let titleGenerator: QwenTitleGenerator
+    private var cloudBaseURL: URL?
+    private var cloudToken: String?
+
+    func configureCloud(baseURL: URL?, accessToken: String?) {
+        cloudBaseURL = baseURL; cloudToken = accessToken
+    }
 
     init(repository: any PointRepository, blobStore: any AudioBlobStoring, recognizer: OnDeviceSpeechRecognizer, whisperRecognizer: WhisperRecognizer, titleGenerator: QwenTitleGenerator) {
         self.repository = repository
@@ -25,7 +32,9 @@ actor TranscriptionService {
         guard let audioPath = detail.audioRelativePath else { throw PointVerseError.audioDecodeFailed }
         let audioURL = try await blobStore.url(for: audioPath)
         let output: TranscriptionOutput
-        if modelID == "apple-speech-on-device" {
+        if modelID.hasPrefix("pointverse-cloud-whisper-") {
+            output = try await recognizeInCloud(audioURL: audioURL)
+        } else if modelID == "apple-speech-on-device" {
             let text = try await recognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier)
             output = TranscriptionOutput(text: text, modelID: modelID, modelSHA256: "system")
         } else {
@@ -47,29 +56,47 @@ actor TranscriptionService {
 
     func resumePending() async {
         guard let pointIDs = try? await repository.queuedTranscriptionPointIDs() else { return }
-        for pointID in pointIDs { await transcribe(pointID: pointID) }
+        for pointID in pointIDs {
+            await transcribe(pointID: pointID, generateAITitle: !AppNetworkPolicy.allowsCloud())
+        }
     }
 
-    func transcribe(pointID: PointID) async {
+    func transcribe(pointID: PointID, generateAITitle: Bool = true) async {
         do {
             let detail = try await repository.pointDetail(id: pointID)
             guard let audioPath = detail.audioRelativePath else { return }
             let audioURL = try await blobStore.url(for: audioPath)
             try await repository.markTranscriptionRunning(pointID: pointID)
             await notifyChange(pointID)
-            let text = try await recognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier)
-            try await repository.saveTranscript(pointID: pointID, engineText: text, modelID: "apple-speech-on-device", modelSHA256: "system")
+            let output: TranscriptionOutput
+            let useCloud = generateAITitle && AppNetworkPolicy.allowsCloud() &&
+                UserDefaults.standard.string(forKey: "selectedExternalModel.speech") != "local"
+            if useCloud {
+                do { output = try await recognizeInCloud(audioURL: audioURL) }
+                catch {
+                    guard UserDefaults.standard.bool(forKey: AppNetworkPolicy.offlineBackupKey),
+                          AppNetworkPolicy.isOfflineFailure(error) else { throw error }
+                    let text = try await recognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier)
+                    output = .init(text: text, modelID: "apple-speech-on-device", modelSHA256: "system")
+                }
+            } else {
+                let text = try await recognizer.transcribe(audioURL: audioURL, localeIdentifier: detail.localeIdentifier)
+                output = .init(text: text, modelID: "apple-speech-on-device", modelSHA256: "system")
+            }
+            let text = output.text
+            UserDefaults.standard.set(output.modelID.hasPrefix("pointverse-cloud-whisper-") ? "cloud" : "local", forKey: "pointverse.lastAIExecution")
+            try await repository.saveTranscript(pointID: pointID, engineText: text, modelID: output.modelID, modelSHA256: output.modelSHA256)
             // The transcript is ready for display now. Title derivation can take
             // considerably longer and must not keep the UI in its running state.
             await notifyChange(pointID)
             try await saveRuleTitle(pointID: pointID, transcript: text)
-            PointVerseLog.transcription.info("Apple Speech transcription completed")
+            PointVerseLog.transcription.info("Speech transcription completed")
             // Semantic indexing can start as soon as transcription returns.
             // The slower local-LLM title pass continues independently.
-            Task {
+            if generateAITitle { Task {
                 _ = await self.deriveTitle(pointID: pointID)
                 await self.notifyChange(pointID)
-            }
+            } }
         } catch let error as PointVerseError {
             try? await repository.failTranscription(pointID: pointID, error: error)
             await notifyChange(pointID)
@@ -86,6 +113,64 @@ actor TranscriptionService {
                 object: pointID.rawValue.uuidString
             )
         }
+    }
+
+    private func recognizeInCloud(audioURL: URL) async throws -> TranscriptionOutput {
+        try AppNetworkPolicy.requireCloud()
+        guard let cloudBaseURL, let cloudToken else {
+            throw ExternalModelConnectionError.server(status: 401, message: "请先登录点界账户。")
+        }
+        let wav = try Self.cloudWAV(audioURL)
+        var request = URLRequest(url: cloudBaseURL.appending(path: "v1/ai/audio/transcriptions"))
+        request.httpMethod = "POST"; request.timeoutInterval = 150
+        request.setValue("Bearer " + cloudToken, forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["audio": wav.base64EncodedString()])
+        let (data, response) = try await NetworkModelRequestExecutor.perform(request, maximumAttempts: 1)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw ExternalModelConnectionError.server(status: (response as? HTTPURLResponse)?.statusCode ?? 502, message: "云端转写暂时不可用。")
+        }
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let text = object["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PointVerseError.transcriptionFailed
+        }
+        UserDefaults.standard.set("cloud", forKey: "pointverse.lastAIExecution")
+        let model = (object["model"] as? String) ?? "whisper-base"
+        return .init(text: text, modelID: "pointverse-cloud-" + model, modelSHA256: "server-managed")
+    }
+
+    private static func cloudWAV(_ url: URL) throws -> Data {
+        let file = try AVAudioFile(forReading: url)
+        let seconds = Double(file.length) / file.processingFormat.sampleRate
+        guard seconds > 0, seconds <= 120, file.processingFormat.channelCount <= 2,
+              (8000...96000).contains(file.processingFormat.sampleRate) else {
+            throw ExternalModelConnectionError.server(status: 413, message: "云端转写目前支持 120 秒以内的录音；较长录音可选择本机转写。")
+        }
+        guard let source = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+              let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true),
+              let converter = AVAudioConverter(from: file.processingFormat, to: format),
+              let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(ceil(seconds * 16000) + 32)) else {
+            throw PointVerseError.audioDecodeFailed
+        }
+        try file.read(into: source)
+        var supplied = false
+        var error: NSError?
+        let status = converter.convert(to: output, error: &error) { _, state in
+            if supplied { state.pointee = .endOfStream; return nil }
+            supplied = true; state.pointee = .haveData; return source
+        }
+        guard status != .error, error == nil, output.frameLength > 0, let pcm = output.int16ChannelData?[0] else {
+            throw PointVerseError.audioDecodeFailed
+        }
+        let count = Int(output.frameLength) * 2
+        var wav = Data()
+        func text(_ value: String) { wav.append(contentsOf: value.utf8) }
+        func u32(_ value: UInt32) { var v = value.littleEndian; withUnsafeBytes(of: &v) { wav.append(contentsOf: $0) } }
+        func u16(_ value: UInt16) { var v = value.littleEndian; withUnsafeBytes(of: &v) { wav.append(contentsOf: $0) } }
+        text("RIFF"); u32(UInt32(36 + count)); text("WAVEfmt "); u32(16)
+        u16(1); u16(1); u32(16000); u32(32000); u16(2); u16(16)
+        text("data"); u32(UInt32(count)); wav.append(Data(bytes: pcm, count: count))
+        return wav
     }
 
     func deriveMissingTitles(languageIdentifier: String? = nil) async {

@@ -73,6 +73,8 @@ func request(_ base: URL, _ path: String, token: String, body: Data) async throw
 }
 @main struct Main {
     @MainActor static func main() async {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.prohibited)
         let args = CommandLine.arguments
         if args.contains("--check") {
             print("Accessibility: \(AXIsProcessTrusted()); Screen recording: \(CGPreflightScreenCaptureAccess())")

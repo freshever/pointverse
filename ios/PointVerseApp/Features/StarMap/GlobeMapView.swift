@@ -318,6 +318,18 @@ private struct FacetCatalogGroupView: View {
         entries.filter { entry in (classifications[entry.id]?.values[dimension] ?? []).contains { PointFacetEngine.belongs($0, to: term) } }
     }
 
+    private var groupedTopics: [String] {
+        var topics = Set<String>()
+        for entry in entries {
+            topics.formUnion(classifications[entry.id]?.values[.topic] ?? Set<String>())
+        }
+        return topics.sorted()
+    }
+
+    private func topicMembers(_ topic: String) -> [PointMapEntry] {
+        entries.filter { classifications[$0.id]?.values[.topic]?.contains(topic) == true }
+    }
+
     var body: some View {
         List {
             Section {
@@ -341,6 +353,17 @@ private struct FacetCatalogGroupView: View {
                         NavigationLink("\(dimension == .domain ? LCCCatalog.friendlyTitle(child.id) : child.title)（\(members(child.id).count)）") {
                             FacetCatalogGroupView(termID: child.id, dimension: dimension, entries: members(child.id),
                                                   classifications: classifications, onSelect: onSelect, onEdit: onEdit)
+                        }
+                    }
+                }
+            }
+            if dimension == .domain, termID != PointFacetEngine.unassigned {
+                Section("下面的主题") {
+                    ForEach(groupedTopics, id: \.self) { topic in
+                        let subset = topicMembers(topic)
+                        NavigationLink("\(PointFacetEngine.title(topic))（\(subset.count)）") {
+                            FacetCatalogGroupView(termID: topic, dimension: .topic, entries: subset,
+                                classifications: classifications, onSelect: onSelect, onEdit: onEdit)
                         }
                     }
                 }
@@ -490,7 +513,7 @@ private struct FacetOverrideEditor: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             } else {
-                Text(manual ? "暂不分类" : (semanticReview?.theme == nil ? "还不能确定放在哪里" : "标准目录暂未匹配，主题已保留")).font(.headline)
+                Text(manual ? "暂不分类" : (semanticReview?.theme == nil ? "还不能确定放在哪里" : "主题已保留，可重新分析以推荐参考分类")).font(.headline)
             }
             if !manual, let review = semanticReview {
                 Text(review.decision.reason).font(.callout).lineLimit(3)
@@ -503,17 +526,22 @@ private struct FacetOverrideEditor: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             HStack {
-                Button(saving ? "保存中…" : (manual ? "保存修改" : (automaticallyApplied ? "完成" : "采用此分类"))) {
-                    if !manual && automaticallyApplied { dismiss() }
-                    else {
+                Button(saving ? "保存中…" : (primaryDomain == nil ? (semanticReview?.theme != nil && !manual ? "推荐参考分类" : "选择分类") : (manual ? "保存修改" : "确认分类"))) {
+                    if primaryDomain == nil, semanticReview?.theme != nil, !manual {
+                        useJudge = true
+                        analyzeSemantic()
+                    } else if primaryDomain == nil {
+                        showAlternatives = true
+                        showFullCatalog = true
+                    } else {
                         let selected = manual ? values : Set(primaryDomain.map { [$0] } ?? [])
                         saveDomain(Array(selected))
                     }
-                }.buttonStyle(.borderedProminent).disabled((primaryDomain == nil && !automaticallyApplied) || saving || semanticTask != nil)
+                }.buttonStyle(.borderedProminent).disabled(saving || semanticTask != nil)
                 Button("换一个") { showAlternatives.toggle() }.disabled(saving || semanticTask != nil)
                 Button("暂不分类") { saveDomain([]) }.disabled(saving || semanticTask != nil)
             }
-            Text("自动分类已生效，无需确认；手动更改需保存。暂不分类不会自动填回，已有人工分类优先。")
+            Text("确认会保存为你的分类选择；没有匹配目录时，请换一个分类或选择暂不分类。已有人工分类优先。")
                 .font(.caption2).foregroundStyle(.secondary)
         }
         if showAlternatives {
@@ -529,22 +557,23 @@ private struct FacetOverrideEditor: View {
                 DisclosureGroup("自己查找其他分类", isExpanded: $showFullCatalog) {
                     TextField("搜索日常名称、分类号或中英文", text: $catalogQuery)
                     ForEach(Array(options.filter { id in
-                        !catalogQuery.isEmpty && (LCCCatalog.friendlyTitle(id) + " " + PointFacetEngine.title(id)
+                        catalogQuery.isEmpty ? LCCCatalog.byID[id]?.parentID == nil
+                            : (LCCCatalog.friendlyTitle(id) + " " + PointFacetEngine.title(id)
                             + " " + (LCCCatalog.byID[id]?.englishTitle ?? "")).localizedCaseInsensitiveContains(catalogQuery)
-                    }.prefix(20)), id: \.self) { id in
+                    }.prefix(catalogQuery.isEmpty ? 30 : 20)), id: \.self) { id in
                         Button(LCCCatalog.friendlyTitle(id)) { values = [id]; manual = true; showAlternatives = false }
                     }
-                    Text(catalogQuery.isEmpty ? "输入关键词查找，不需要浏览整张目录。" : "最多显示20条，可补充关键词缩小范围。")
+                    Text(catalogQuery.isEmpty ? "可直接选择大类，也可输入关键词查找细分目录。" : "最多显示20条，可补充关键词缩小范围。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Text("选择备选会替换当前选择，仍需点击确认；取消不会改动已保存分类。")
+                Text("选择后点击“保存修改”才会生效；取消不会改动已保存分类。")
                     .font(.caption).foregroundStyle(.secondary)
             }.disabled(saving || semanticTask != nil)
         }
         Section {
             DisclosureGroup("重新分析与模型设置") {
                 Toggle("用当前文本模型整理主题", isOn: $useJudge).disabled(semanticTask != nil)
-                Text("模型只提取日常主题，程序匹配目录，不需要 E5。网络模型仅发送前600字符，不发送目录，沿用隐私授权。关闭后只做本地语义检索。")
+                Text("模型提取主题；精确匹配不到时推荐接近的参考分类，不需要 E5。网络模型发送内容前600字符及参考大类名称，沿用隐私授权。关闭后只做本地语义检索。")
                     .font(.caption).foregroundStyle(.secondary)
                 if semanticTask == nil {
                     Button(semanticReview == nil ? "帮我找个分类" : "重新分析") { analyzeSemantic() }
@@ -591,7 +620,8 @@ private struct FacetOverrideEditor: View {
 
     private var automaticallyApplied: Bool {
         guard let review = semanticReview, review.isCurrent(for: entry), review.theme != nil else { return false }
-        return review.decision.status == .suggested || review.decision.status == .themeOnly
+        guard review.decision.status == .suggested, let id = review.primaryRecommendationID else { return false }
+        return PointFacetEngine.classify(entry, overrides: overrides, review: review).values[.domain]?.contains(id) == true
     }
 
     private func analyzeSemantic() {

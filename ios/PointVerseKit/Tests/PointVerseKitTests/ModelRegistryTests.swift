@@ -2,6 +2,17 @@ import Foundation
 import Testing
 @testable import PointVerseKit
 
+@Test func cloudChoicesNeverResolveToPhoneModels() {
+    let suite = "cloud-selection-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    for id in [ModelSelection.pointVerseCloudLanguageModelID, ModelSelection.pointVerseCloudEnhancedModelID] {
+        defaults.set(id, forKey: ModelSelection.languageDefaultsKey)
+        #expect(ModelSelection.isPointVerseCloud(id))
+        #expect(ModelSelection.selectedLanguageModel(defaults: defaults) == nil)
+    }
+}
+
 @Test func modelComponentUsesGitBlobChecksumAndRejectsCorruption() async throws {
     let root = FileManager.default.temporaryDirectory.appending(path: "git-blob-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }

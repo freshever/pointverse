@@ -26,6 +26,13 @@ struct ModelSettingsView: View {
     @State private var testingModelID: UUID?
     @State private var connectionResult: String?
     @State private var showingPlanetDistributionDemo = false
+    @AppStorage(AppNetworkPolicy.modeKey) private var usageMode = AppUsageMode.privacy.rawValue
+    @AppStorage(AppNetworkPolicy.acquisitionKey) private var acquisition = LocalModelAcquisition.browser.rawValue
+    @AppStorage(AppNetworkPolicy.offlineBackupKey) private var offlineBackup = false
+    @AppStorage(AppNetworkPolicy.offlineModelKey) private var offlineModel = ModelManifest.qwen3VL2BQ8.id
+    @State private var showingLocalModels = false
+    @State private var showingEmbeddingDescriptorImport = false
+    private var isCloud: Bool { usageMode == AppUsageMode.cloud.rawValue }
 
     private var selectedExternalModel: ExternalLanguageModel? {
         externalModels.first { $0.selectionID == selectedLanguageModelID }
@@ -33,7 +40,8 @@ struct ModelSettingsView: View {
 
     private var currentAssistantName: String {
         if selectedLanguageModelID == ModelSelection.disabledLanguageModelID { return "未启用" }
-        if selectedLanguageModelID == ModelSelection.pointVerseCloudLanguageModelID { return "点界云端 AI" }
+        if selectedLanguageModelID == ModelSelection.pointVerseCloudLanguageModelID { return "点界云端 AI · 快速" }
+        if selectedLanguageModelID == ModelSelection.pointVerseCloudEnhancedModelID { return "点界云端 AI · 增强" }
         if selectedLanguageModelID == ModelSelection.edge0LanguageModelID { return "Edge0 8B A1B" }
         if let model = selectedExternalModel { return model.name }
         if let manifest = ModelSelection.languageModels.first(where: { $0.id == selectedLanguageModelID }) {
@@ -44,7 +52,7 @@ struct ModelSettingsView: View {
 
     private var currentAssistantLocation: String {
         guard let model = selectedExternalModel else {
-            if selectedLanguageModelID == ModelSelection.pointVerseCloudLanguageModelID {
+            if ModelSelection.isPointVerseCloud(selectedLanguageModelID) {
                 return account.session == nil ? "登录点界后可用" : "由点界私有计算节点运行"
             }
             return selectedLanguageModelID == ModelSelection.disabledLanguageModelID ? "不会生成标题或对话回复" : "在这台设备上运行 · 内容不离开设备"
@@ -56,7 +64,9 @@ struct ModelSettingsView: View {
 
     var body: some View {
         List {
-            if container.storageMode == .production {
+            AppModeControls()
+            if let externalModelError { Text(externalModelError).font(.footnote).foregroundStyle(.red) }
+            if isCloud && container.storageMode == .production {
                 Section {
                     NavigationLink { AccountView(library: .init(database: container.database, audio: container.blobStore, images: container.imageBlobStore)) } label: {
                         HStack(spacing: 12) {
@@ -75,24 +85,6 @@ struct ModelSettingsView: View {
                 } header: { AppText("账户") }
             }
             Section {
-                Button {
-                    NotificationCenter.default.post(name: AppContainer.enterTestMode, object: nil)
-                } label: {
-                    Label("进入独立测试模式", systemImage: "flask.fill")
-                }
-
-                Button {
-                    showingPlanetDistributionDemo = true
-                } label: {
-                    Label("球面分布演示", systemImage: "globe.asia.australia.fill")
-                }
-            } header: {
-                AppText("实验工具")
-            } footer: {
-                Text("测试模式使用独立数据库；球面分布演示使用内置样本，不影响正式内容。")
-            }
-
-            Section {
                 Picker(selection: $appLanguage) {
                     AppText("跟随系统").tag("system")
                     AppText("简体中文").tag("zh-Hans")
@@ -106,53 +98,79 @@ struct ModelSettingsView: View {
                 CurrentAssistantCard(
                     name: currentAssistantName,
                     detail: currentAssistantLocation,
-                    isNetwork: selectedExternalModel?.kind == .openAICompatible
+                    isNetwork: ModelSelection.isPointVerseCloud(selectedLanguageModelID) || selectedExternalModel?.kind == .openAICompatible
                 )
 
                 Picker(selection: Binding(get: { selectedLanguageModelID }, set: selectLanguageModel)) {
                     AppText("关闭 AI 助手").tag(ModelSelection.disabledLanguageModelID)
+                    if isCloud {
                     Section("点界") {
-                        Text(verbatim: "点界云端 AI · 默认").tag(ModelSelection.pointVerseCloudLanguageModelID)
+                        Text(verbatim: "点界云端 AI · 快速 · 默认（Qwen3.5 4B）").tag(ModelSelection.pointVerseCloudLanguageModelID)
+                        Text(verbatim: "点界云端 AI · 增强（Qwen3.5 9B）").tag(ModelSelection.pointVerseCloudEnhancedModelID)
                     }
-                    Section("设备端") {
-                        ForEach(ModelSelection.languageModels, id: \.id) { manifest in
-                            Text(verbatim: languageName(manifest)).tag(manifest.id)
+                    Section("已安装的本地模型") {
+                        ForEach(container.languageModelManagers.filter { $0.state == .installed }, id: \.manifest.id) { manager in
+                            Text(verbatim: languageName(manager.manifest)).tag(manager.manifest.id)
                         }
-                        Text(verbatim: "Edge0 8B A1B · Experimental").tag(ModelSelection.edge0LanguageModelID)
                         ForEach(externalModels.filter { $0.kind == .localGGUF }) { model in
                             Text(verbatim: model.name).tag(model.selectionID)
                         }
                     }
-                    if externalModels.contains(where: { $0.kind == .openAICompatible }) {
-                        Section("网络") {
-                            ForEach(externalModels.filter { $0.kind == .openAICompatible }) { model in
-                                Text(verbatim: model.name).tag(model.selectionID)
-                            }
+                    } else {
+                    Section("设备端") {
+                        ForEach(ModelSelection.languageModels, id: \.id) { manifest in
+                            Text(verbatim: languageName(manifest)).tag(manifest.id)
                         }
+                        if acquisition == LocalModelAcquisition.inApp.rawValue {
+                            Text(verbatim: "Edge0 8B A1B · Experimental").tag(ModelSelection.edge0LanguageModelID)
+                        }
+                        ForEach(externalModels.filter { $0.kind == .localGGUF }) { model in
+                            Text(verbatim: model.name).tag(model.selectionID)
+                        }
+                    }
                     }
                 } label: { AppText("切换 AI 助手") }
             } header: { AppText("当前 AI 助手") }
               footer: { Text("用于自动标题、内容整理、对话和测试数据生成。语义坐标仍由独立的 E5 模型计算。") }
 
-            Section {
-                Button { showingNetworkModelEditor = true } label: {
-                    Label("添加网络模型", systemImage: "network")
+            if isCloud {
+                Section {
+                    Label("无需下载本地模型", systemImage: "cloud")
+                    Label("图片理解 · Qwen3.5", systemImage: "photo")
+                    Picker("图片生成", selection: $imageGenerationRoute) {
+                        Text("点界云端 · Stable Diffusion 1.5").tag("pointverse-cloud")
+                        Text("本地模型 · 需已安装").tag("local")
+                    }
+                    Text("云端生图为 512×512，支持中文描述，无需下载模型。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Picker("语音转写", selection: $speechRoute) {
+                        Text("点界云端语音识别").tag("pointverse-cloud")
+                        Text("Apple 系统识别 · 本机").tag("local")
+                    }
+                    Text("云端语音转写支持 120 秒以内的录音；图片会压缩后发送。历史图片不会自动上传分析。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Text("登录后使用点界云端快速或增强模型。只有你主动发起的 AI 请求会发送相关内容；已有资料不会自动上传。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Text("其他云端能力仍在接入中。也可按需使用本地模型，不会自动下载。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                } header: { Text("云端服务") }
+                Section {
+                    DisclosureGroup("离线备用（可选）", isExpanded: $showingLocalModels) {
+                        Toggle("断网时使用已安装的本地聊天模型", isOn: $offlineBackup)
+                        if offlineBackup {
+                            Picker("备用模型", selection: $offlineModel) {
+                                ForEach(container.languageModelManagers, id: \.manifest.id) { manager in
+                                    Text(verbatim: languageName(manager.manifest) + (manager.state == .installed ? " · 已安装" : " · 未安装")).tag(manager.manifest.id)
+                                }
+                            }
+                            ModelAcquisitionControls()
+                        }
+                        Text("无需为使用云端模型下载任何文件。备用模型未安装时不会自动下载，也不会在服务器错误时擅自切换。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
-                ForEach(externalModels.filter { $0.kind == .openAICompatible }) { model in
-                    ExternalModelRow(
-                        model: model,
-                        isSelected: selectedLanguageModelID == model.selectionID,
-                        isTesting: testingModelID == model.id,
-                        onSelect: { selectLanguageModel(model.selectionID) },
-                        onTest: { testConnection(model) },
-                        onRemove: { removeExternalModel(model) }
-                    )
-                }
-                if let connectionResult { Text(verbatim: connectionResult).font(.footnote).foregroundStyle(.green) }
-                if let externalModelError { Text(verbatim: externalModelError).font(.footnote).foregroundStyle(.red) }
-            } header: { AppText("网络模型") }
-              footer: { Text("支持 OpenRouter、Groq、OpenAI，以及任何兼容 OpenAI Chat Completions 的服务。API Key 只保存在本机 Keychain。") }
-
+            }
+            if !isCloud || showingLocalModels {
             Section {
                 ForEach(container.languageModelManagers, id: \.manifest.id) { manager in
                     ModelRow(manager: manager, name: languageName(manager.manifest), metadata: metadata(manager.manifest), explanation: languageExplanation(manager.manifest), isSelected: selectedLanguageModelID == manager.manifest.id, onSelect: {
@@ -160,13 +178,15 @@ struct ModelSettingsView: View {
                     }, onInstalled: regenerateTitles)
                 }
 
+                if acquisition == LocalModelAcquisition.inApp.rawValue {
                 Edge0ModelRow(
                     manager: container.edge0ModelManager,
                     isSelected: selectedLanguageModelID == ModelSelection.edge0LanguageModelID,
                     onSelect: { selectedLanguageModelID = ModelSelection.edge0LanguageModelID }
                 )
+                }
             } header: { AppText("设备端语言模型") }
-              footer: { Text("设备端模型无需上传内容，但需要下载并占用设备存储。模型越大，通常质量越高，对内存要求也越高。") }
+              footer: { Text("所有模型均在本机运行。可以选择对应模型文件导入；强隐私方式只在外部浏览器中下载。") }
 
             Section {
                 Button { showingGGUFImporter = true } label: {
@@ -185,9 +205,6 @@ struct ModelSettingsView: View {
               footer: { Text("GGUF 文件会复制到点界的模型目录。兼容性取决于模型架构和当前推理引擎。") }
 
             Section {
-                CapabilityRoutePicker(title: "运行方式", capability: .speech,
-                                      selection: Binding(get: { speechRoute }, set: { selectCapability(.speech, selectionID: $0) }),
-                                      models: externalModels)
                 Picker(selection: $selectedSpeechModelID) {
                     ForEach(ModelSelection.speechModels, id: \.id) { manifest in
                         Text(verbatim: speechName(manifest)).tag(manifest.id)
@@ -202,9 +219,6 @@ struct ModelSettingsView: View {
             } header: { AppText("语音转写") }
 
             Section {
-                CapabilityRoutePicker(title: "运行方式", capability: .imageGeneration,
-                                      selection: Binding(get: { imageGenerationRoute }, set: { selectCapability(.imageGeneration, selectionID: $0) }),
-                                      models: externalModels)
                 ForEach(container.imageModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -218,9 +232,6 @@ struct ModelSettingsView: View {
             } header: { AppText("图片生成") }
 
             Section {
-                CapabilityRoutePicker(title: "运行方式", capability: .vision,
-                                      selection: Binding(get: { visionRoute }, set: { selectCapability(.vision, selectionID: $0) }),
-                                      models: externalModels)
                 ForEach(container.visionModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -238,9 +249,6 @@ struct ModelSettingsView: View {
             } header: { AppText("图片理解") }
 
             Section {
-                CapabilityRoutePicker(title: "运行方式", capability: .embedding,
-                                      selection: Binding(get: { embeddingRoute }, set: { selectCapability(.embedding, selectionID: $0) }),
-                                      models: externalModels)
                 ForEach(container.embeddingModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -254,12 +262,15 @@ struct ModelSettingsView: View {
                         canSelect: false
                     )
                 }
+                if acquisition == LocalModelAcquisition.browser.rawValue {
+                    Button("导入 E5 描述文件") { showingEmbeddingDescriptorImport = true }
+                    Link("浏览器下载 E5 描述文件", destination: URL(string: "https://huggingface.co/tuanda2912/hark-multilingual-e5-small-coreml/resolve/\(ModelManifest.harkMultilingualE5Small.revision)/MultilingualE5Small.mlpackage/Data/com.apple.CoreML/model.mlmodel?download=true")!)
+                    Text("强隐私方式需同时导入权重和描述文件，点界不会自动联网补齐。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
             } header: { AppText("语义分类") }
 
             Section {
-                CapabilityRoutePicker(title: "运行方式", capability: .audioUnderstanding,
-                                      selection: Binding(get: { audioUnderstandingRoute }, set: { selectCapability(.audioUnderstanding, selectionID: $0) }),
-                                      models: externalModels)
                 ForEach(container.audioUnderstandingModelManagers, id: \.manifest.id) { manager in
                     ModelRow(
                         manager: manager,
@@ -272,11 +283,45 @@ struct ModelSettingsView: View {
                     )
                 }
             } header: { AppText("音乐与现场声音") }
+            if acquisition == LocalModelAcquisition.inApp.rawValue {
+                Section {
+                    RecordingModelsPanel(manager: container.recordingModelManager)
+                } header: { Text("说话人与声音状态 · 本地识别") }
+            }
+            }
+
             Section {
-                RecordingModelsPanel(manager: container.recordingModelManager)
-            } header: { Text("说话人与声音状态 · 本地识别") }
+                DisclosureGroup("实验工具") {
+                Button {
+                    NotificationCenter.default.post(name: AppContainer.enterTestMode, object: nil)
+                } label: {
+                    Label("进入独立测试模式", systemImage: "flask.fill")
+                }
+
+                Button {
+                    showingPlanetDistributionDemo = true
+                } label: {
+                    Label("球面分布演示", systemImage: "globe.asia.australia.fill")
+                }
+                }
+            } header: {
+                AppText("高级")
+            } footer: {
+                Text("测试模式使用独立数据库；球面分布演示使用内置样本，不影响正式内容。")
+            }
+
         }
-        .navigationTitle("模型中心")
+        .navigationTitle("模式与模型")
+        .onChange(of: speechRoute) { _, _ in UserDefaults.standard.set(true, forKey: "pointverse.cloudSpeechConfigured") }
+        .onChange(of: offlineBackup) { _, _ in container.applyNetworkPolicy() }
+        .fileImporter(isPresented: $showingEmbeddingDescriptorImport, allowedContentTypes: [.data]) { result in
+            if case .success(let url) = result {
+                Task {
+                    do { try await container.importEmbeddingDescriptor(url) }
+                    catch { externalModelError = error.localizedDescription }
+                }
+            }
+        }
         .onChange(of: selectedLanguageModelID) { _, _ in regenerateTitles() }
         .onChange(of: appLanguage) { _, _ in regenerateTitles() }
         .sheet(isPresented: $showingNetworkModelEditor) {
@@ -347,6 +392,7 @@ struct ModelSettingsView: View {
     }
 
     private func regenerateTitles() {
+        guard !ModelSelection.isPointVerseCloud(selectedLanguageModelID) else { return }
         Task { await container.transcriptionService.deriveMissingTitles(languageIdentifier: appLanguage) }
     }
 
@@ -452,6 +498,99 @@ struct ModelSettingsView: View {
         externalModels.removeAll { $0.id == model.id }
         ExternalLanguageModelStore.save(externalModels)
         if selectedLanguageModelID == model.selectionID { selectedLanguageModelID = ModelSelection.disabledLanguageModelID }
+    }
+}
+
+struct AppModeControls: View {
+    var onboarding = false
+    @EnvironmentObject private var account: AccountSessionStore
+    @EnvironmentObject private var container: AppContainer
+    @AppStorage(AppNetworkPolicy.modeKey) private var mode = AppUsageMode.privacy.rawValue
+    @AppStorage(AppNetworkPolicy.configuredKey) private var chosen = false
+    @AppStorage(ModelSelection.languageDefaultsKey) private var selectedModel = ModelSelection.pointVerseCloudLanguageModelID
+    @State private var pendingMode: String?
+
+    var body: some View {
+        Section {
+            if onboarding {
+                Text("先选择你的使用方式，之后可以在这里切换。").font(.headline)
+                Button { choose(AppUsageMode.privacy.rawValue) } label: {
+                    Label("使用隐私版", systemImage: "lock.shield")
+                }
+                Text("不登录，不使用网络模型，内容在本机处理。默认采用强隐私方式获取模型。")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Button { choose(AppUsageMode.cloud.rawValue) } label: {
+                    Label("使用登录版", systemImage: "cloud")
+                }
+                Text("登录使用云端 AI，无需安装模型。也可按需准备本地离线备用。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Picker("使用方式", selection: Binding(get: { mode }, set: { pendingMode = $0 })) {
+                    Text("隐私版").tag(AppUsageMode.privacy.rawValue)
+                    Text("登录版").tag(AppUsageMode.cloud.rawValue)
+                }
+                if mode == AppUsageMode.privacy.rawValue { ModelAcquisitionControls() }
+                else { Text("云端优先 · 本地备用可选").font(.footnote).foregroundStyle(.secondary) }
+            }
+        } header: { Text("使用方式") }
+          footer: { Text("切换不会删除本机资料，也不会自动上传已有内容。切回隐私版会清除本机登录状态；已上传的云端资料需单独管理。") }
+          .disabled(account.isBusy || account.isSyncing)
+          .confirmationDialog("切换使用方式？", isPresented: Binding(get: { pendingMode != nil }, set: { if !$0 { pendingMode = nil } }), titleVisibility: .visible) {
+              Button("确认切换") { if let pendingMode { choose(pendingMode) }; pendingMode = nil }
+              Button("取消", role: .cancel) { pendingMode = nil }
+          } message: {
+              Text(pendingMode == AppUsageMode.cloud.rawValue
+                   ? "登录版允许登录、云端 AI 和手动云同步。已有资料不会因切换而上传。"
+                   : "隐私版会停止网络模型和云同步，并清除本机登录状态。")
+          }
+    }
+
+    private func choose(_ value: String) {
+        guard !account.isBusy, !account.isSyncing else { return }
+        // Cancel shared AI requests before applying the new routing policy.
+        URLSession.shared.getAllTasks { $0.forEach { $0.cancel() } }
+        mode = value
+        if value == AppUsageMode.privacy.rawValue {
+            for capability in ["imageGeneration", "embedding", "vision", "speech", "audioUnderstanding"] {
+                UserDefaults.standard.set("local", forKey: "selectedExternalModel.\(capability)")
+            }
+        }
+        if value == AppUsageMode.cloud.rawValue {
+            selectedModel = ModelSelection.pointVerseCloudLanguageModelID
+            UserDefaults.standard.set("pointverse-cloud", forKey: "selectedExternalModel.speech")
+            UserDefaults.standard.set("pointverse-cloud", forKey: "selectedExternalModel.imageGeneration")
+        } else if ModelSelection.isPointVerseCloud(selectedModel) || ExternalLanguageModelStore.load().contains(where: { $0.selectionID == selectedModel && $0.kind == .openAICompatible }) {
+            selectedModel = ModelManifest.qwen3VL2BQ8.id
+        }
+        chosen = true
+        account.applyUsageMode()
+        container.applyNetworkPolicy()
+    }
+}
+
+struct ModelAcquisitionControls: View {
+    @AppStorage(AppNetworkPolicy.acquisitionKey) private var acquisition = LocalModelAcquisition.browser.rawValue
+    @AppStorage(AppNetworkPolicy.modeKey) private var mode = AppUsageMode.privacy.rawValue
+    @EnvironmentObject private var container: AppContainer
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("模型获取方式", selection: $acquisition) {
+                Text(mode == AppUsageMode.privacy.rawValue ? "强隐私 · 浏览器下载后导入" : "浏览器下载后导入").tag(LocalModelAcquisition.browser.rawValue)
+                Text("便捷 · 应用内断点续传").tag(LocalModelAcquisition.inApp.rawValue)
+            }
+            Text(mode == AppUsageMode.cloud.rawValue
+                 ? "这里仅设置本地备用模型的获取方式，云端 AI 仍可联网。下载和导入均由你主动操作。"
+                 : acquisition == LocalModelAcquisition.browser.rawValue
+                 ? "点界不主动发起网络请求。下载链接在外部浏览器打开，再选择已下载到本机的文件导入。"
+                 : "仅在你主动下载时联网获取模型，支持暂停和续传；不会上传录音、图片或聊天。")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .onChange(of: acquisition) { _, value in
+            if value == LocalModelAcquisition.browser.rawValue && AppNetworkPolicy.mode() == .privacy {
+                URLSession.shared.getAllTasks { $0.forEach { $0.cancel() } }
+            }
+            container.applyNetworkPolicy()
+        }
     }
 }
 
@@ -773,6 +912,8 @@ private struct ModelRow: View {
     var onRemoved: () -> Void = {}
     var canSelect = true
     @State private var wasInstalled = false
+    @State private var showingLocalImport = false
+    @AppStorage(AppNetworkPolicy.acquisitionKey) private var acquisition = LocalModelAcquisition.browser.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -791,7 +932,7 @@ private struct ModelRow: View {
                 HStack {
                     Text(progress, format: .percent.precision(.fractionLength(0))).font(.caption).monospacedDigit()
                     Spacer()
-                    Button(role: .cancel) { manager.cancel() } label: { AppText("取消下载") }
+                    Button(role: .cancel) { manager.cancel() } label: { AppText("暂停下载") }
                 }
             case .verifying, .checking:
                 ProgressView().controlSize(.small)
@@ -803,12 +944,13 @@ private struct ModelRow: View {
                         .buttonStyle(.borderless)
                 }
             case .failed:
-                Button { manager.download() } label: { AppText("重新下载") }
+                acquisitionButtons
             case .notInstalled:
-                Button { manager.download() } label: { AppText("下载模型") }
+                acquisitionButtons
             }
 
             AppText(explanation).font(.footnote).foregroundStyle(.secondary)
+            if let error = manager.lastErrorDescription { Text(error).font(.caption).foregroundStyle(.red) }
         }
         .onChange(of: manager.state) { _, state in
             if state == .installed { onInstalled() }
@@ -816,6 +958,9 @@ private struct ModelRow: View {
             wasInstalled = state == .installed
         }
         .onAppear { wasInstalled = manager.state == .installed }
+        .fileImporter(isPresented: $showingLocalImport, allowedContentTypes: [.data, .archive]) { result in
+            if case .success(let url) = result { Task { await manager.importLocalFile(url) } }
+        }
         .confirmationDialog(
             AppLocalization.string("确认卸载模型？", language: appLanguage),
             isPresented: $isShowingRemovalConfirmation,
@@ -826,6 +971,18 @@ private struct ModelRow: View {
         } message: {
             Text(verbatim: name)
         }
+    }
+
+    @ViewBuilder private var acquisitionButtons: some View {
+        HStack {
+            Button("选择本地模型文件") { showingLocalImport = true }.buttonStyle(.borderless)
+            if acquisition == LocalModelAcquisition.browser.rawValue {
+                Link("浏览器下载", destination: manager.manifest.downloadURL).font(.caption)
+            } else {
+                Button("应用内下载") { manager.download() }.buttonStyle(.borderless)
+            }
+        }
+        Text("对应文件：\(manager.manifest.filename)").font(.caption2).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var selectButton: some View {
@@ -847,7 +1004,7 @@ private struct ModelRow: View {
         case .verifying: AppText("正在校验")
         case .installed: AppText("已安装").foregroundStyle(.green)
         case .failed(let error):
-            AppText(error == .modelChecksumMismatch ? "校验失败" : error == .insufficientDiskSpace ? "空间不足" : "下载失败").foregroundStyle(.red)
+            AppText(error == .modelChecksumMismatch ? "校验失败" : error == .insufficientDiskSpace ? "空间不足" : "未就绪").foregroundStyle(.red)
         }
     }
 }

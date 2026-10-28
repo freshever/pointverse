@@ -1,6 +1,67 @@
 dianjie.org {
-	reverse_proxy 127.0.0.1:8081 {
-		header_up X-Forwarded-Proto {scheme}
-		header_up X-Real-IP {remote_host}
+	encode zstd gzip
+	redir / /account/ 302
+	redir /account /account/ 308
+
+	handle_path /account/* {
+		root * /srv/pointverse-web/current
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+			X-PointVerse-Serving vps-static
+		}
+		@icons path /app-icon-v1.png /favicon-v1.png /apple-touch-icon-v1.png
+		header @icons Cache-Control "public, max-age=31536000, immutable"
+		@mutable not path /app-icon-v1.png /favicon-v1.png /apple-touch-icon-v1.png
+		header @mutable Cache-Control no-store
+		file_server
+	}
+
+	handle {
+		reverse_proxy 100.89.246.35:8081 {
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+}
+
+h5.dianjie.org {
+	encode zstd gzip
+	redir /account /account/ 308
+
+	@api path /web/* /v1/* /readyz /healthz
+	handle @api {
+		reverse_proxy 100.89.246.35:8081 {
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle_path /account/* {
+		root * /srv/pointverse-h5/current/account
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+			X-PointVerse-Serving vps-h5
+		}
+		@icons path /app-icon-v1.png /favicon-v1.png /apple-touch-icon-v1.png
+		header @icons Cache-Control "public, max-age=31536000, immutable"
+		@mutable not path /app-icon-v1.png /favicon-v1.png /apple-touch-icon-v1.png
+		header @mutable Cache-Control no-store
+		file_server
+	}
+
+	handle {
+		root * /srv/pointverse-h5/current
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+			Cache-Control no-store
+			X-PointVerse-Serving vps-h5
+		}
+		file_server
 	}
 }

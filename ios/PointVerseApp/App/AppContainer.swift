@@ -108,7 +108,27 @@ final class AppContainer: ObservableObject {
     }
 
     func configurePointVerseCloud(baseURL: URL?, accessToken: String?) async {
+        if accessToken != nil, AppNetworkPolicy.allowsCloud(), !UserDefaults.standard.bool(forKey: "pointverse.cloudSpeechConfigured") {
+            UserDefaults.standard.set("pointverse-cloud", forKey: "selectedExternalModel.speech")
+            UserDefaults.standard.set(true, forKey: "pointverse.cloudSpeechConfigured")
+        }
         await promptTranslator.configurePointVerseCloud(baseURL: baseURL, accessToken: accessToken)
+        if accessToken != nil, AppNetworkPolicy.allowsCloud(), !UserDefaults.standard.bool(forKey: "pointverse.cloudImageConfigured") {
+            UserDefaults.standard.set("pointverse-cloud", forKey: "selectedExternalModel.imageGeneration")
+            UserDefaults.standard.set(true, forKey: "pointverse.cloudImageConfigured")
+        }
+        await imageGenerator.configureCloud(baseURL: baseURL, accessToken: accessToken)
+        await visionGenerator.configureCloud(baseURL: baseURL, accessToken: accessToken)
+        await transcriptionService.configureCloud(baseURL: baseURL, accessToken: accessToken)
+    }
+
+    func applyNetworkPolicy() {
+        if !AppNetworkPolicy.allowsModelDownloads() {
+            let managers = speechModelManagers + languageModelManagers + imageModelManagers + visionModelManagers + embeddingModelManagers + audioUnderstandingModelManagers
+            for manager in managers { manager.cancel() }
+            if case .downloading = edge0ModelManager.state { edge0ModelManager.cancel() }
+            recordingModelManager.pause()
+        }
     }
 
     func analyzeLCC(_ entry: PointMapEntry, useJudge: Bool, persist: Bool = true,
@@ -128,12 +148,22 @@ final class AppContainer: ObservableObject {
                 if let id = parsed.domainID {
                     decision = .init(status: .suggested, ids: [id], reason: "识别主题为“\(parsed.theme)”，程序已匹配到此目录，可随时修改。")
                 } else {
-                    decision = .init(status: .themeOnly, ids: [], reason: "主题已保存，可在“主题”中浏览；暂未匹配标准目录，不强行归类。")
+                    if let learned = try await database.confirmedDomain(forTheme: parsed.theme) {
+                        decision = .init(status: .suggested, ids: [learned], reason: "沿用你此前为此主题确认的参考分类；主题保留，可修改归属。")
+                    } else {
+                        await progress("选择接近的参考分类…")
+                        let reference = try await promptTranslator.recommendReferenceDomain(entry: entry, theme: parsed.theme)
+                        guard reference.modelID == modelID else { throw PointVerseError.invalidModelOutput }
+                        let selected = try LCCClassificationDecision.parse(reference.text, allowed: Set(LCCHierarchyClassifier.roots))
+                        decision = .init(status: selected.status, ids: selected.ids, reason: "参考归属，待你确认：" + selected.reason)
+                    }
                 }
             } catch {
                 if error is CancellationError { throw error }
                 try Task.checkCancellation()
-                decision = .init(status: .failed, ids: [], reason: modelID == nil
+                decision = .init(status: theme == nil ? .failed : .themeOnly, ids: [], reason: theme != nil
+                    ? "主题已保留，参考分类暂未生成：\(String(error.localizedDescription.prefix(160)))。可重试或手选。"
+                    : modelID == nil
                     ? "主题模型调用失败：\(String(error.localizedDescription.prefix(200)))"
                     : "模型未返回简短主题（可能回显原文或含多余内容），请重试。")
             }
@@ -223,7 +253,7 @@ final class AppContainer: ObservableObject {
         if !FileManager.default.fileExists(atPath: compiledURL.path) {
             guard await modelRegistry.isInstalled(.harkMultilingualE5Small) else {
                 embeddingService = nil
-                embeddingStartupError = "请先在本地模型中下载语义分类模型"
+                embeddingStartupError = "语义分类模型尚未就绪，可在模式与模型中按需导入或下载"
                 PointVerseLog.embedding.notice("Hark E5 is not installed")
                 return
             }
@@ -418,14 +448,35 @@ final class AppContainer: ObservableObject {
         try fileManager.moveItem(at: compiledTemporary, to: embeddingCompiledURL)
     }
 
+    func importEmbeddingDescriptor(_ url: URL) async throws {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let data = try Data(contentsOf: url)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        guard digest == "338370ce8c5102ac1373511290d5092b28beed8ed3a2b414476e2eba2c86b397" else {
+            throw PointVerseError.modelChecksumMismatch
+        }
+        let directory = applicationSupportRoot.appending(path: "models")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: directory.appending(path: "e5-model.mlmodel"), options: .atomic)
+        await prepareEmbeddingService()
+    }
+
     private func downloadHarkModelDescriptor() async throws -> Data {
+        let cached = applicationSupportRoot.appending(path: "models/e5-model.mlmodel")
+        if let data = try? Data(contentsOf: cached) { return data }
+        guard AppNetworkPolicy.allowsModelDownloads() else { throw NetworkPolicyError.downloadsDisabled }
         let revision = ModelManifest.harkMultilingualE5Small.revision
         let path = "tuanda2912/hark-multilingual-e5-small-coreml/resolve/\(revision)/MultilingualE5Small.mlpackage/Data/com.apple.CoreML/model.mlmodel?download=true"
         let urls = ["https://hf-mirror.com/\(path)", "https://huggingface.co/\(path)"].compactMap(URL.init(string:))
         for url in urls {
+            guard AppNetworkPolicy.allowsModelDownloads() else { throw NetworkPolicyError.downloadsDisabled }
             do {
                 let (data, response) = try await URLSession.shared.data(from: url)
-                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty { return data }
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty {
+                    try data.write(to: cached, options: .atomic)
+                    return data
+                }
             } catch {
                 PointVerseLog.embedding.notice("E5 descriptor source failed: \(url.host ?? "unknown", privacy: .public)")
             }

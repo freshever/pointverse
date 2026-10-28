@@ -1,32 +1,13 @@
 name: pointverse
 services:
-  db:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: pointverse
-      POSTGRES_USER: pointverse
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: [CMD-SHELL, "pg_isready -U pointverse -d pointverse"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     network_mode: host
     volumes:
       - ./Caddyfile.native:/etc/caddy/Caddyfile:ro
+      - ../web:/srv/pointverse-web:ro
+      - ../h5:/srv/pointverse-h5:ro
       - caddy_data:/data
       - caddy_config:/config
     logging:
@@ -35,6 +16,5 @@ services:
         max-size: 10m
         max-file: "3"
 volumes:
-  postgres_data:
   caddy_data:
   caddy_config:

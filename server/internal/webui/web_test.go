@@ -10,7 +10,7 @@ import (
 func TestEmbeddedAccountPage(t *testing.T) {
 	mux := http.NewServeMux()
 	Register(mux)
-	for _, path := range []string{"/account/", "/account/app.js", "/account/style.css"} {
+	for _, path := range []string{"/account/", "/account/app.js", "/account/style.css", "/account/images.html", "/account/images.js", "/account/images.css"} {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 {

@@ -69,10 +69,43 @@ final class AccountAPITests: XCTestCase {
         XCTAssertEqual(AccountAPI.serviceURL(from: " http://192.168.3.4:8090/account/ ")?.path, "/")
         XCTAssertNil(AccountAPI.serviceURL(from: "http://public.example.com"))
     }
-    private func client() throws -> AccountAPI {
+    func testPrivacyPolicyRejectsBeforeNetworkRequest() async throws {
+        AccountMockProtocol.state.set { _ in
+            XCTFail("Privacy mode sent an account request")
+            return (500, Data())
+        }
+        let api = try client(allowsNetwork: { false })
+        do { _ = try await api.providers(); XCTFail("Privacy mode allowed login API") }
+        catch NetworkPolicyError.cloudDisabled { }
+    }
+
+    func testCloudImageJobContractAndPrivacyGate() async throws {
+        let requestID = UUID()
+        AccountMockProtocol.state.set { request in
+            XCTAssertEqual(request.url?.path, "/v1/ai/images/generations")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer image-session")
+            return (202, Data(#"{"id":"12345678-1234-1234-1234-123456789abc","status":"queued"}"#.utf8))
+        }
+        let created = try await client().createImage(prompt: "一片森林", requestID: requestID, token: "image-session")
+        XCTAssertEqual(created.status, "queued")
+        AccountMockProtocol.state.set { request in
+            XCTAssertEqual(request.url?.path, "/v1/ai/jobs/12345678-1234-1234-1234-123456789abc")
+            return (200, Data(#"{"id":"12345678-1234-1234-1234-123456789abc","status":"succeeded","model":"sd15@revision","data":[{"b64_json":"cG5n"}]}"#.utf8))
+        }
+        let completed = try await client().imageJob(id: created.id, token: "image-session")
+        XCTAssertEqual(completed.data?.first?.b64Json, "cG5n")
+        AccountMockProtocol.state.set { _ in XCTFail("Privacy mode sent image content"); return (500, Data()) }
+        do {
+            _ = try await client(allowsNetwork: { false }).createImage(prompt: "private", requestID: requestID, token: "image-session")
+            XCTFail("Privacy mode accepted cloud generation")
+        } catch NetworkPolicyError.cloudDisabled {}
+    }
+
+    private func client(allowsNetwork: @escaping @Sendable () -> Bool = { true }) throws -> AccountAPI {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AccountMockProtocol.self]
-        return try AccountAPI(baseURL: URL(string: "https://account.example")!, session: URLSession(configuration: configuration))
+        return try AccountAPI(baseURL: URL(string: "https://account.example")!, session: URLSession(configuration: configuration), allowsNetwork: allowsNetwork)
     }
 }
 

@@ -142,6 +142,7 @@ final class Edge0DownloadManager: NSObject, ObservableObject {
     }
 
     func download() {
+        guard AppNetworkPolicy.allowsModelDownloads() else { return }
         guard task == nil else { return }
         state = .downloading(0)
         Task {
@@ -206,6 +207,7 @@ final class Edge0DownloadManager: NSObject, ObservableObject {
     }
 
     private func startCurrentComponent() {
+        guard AppNetworkPolicy.allowsModelDownloads() else { cancel(); return }
         guard componentIndex < Edge0Model8B.components.count else {
             task = nil
             writer = nil

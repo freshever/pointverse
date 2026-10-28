@@ -103,3 +103,22 @@ func themeNativeOutputsPassThroughProductionNormalizer() throws {
     #expect(mapped + unknown > 0)
     print("[ThemeProbe] mapped=\(mapped) unmapped=\(unknown) rejected=\(rejected)")
 }
+
+@Test func referenceDictionaryLearnsOnlyConfirmedMappingsAndRejectsConflicts() async throws {
+    let db = try PointDatabase(inMemory: true)
+    try await db.migrate()
+    let first = try await db.commitTextPoint(text: "城市创作意象")
+    let entry = themeEntry("城市创作意象", id: first)
+    try await db.saveLCCClassificationReview(themeReview(entry, raw: "城市呼吸"))
+    #expect(try await db.confirmedDomain(forTheme: "城市呼吸") == nil)
+    try await db.saveFacetOverride(pointID: first, dimension: .domain, values: ["lcc:P"])
+    #expect(try await db.confirmedDomain(forTheme: "城市呼吸") == "lcc:P")
+    let second = try await db.commitTextPoint(text: "城市社区观察")
+    try await db.saveLCCClassificationReview(themeReview(themeEntry("城市社区观察", id: second), raw: "城市呼吸"))
+    try await db.saveFacetOverride(pointID: second, dimension: .domain, values: ["lcc:H"])
+    #expect(try await db.confirmedDomain(forTheme: "城市呼吸") == nil)
+    try await db.saveFacetOverride(pointID: second, dimension: .domain, values: nil)
+    #expect(try await db.confirmedDomain(forTheme: "城市呼吸") == "lcc:P")
+    try await db.saveFacetOverride(pointID: first, dimension: .domain, values: [])
+    #expect(try await db.confirmedDomain(forTheme: "城市呼吸") == nil)
+}
