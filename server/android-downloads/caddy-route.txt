@@ -1,0 +1,23 @@
+	# BEGIN POINTVERSE ANDROID DOWNLOADS
+	redir /downloads/android /downloads/android/ 308
+	handle_path /downloads/android/* {
+		root * /srv/pointverse-web/android
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+			X-PointVerse-Serving vps-android
+		}
+		@androidAPK path /files/*.apk
+		header @androidAPK {
+			Content-Type application/vnd.android.package-archive
+			Content-Disposition attachment
+			Cache-Control "public, max-age=31536000, immutable"
+		}
+		@androidPage not path /files/*.apk
+		header @androidPage Cache-Control no-store
+		file_server {
+			hide .publish.lock *.incoming
+		}
+	}
+	# END POINTVERSE ANDROID DOWNLOADS

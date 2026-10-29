@@ -1,0 +1,10 @@
+.gradle/
+.gradle-home/
+build/
+app/build/
+local.properties
+sdk/
+
+.signing/
+.deps/
+.model-cache/

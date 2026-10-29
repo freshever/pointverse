@@ -147,7 +147,7 @@ struct ModelSettingsView: View {
                         Text("点界云端语音识别").tag("pointverse-cloud")
                         Text("Apple 系统识别 · 本机").tag("local")
                     }
-                    Text("云端语音转写支持 120 秒以内的录音；图片会压缩后发送。历史图片不会自动上传分析。")
+                    Text("云端语音转写支持 30 分钟以内的录音；图片会压缩后发送。历史图片不会自动上传分析。")
                         .font(.footnote).foregroundStyle(.secondary)
                     Text("登录后使用点界云端快速或增强模型。只有你主动发起的 AI 请求会发送相关内容；已有资料不会自动上传。")
                         .font(.footnote).foregroundStyle(.secondary)

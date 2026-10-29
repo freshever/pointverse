@@ -22,6 +22,10 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 
 核心实现位于 `ios/PointVerseKit`，数据库使用 GRDB 7.10.0。Xcode 首次构建会解析该 Swift Package 依赖。
 
+## 原生 Android
+
+Android 基础版位于 `android/`，最低支持 Android 9（API 28）。包含本地文字/录音记录、搜索、编辑、原音回放，并沿用 iOS 的点界账户和云端转写/整理接口。构建与验收边界见 [Android README](android/README.md)。
+
 ## H5 原型
 
 旧版 H5 已整体移至 `h5/`，作为交互参考保留：

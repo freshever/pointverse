@@ -60,6 +60,27 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gateway.validate_audio({"audio": base64.b64encode(audio[:-10]).decode()})
 
+    def test_qwen_speech_keeps_existing_http_contract_and_cleans_temp_audio(self):
+        import types
+        from pathlib import Path
+        audio=io.BytesIO()
+        with wave.open(audio,"wb") as wav:
+            wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(16000);wav.writeframes(b"\x00\x00"*1600)
+        captured=[]
+        def execute(args,**kwargs):
+            self.assertEqual(args[0],"/approved/asr-runtime/bin/python");self.assertTrue(args[1].endswith("transcribe-qwen.py"));self.assertEqual(args[2],"/external/models/qwen3-asr-1.7b")
+            self.assertEqual(kwargs["timeout"],120);self.assertTrue(Path(args[3]).is_file());captured.append(args[3])
+            return types.SimpleNamespace(stdout=json.dumps({"text":"测试语音。","model":"qwen3-asr-1.7b"}).encode())
+        with patch.object(gateway,"speech_ready",return_value=True),patch.object(gateway,"resources_ready",return_value=True),patch.object(gateway,"unload_chat_models"),patch.object(gateway,"SPEECH_PYTHON","/approved/asr-runtime/bin/python"),patch.object(gateway,"SPEECH_RUNNER","transcribe-qwen.py"),patch.object(gateway,"SPEECH_MODEL","/external/models/qwen3-asr-1.7b"),patch.object(gateway.subprocess,"run",side_effect=execute):
+            conn=http.client.HTTPConnection(*self.server.server_address,timeout=5)
+            conn.request("POST","/v1/audio/transcriptions",json.dumps({"audio":base64.b64encode(audio.getvalue()).decode(),"model":"/untrusted/ignored"}),{"Content-Type":"application/json","Authorization":"Bearer "+os.environ["POINTVERSE_AI_TOKEN"]})
+            response=conn.getresponse();result=json.loads(response.read());conn.close()
+        self.assertEqual(response.status,200);self.assertEqual(result["model"],"qwen3-asr-1.7b");self.assertEqual(result["text"],"测试语音。")
+        self.assertFalse(Path(captured[0]).exists())
+
+    def test_unavailable_external_models_do_not_advertise_speech(self):
+        with patch.object(gateway,"model_storage_ready",return_value=False):self.assertFalse(gateway.speech_ready())
+
     @classmethod
     def setUpClass(cls):
         cls.server = gateway.ThreadingHTTPServer(("127.0.0.1", 0), gateway.Handler)

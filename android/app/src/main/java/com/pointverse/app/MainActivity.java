@@ -1,0 +1,410 @@
+package com.pointverse.app;
+
+import android.Manifest;
+import android.app.*;
+import android.content.*;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
+import android.media.MediaPlayer;
+import android.net.Uri;
+import android.os.*;
+import android.provider.MediaStore;
+import android.text.*;
+import android.view.*;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.*;
+import org.json.*;
+import java.io.*;
+import java.text.DateFormat;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
+
+/** Native five-tab shell following the iOS view hierarchy. */
+public final class MainActivity extends Activity {
+    static final class Runtime {
+        final PointStore store;final AccountSession account;final LocalSpeech speech;final PhotoUnderstanding photos;final TitleGeneration titles;
+        final ExecutorService db=Executors.newSingleThreadExecutor(),io=Executors.newSingleThreadExecutor(),downloads=Executors.newSingleThreadExecutor();
+        Runtime(Context c){NetworkModel.cloudAllowed=()->c.getSharedPreferences("pointverse",0).getBoolean("cloud",false);store=new PointStore(c);account=new AccountSession(c);speech=new LocalSpeech(c);titles=new TitleGeneration(c,store,new TitleGeneration.Policy(){
+            public boolean allowed(){return c.getSharedPreferences("pointverse",0).getBoolean("cloud",false);}
+            public String token(){return account.token();}
+            public String model(){return c.getSharedPreferences("pointverse",0).getBoolean("enhanced",false)?"pointverse-cloud-enhanced":"pointverse-cloud";}
+        });photos=new PhotoUnderstanding(c,store,new PhotoUnderstanding.Policy(){
+            public boolean allowed(){return c.getSharedPreferences("pointverse",0).getBoolean("cloud",false);}
+            public String token(){return account.token();}
+            public String model(){return c.getSharedPreferences("pointverse",0).getBoolean("enhanced",false)?"pointverse-cloud-enhanced":"pointverse-cloud";}
+        });photos.addListener(id->{JSONArray images=store.rows("images",id);for(int i=0;i<images.length();i++){String state=images.optJSONObject(i).optString("analysis_state");if(state.equals("pending")||state.equals("ocr_running")||state.equals("vision_running"))return;}titles.enqueue(id);});}
+    }
+    private static Runtime shared;
+    private Runtime rt;private SharedPreferences prefs;private AppStrings strings;
+    private final Handler handler=new Handler(Looper.getMainLooper());
+    private final AudioCapture capture=new AudioCapture();
+    private LinearLayout root,content,bar,header;private TextView mode,status,title,elapsedLabel,captureTitle,recordHint;private Switch captureCameraToggle;private Spinner captureLanguageSpinner;private Button record,cancel;
+    private int INK=0xfff2f2f7,MUTED=0xff98989f,BG=0xff000000,CARD=0xff1c1c1e,ACCENT=0xff5e5ce6;
+    private int tab=0,pageVersion=0;private String detailId=null,captureMode="voice",listQuery="",voiceFilter="",speakerFilter="",universeMode="宇宙";
+    private boolean ready=false,busy=false,resumed=false,permissionPending=false,pressRecording=false,longHeld=false,restoring=false;
+    private CaptureCamera camera;private TextureView cameraPreview;private TextView cameraStatus;private long started;private MediaPlayer player;private SeekBar playbackSeek;private TextView playbackTime;
+    private String attachmentPoint=null;private Bitmap generatedImage;private String generatedModel="",generatedPrompt="",imagePrompt="",imageJobId="";private Future<?> imageFuture,downloadFuture;
+    private final Map<String,List<TextView>> pointTitleViews=new HashMap<>();
+    private final Consumer<String> titleListener=id->ui(()->{if(!resumed||(!id.equals(detailId)&&!pointTitleViews.containsKey(id)))return;int generation=pageVersion;
+        db(()->rt.store.get(id),point->{if(generation!=pageVersion)return;if(id.equals(detailId)&&title!=null)title.setText(point.title);List<TextView> views=pointTitleViews.get(id);if(views!=null)for(TextView view:views)view.setText(point.title);});});
+    private final NotePlayer notePlayer=new NotePlayer();
+    private LinearLayout photoBody;
+    private final Map<String,PhotoRow> photoRows=new LinkedHashMap<>();
+    private final Consumer<String> photoListener=id->ui(()->{if(id.equals(detailId))refreshPhotos(id);});
+    private static final class PhotoRow { JSONObject item; TextView caption,candidate,state; }
+    private final List<Dialog> dialogs=new ArrayList<>();
+    private final Runnable ticker=new Runnable(){public void run(){if(capture.isRecording()){if(elapsedLabel!=null)elapsedLabel.setText(time(SystemClock.elapsedRealtime()-started));handler.postDelayed(this,300);}}};
+    @Override protected void attachBaseContext(Context base){
+        int selection=base.getSharedPreferences("pointverse",0).getInt("appLanguage",0);
+        Locale system=android.content.res.Resources.getSystem().getConfiguration().getLocales().get(0);
+        Locale locale=selection==0?system:selection==1?Locale.SIMPLIFIED_CHINESE:selection==2?Locale.TRADITIONAL_CHINESE:selection==3?Locale.ENGLISH:Locale.JAPANESE;
+        Locale.setDefault(locale);Configuration config=new Configuration(base.getResources().getConfiguration());config.setLocale(locale);super.attachBaseContext(base.createConfigurationContext(config));
+    }
+    @Override public void onCreate(Bundle state){
+        prefs=getSharedPreferences("pointverse",MODE_PRIVATE);
+        super.onCreate(state);strings=new AppStrings(this);
+        synchronized(MainActivity.class){if(shared==null)shared=new Runtime(getApplicationContext());}rt=shared;
+        if(state!=null){tab=state.getInt("tab");detailId=state.getString("detail");listQuery=state.getString("query","");universeMode=state.getString("universe","宇宙");attachmentPoint=state.getString("attachment");if(state.getString("cameraUri")!=null)pendingCamera=Uri.parse(state.getString("cameraUri"));}
+        captureMode=prefs.getString("captureInputMode","voice");
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(CARD);
+        getWindow().getDecorView().setSystemUiVisibility(0);
+        root=col();root.setBackgroundColor(BG);root.setOnApplyWindowInsetsListener((v,insets)->{v.setPadding(0,insets.getSystemWindowInsetTop(),0,insets.getSystemWindowInsetBottom());return insets.consumeSystemWindowInsets();});setContentView(root);
+        mode=label("",11,MUTED);mode.setGravity(Gravity.CENTER);root.addView(mode,new LinearLayout.LayoutParams(-1,dp(28)));
+        header=row();header.setPadding(dp(16),0,dp(12),0);root.addView(header,new LinearLayout.LayoutParams(-1,dp(54)));
+        content=col();root.addView(content,new LinearLayout.LayoutParams(-1,0,1));bar=row();bar.setBackgroundColor(CARD);root.addView(bar,new LinearLayout.LayoutParams(-1,dp(64)));
+        render();db(()->rt.store.recover(),incomplete->{ready=true;render();rt.photos.resumePending();if(incomplete>0)notice("有未完成录音已保留待恢复");});
+        if(!prefs.getBoolean("configured",false))handler.post(this::usageMode);
+    }
+    @Override protected void onSaveInstanceState(Bundle state){state.putInt("tab",tab);state.putString("detail",detailId);state.putString("query",listQuery);state.putString("universe",universeMode);state.putString("attachment",attachmentPoint);if(pendingCamera!=null)state.putString("cameraUri",pendingCamera.toString());super.onSaveInstanceState(state);}
+    private void render(){notePlayer.stop();
+        if(isDestroyed())return;pageVersion++;pointTitleViews.clear();photoBody=null;photoRows.clear();stopPlayer();if(camera!=null){camera.close();camera=null;}content.removeAllViews();header.removeAllViews();bar.removeAllViews();
+        mode.setText(cloud()?(rt.account.token().isEmpty()?"登录版 · 登录后使用云端 AI":"登录版 · 云端 AI 可用"):"隐私版 · 本机处理 · 内容不上传");
+        if(detailId!=null){header.addView(link("‹ 返回",()->{detailId=null;render();}));title=label("想法",20,INK);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));header.addView(link("•••",this::detailMenu));}
+        else {String[] names={"点界","想法","语义宇宙","图片生成","我的"};title=label(names[tab],tab==0?21:26,INK);title.setTypeface(null,1);if(tab==0)title.setGravity(Gravity.CENTER);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+            if(tab==1){header.addView(link("整理",this::organization));header.addView(link("筛选",this::filter));}
+            if(tab==2){header.addView(link("评估",this::evaluate));header.addView(link("搜索",this::mapSearch));}
+        }
+        String[] tabs={"记录","想法","宇宙","图片","我的"};String[] icons={"◉","▦","◎","▧","▣"};
+        for(int i=0;i<5;i++){final int index=i;LinearLayout item=col();item.setGravity(Gravity.CENTER);TabGlyph icon=new TabGlyph(this,i,tab==i?ACCENT:MUTED);TextView name=label(tabs[i],10,tab==i?ACCENT:MUTED);name.setGravity(Gravity.CENTER);name.setPadding(0,dp(3),0,0);item.addView(icon,new LinearLayout.LayoutParams(dp(26),dp(26)));item.addView(name);item.setContentDescription(tabs[i]);item.setOnClickListener(v->{if(capture.isRecording())finishRecording();hideKeyboard();tab=index;detailId=null;render();});bar.addView(item,new LinearLayout.LayoutParams(0,-1,1));}
+        if(detailId!=null){showDetail();return;}
+        switch(tab){case 0:capturePage();break;case 1:ideasPage(false);break;case 2:universePage();break;case 3:imagesPage();break;case 4:modelsPage();break;}
+    }
+    private void capturePage(){
+        content.addView(segments(new String[]{"语音","文本"},captureMode.equals("voice")?0:1,i->{if(capture.isRecording())return;captureMode=i==0?"voice":"text";prefs.edit().putString("captureInputMode",captureMode).apply();render();}));
+        if(captureMode.equals("text")){
+            LinearLayout box=card(content);box.addView(label("写下此刻的想法",22,INK));EditText input=edit("不需要标题，也不需要完整表达。",true);input.setMinLines(8);input.setText(prefs.getString("captureDraft",""));box.addView(input);
+            input.addTextChangedListener(watch(value->prefs.edit().putString("captureDraft",value).apply()));
+            box.addView(primary("保存想法",()->{String value=input.getText().toString().trim();if(value.isEmpty()){input.setError("请先写下想法");return;}db(()->rt.store.createText(shortTitle(value),value),id->{prefs.edit().remove("captureDraft").apply();open(id);autoProcess(id,false);});}));
+            box.addView(label("直接保存原文，整理失败也不会丢失。",13,MUTED));return;
+        }
+        boolean compact=getResources().getConfiguration().screenHeightDp<700;LinearLayout voice=col();voice.setPadding(dp(compact?12:24),dp(compact?8:20),dp(compact?12:24),dp(compact?8:16));voice.setGravity(Gravity.CENTER_HORIZONTAL);boolean cameraEnabled=prefs.getBoolean("captureCamera",false)&&checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED;
+        cameraPreview=null;
+        if(cameraEnabled&&resumed&&!busy){FrameLayout stage=new FrameLayout(this);cameraPreview=new TextureView(this);cameraPreview.setContentDescription("相机预览");stage.addView(cameraPreview,new FrameLayout.LayoutParams(-1,-1));voice.setBackgroundColor(0x66000000);stage.addView(voice,new FrameLayout.LayoutParams(-1,-1));content.addView(stage,new LinearLayout.LayoutParams(-1,0,1));}else content.addView(voice,new LinearLayout.LayoutParams(-1,0,1));
+        TextView date=label(DateFormat.getDateInstance(DateFormat.LONG).format(new Date())+"\n"+DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date()),16,MUTED);date.setGravity(Gravity.CENTER);voice.addView(date);
+        Space top=new Space(this);voice.addView(top,new LinearLayout.LayoutParams(1,0,1));
+        captureTitle=label(capture.isRecording()?"正在录音":busy?"正在可靠保存":"留下此刻的想法",22,INK);captureTitle.setTypeface(null,1);captureTitle.setGravity(Gravity.CENTER);voice.addView(captureTitle);
+        elapsedLabel=label(time(capture.isRecording()?SystemClock.elapsedRealtime()-started:0),16,MUTED);elapsedLabel.setGravity(Gravity.CENTER);elapsedLabel.setVisibility(capture.isRecording()?View.VISIBLE:View.GONE);voice.addView(elapsedLabel);
+        status=label(busy?"正在写入原音和本地资料库…":"轻点开始，再次轻点结束",15,MUTED);status.setGravity(Gravity.CENTER);status.setVisibility(capture.isRecording()?View.GONE:View.VISIBLE);voice.addView(status);
+        Switch cameraSwitch=new Switch(this);captureCameraToggle=cameraSwitch;cameraSwitch.setText("同时拍摄");cameraSwitch.setTextColor(cameraEnabled?Color.WHITE:INK);cameraSwitch.setChecked(cameraEnabled);cameraSwitch.setEnabled(!capture.isRecording()&&!busy);voice.addView(cameraSwitch);cameraSwitch.setOnCheckedChangeListener((v,enabled)->{if(enabled&&checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.CAMERA},12);return;}prefs.edit().putBoolean("captureCamera",enabled).apply();render();});
+        cameraStatus=label(cameraEnabled?"正在打开相机…":"",12,MUTED);cameraStatus.setGravity(Gravity.CENTER);cameraStatus.setVisibility(cameraEnabled?View.VISIBLE:View.GONE);voice.addView(cameraStatus);
+        Spinner language=spinner(new String[]{"自动 · 中文","简体中文","繁体中文","英文","日文"},prefs.getInt("captureLanguage",0),i->prefs.edit().putInt("captureLanguage",i).apply());captureLanguageSpinner=language;language.setEnabled(!capture.isRecording()&&!busy);voice.addView(language);
+        record=new RecordButton(this);record.setText(capture.isRecording()?"■":"◎");record.setOnClickListener(v->toggleRecording());record.setTextSize(40);record.setContentDescription(capture.isRecording()?"完成录音":"开始录音");record.setBackground(round(capture.isRecording()?0xffff453a:ACCENT,64));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(dp(compact?88:112),dp(compact?88:112));rp.setMargins(0,dp(compact?10:24),0,dp(compact?8:18));voice.addView(record,rp);record.setEnabled(ready&&!busy);record.setScaleX(capture.isRecording()?1.08f:1f);record.setScaleY(capture.isRecording()?1.08f:1f);
+        record.setOnTouchListener((v,event)->{
+            if(event.getAction()==MotionEvent.ACTION_DOWN){longHeld=false;handler.postDelayed(longPress,250);}
+            else if(event.getAction()==MotionEvent.ACTION_UP||event.getAction()==MotionEvent.ACTION_CANCEL){handler.removeCallbacks(longPress);if(longHeld){pressRecording=false;if(capture.isRecording())finishRecording();return true;}}
+            return false;
+        });
+        recordHint=label(capture.isRecording()?"再次轻点结束":"轻点录音，或按住说话",15,capture.isRecording()?0xffff453a:MUTED);recordHint.setGravity(Gravity.CENTER);voice.addView(recordHint);
+        cancel=link("取消",()->{capture.cancel();if(camera!=null)camera.cancel();recordingStopped();render();});cancel.setVisibility(capture.isRecording()?View.VISIBLE:View.INVISIBLE);voice.addView(cancel);
+        voice.addView(new Space(this),new LinearLayout.LayoutParams(1,0,1));voice.addView(label("原音先保存 · 转写不会影响录音安全",12,MUTED));
+        if(cameraPreview!=null)camera=new CaptureCamera(this,cameraPreview,message->{if(cameraStatus!=null)cameraStatus.setText(message);notice(message);},state->{if(cameraStatus==null)return;if(state==CaptureCamera.State.READY)cameraStatus.setText("相机已就绪");else if(state==CaptureCamera.State.FAILED)cameraStatus.setText("相机未就绪，可关闭后重试");});
+    }
+    private final Runnable longPress=()->{if(!capture.isRecording()&&!busy&&ready){longHeld=true;pressRecording=true;toggleRecording();}};
+    private void toggleRecording(){if(capture.isRecording()){finishRecording();return;}if(busy||!ready)return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},10);return;}startRecording();}
+    private void startRecording(){if(!resumed||busy)return;
+        if(camera==null&&prefs.getBoolean("captureCamera",false)&&checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED&&tab==0&&detailId==null&&captureMode.equals("voice"))render();
+        try{capture.start(rt.store.newRecording(),()->ui(this::finishRecording));started=SystemClock.elapsedRealtime();getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if(camera!=null)camera.begin();if(record!=null){record.setText("■");record.setContentDescription("完成录音");record.setBackground(round(0xffff453a,64));cancel.setVisibility(View.VISIBLE);status.setVisibility(View.GONE);captureTitle.setText(strings.text("正在录音"));elapsedLabel.setVisibility(View.VISIBLE);recordHint.setText(strings.text("再次轻点结束"));recordHint.setTextColor(0xffff453a);captureCameraToggle.setEnabled(false);captureLanguageSpinner.setEnabled(false);record.animate().scaleX(1.08f).scaleY(1.08f).setDuration(120).start();}else render();handler.post(ticker);}catch(Exception e){notice("无法开始录音，请检查麦克风权限或设备占用");}}
+    private void finishRecording(){
+        if(!capture.isRecording())return;
+        try{
+            File file=capture.finish();busy=true;recordingStopped();
+            record.setEnabled(false);captureTitle.setText("正在可靠保存");status.setText("正在写入原音和本地资料库…");status.setVisibility(View.VISIBLE);elapsedLabel.setVisibility(View.GONE);cancel.setVisibility(View.INVISIBLE);
+            // Preserve the ImageReader until the in-flight JPEG has been delivered.
+            Consumer<List<byte[]>> save=frames->{
+                render();
+                db(()->{rt.store.commitAudio(file);String id=file.getName().replace(".m4a","");rt.store.field(id,"locale",new String[]{"zh-CN","zh-CN","zh-TW","en-US","ja-JP"}[prefs.getInt("captureLanguage",0)]);return id;},id->{busy=false;open(id);autoProcess(id,true);if(!frames.isEmpty())reviewFrames(id,frames);});
+            };
+            if(camera!=null)camera.finish(save);else save.accept(Collections.emptyList());
+        }catch(Exception e){busy=false;recordingStopped();render();notice("录音过短或被中断，请重试");}
+    }
+    private void recordingStopped(){handler.removeCallbacks(ticker);getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);}
+    @Override public void onRequestPermissionsResult(int request,String[] p,int[] result){super.onRequestPermissionsResult(request,p,result);if(request==12){if(pendingTakePhoto){pendingTakePhoto=false;if(result.length>0&&result[0]==PackageManager.PERMISSION_GRANTED)takePhoto();else notice("需要相机权限才能拍照");return;}boolean granted=result.length>0&&result[0]==PackageManager.PERMISSION_GRANTED;prefs.edit().putBoolean("captureCamera",granted).apply();render();if(!granted)show(new AlertDialog.Builder(this).setTitle("需要相机权限").setMessage("同时拍摄需要允许点界访问相机；录音仍可单独使用。").setNegativeButton("继续录音",null).setPositiveButton("前往设置",(dialog,which)->startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())))).create());return;}if(request==11){if(result.length>0&&result[0]==PackageManager.PERMISSION_GRANTED)saveGallery();else notice("需要相册保存权限");return;}if(request==10){if(result.length>0&&result[0]==PackageManager.PERMISSION_GRANTED){if(resumed)startRecording();else permissionPending=true;}else notice("请在系统设置允许麦克风权限，文字记录仍可使用");}}
+    private void ideasPage(boolean trash){
+        LinearLayout body=scroll(content);if(trash)body.addView(link("‹ 全部想法",()->{detailId=null;render();}));
+        EditText search=edit("搜索转写、标题或摘要",false);search.setText(listQuery);body.addView(search);LinearLayout results=col();body.addView(results);
+        Runnable load=()->{int generation=++pageVersion;String query=search.getText().toString().trim();listQuery=query;db(()->rt.store.list(query,trash),points->{if(generation!=pageVersion)return;results.removeAllViews();
+            if(!trash&&query.isEmpty()&&voiceFilter.isEmpty()&&speakerFilter.isEmpty())memories(results);
+            if(!trash&&(!voiceFilter.isEmpty()||!speakerFilter.isEmpty())){results.addView(label("当前筛选："+speakerFilter+" "+voiceFilter,13,ACCENT));results.addView(link("清除筛选",()->{speakerFilter="";voiceFilter="";render();}));}results.addView(label(trash?"回收站":"全部想法",13,MUTED));int count=0;
+            for(PointStore.Point p:points){if(!voiceFilter.isEmpty()&&!voiceFilter.equals(p.voice))continue;if(!speakerFilter.isEmpty()&&!speakerFilter.equals(p.speaker))continue;count++;LinearLayout card=pointCard(results,p);card.setOnClickListener(v->{if(trash)trashMenu(p);else open(p.id);});card.setOnLongClickListener(v->{if(trash)trashMenu(p);else confirm("移入回收站？","可以在整理页的回收站恢复。",()->db(()->{rt.store.trash(p.id,true);return true;},ok->loadIdeas(trash)));return true;});}
+            if(count==0){LinearLayout empty=card(results);empty.addView(label(trash?"回收站为空":"还没有想法",22,INK));empty.addView(label(query.isEmpty()&&voiceFilter.isEmpty()&&speakerFilter.isEmpty()?"保存第一条语音后会出现在这里":"没有找到符合条件的想法",14,MUTED));}
+        });};
+        search.addTextChangedListener(watch(value->{handler.removeCallbacksAndMessages("search");handler.postAtTime(load,"search",SystemClock.uptimeMillis()+200);}));load.run();
+    }
+    private void loadIdeas(boolean trash){content.removeAllViews();ideasPage(trash);}
+    private LinearLayout pointCard(LinearLayout parent,PointStore.Point p){LinearLayout card=card(parent);TextView name=label(p.title.isEmpty()?"未命名想法":p.title,18,INK);name.setTypeface(null,1);pointTitleViews.computeIfAbsent(p.id,key->new ArrayList<>()).add(name);card.addView(name);card.addView(label(DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(new Date(p.created)),12,MUTED));String meta=String.join(" · ",java.util.stream.Stream.of(p.speaker,p.voice.equals("未标注")?"":p.voice).filter(v->!v.isEmpty()).toArray(String[]::new));if(!meta.isEmpty())card.addView(label(meta,12,ACCENT));String snippet=p.effective();if(!snippet.isEmpty()){TextView preview=label(snippet,14,MUTED);preview.setMaxLines(3);card.addView(preview);}card.addView(label(p.path==null?"文本 Point":(!p.machine.isEmpty()?"已有转写 · 原音已保存":"等待转写 · 原音已保存"),12,MUTED));return card;}
+    private void memories(LinearLayout parent){db(()->rt.store.memories(),items->{if(items.isEmpty())return;LinearLayout section=card(parent);section.addView(label("思考回忆 · 今天",20,INK));section.addView(label("看看以前留下的想法，今天能否再往前走一步。",14,MUTED));for(PointStore.Point p:items){section.addView(link(p.title,()->open(p.id)));LinearLayout actions=row();for(String value:new String[]{"有用","稍后","不相关"})actions.addView(link(value,()->db(()->{rt.store.feedback(p.id,value);return true;},ok->render())));section.addView(actions);}});}
+    private void open(String id){hideKeyboard();detailId=id;render();db(()->{rt.store.viewed(id);return true;},ok->{});rt.photos.enqueuePoint(id,false);rt.titles.enqueue(id);}
+    private void showDetail(){String id=detailId;int generation=pageVersion;db(()->rt.store.get(id),p->{if(generation!=pageVersion)return;title.setText(p.title.isEmpty()?"想法":p.title);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);LinearLayout body=scroll(content);
+        if(p.path!=null){LinearLayout audio=card(body);audio.addView(label("原音",18,INK));audio.addView(label(time(p.duration)+" · M4A / AAC",13,MUTED));audio.addView(primary("播放 / 暂停",()->play(p)));playbackSeek=new SeekBar(this);playbackSeek.setMax((int)p.duration);audio.addView(playbackSeek);playbackTime=label("00:00 / "+time(p.duration),12,MUTED);audio.addView(playbackTime);playbackSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int progress,boolean user){if(user&&player!=null)player.seekTo(progress);}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}});
+            audio.addView(link("重新转写",()->new AlertDialog.Builder(this).setTitle("选择转写方式").setItems(new String[]{"中文离线转写 · 原音不上传","点界云端转写"},(d,w)->transcribe(p,w==0)).show()));
+            LinearLayout labels=card(body);labels.addView(label("录音分类",18,INK));labels.addView(link("说话人："+(p.speaker.isEmpty()?"未指定":p.speaker),()->input("说话人",p.speaker,value->saveField(p.id,"speaker",value))));labels.addView(link("声音状态："+p.voice,()->choose("声音状态",new String[]{"平静","激动","低落","紧张","未标注"},i->saveField(p.id,"voice",new String[]{"平静","激动","低落","紧张","未标注"}[i]))));soundCard(body,p);
+        }
+        LinearLayout original=card(body);original.addView(label(p.path==null?"原文":"转写",18,INK));TextView originalText=label(p.effective().isEmpty()?"原音已保存，等待转写。":p.effective(),17,INK);originalText.setTextIsSelectable(true);original.addView(originalText);original.addView(link("编辑修正",()->editPoint(p)));if(p.path!=null)original.addView(link("转写候选与引擎原文",()->candidates(p)));
+        if(!p.summary.isEmpty()){LinearLayout summary=card(body);summary.addView(label("摘要与整理",18,INK));summary.addView(label(p.summary,16,INK));summary.addView(label("来源：点界云端",12,MUTED));}
+        LinearLayout classification=card(body);classification.addView(label("独立分类标注",18,INK));classification.addView(label("知识领域："+shown(p.domain)+"\n主题："+shown(p.topic)+"\n项目："+shown(p.project)+"\n表达性质："+shown(p.expression),14,MUTED));classification.addView(link("修改分类",()->editFacets(p)));classification.addView(link("生成标题与整理",()->organize(p)));
+        LinearLayout photos=card(body);photos.addView(label("图片",18,INK));photos.addView(link("相册 / 拍照 / 涂鸦",()->photoChoices(p.id)));
+        photos.addView(label("登录版保留照片后自动进行云端文字识别和图片理解；隐私版仅保存照片。",12,MUTED));
+        photos.addView(link("重新理解照片",()->{if(!requireCloud())return;rt.photos.enqueuePoint(p.id,true);notice("已开始理解照片，结果会显示在照片下方");}));
+        photoBody=col();photos.addView(photoBody);refreshPhotos(p.id);
+
+        LinearLayout related=card(body);related.addView(label("关联想法",18,INK));related.addView(link("查找相关内容",()->related(p,related)));related.addView(link("显影 · 让想法成为作品",()->manifest(p)));manifestationCard(body,p);
+        conversation(p,body);
+    });}
+    private void editPoint(PointStore.Point p){LinearLayout form=col();EditText name=edit("标题",false),text=edit("写下想法，或修正转写",true);name.setText(p.title);text.setText(p.effective());text.setMinLines(5);form.addView(name);form.addView(text);form.setPadding(dp(20),0,dp(20),0);AlertDialog d=new AlertDialog.Builder(this).setTitle("编辑想法").setView(form).setNegativeButton("取消",null).setPositiveButton("保存",null).create();show(d);d.getButton(-1).setOnClickListener(v->{String body=text.getText().toString();if(p.path==null&&body.trim().isEmpty()){text.setError("请输入内容");return;}db(()->{rt.store.update(p.id,name.getText().toString().trim(),body);return true;},ok->{d.dismiss();rt.titles.enqueue(p.id);render();});});}
+    private void candidates(PointStore.Point p){db(()->rt.store.rows("candidates",p.id),items->{if(items.length()==0){notice("还没有转写候选");return;}String[] names=new String[items.length()];for(int i=0;i<names.length;i++){JSONObject c=items.optJSONObject(i);names[i]=c.optString("engine")+"\n"+c.optString("text");}choose("转写候选（人工修正优先保留）",names,i->db(()->{rt.store.selectCandidate(p.id,items.optJSONObject(i).optString("text"));return true;},ok->{rt.titles.enqueue(p.id);render();}));});}
+    private void transcribe(PointStore.Point p,boolean local){if(!local&&!requireCloud())return;if(local&&!p.locale.startsWith("zh")){notice("本机模型当前支持中文，此录音语言请选择云端转写");return;}if(local&&!rt.speech.available()){notice("请先在“我的”页下载中文离线转写模型");return;}Runnable start=()->task(local?"正在本机转写，原音不上传…":"正在云端转写…",()->{String text=local?rt.speech.transcribe(rt.store.audioFile(p),value->{}):CloudTranscription.transcribe(rt.store.audioFile(p),rt.account.token());if(text.trim().isEmpty())throw new IOException("未识别到语音，原音仍在");rt.store.addCandidate(p.id,local?LocalSpeech.ID:"pointverse-cloud-speech",text);rt.titles.enqueue(p.id);return text;},text->{notice("转写已保存，人工修正保持优先");render();});if(local)start.run();else confirm("云端转写","此条原音将发送至点界云端。",start);}
+    private void autoProcess(String id,boolean audio){
+        if(!audio||!prefs.getBoolean("autoTranscribe",true))return;
+        boolean local=prefs.getInt("speechRoute",0)==0;
+        if(local&&!rt.speech.available())return;
+        if(!local&&(!cloud()||rt.account.token().isEmpty()))return;
+        String token=rt.account.token();
+        rt.io.execute(()->{try{PointStore.Point p=rt.store.get(id);if(local&&!p.locale.startsWith("zh"))return;
+            String value=local?rt.speech.transcribe(rt.store.audioFile(p),message->{}):CloudTranscription.transcribe(rt.store.audioFile(p),token);
+            if(value.trim().isEmpty())throw new IOException("未识别到语音");rt.store.addCandidate(id,local?LocalSpeech.ID:"pointverse-cloud-speech",value);rt.titles.enqueue(id);
+            ui(()->{if(id.equals(detailId))render();});
+        }catch(Exception e){ui(()->notice("自动转写未完成，原音已保存，可在详情重试"));}});
+    }
+    private void organize(PointStore.Point p){if(!requireCloud())return;task("正在整理…",()->{String result=NetworkModel.organize(rt.account.token(),rt.store.get(p.id).context());rt.store.field(p.id,"summary",result);rt.titles.generateNow(p.id);return result;},result->{render();});}
+    private void conversation(PointStore.Point p,LinearLayout body){LinearLayout section=card(body);section.addView(label("继续思考",20,INK));String[] roles={"简洁","探索","整理","创意"};Spinner role=spinner(roles,prefs.getInt("conversationRole",0),i->prefs.edit().putInt("conversationRole",i).apply());section.addView(role);LinearLayout history=col();section.addView(history);db(()->rt.store.rows("conversation",p.id),items->{for(int i=0;i<items.length();i++){JSONObject m=items.optJSONObject(i);LinearLayout bubble=col();bubble.setPadding(dp(10),dp(8),dp(10),dp(8));bubble.addView(label(m.optString("role").equals("user")?"你":"点界 · "+m.optString("model"),12,MUTED));TextView value=label(m.optString("text"),16,INK);value.setTextIsSelectable(true);bubble.addView(value);if(m.optString("role").equals("assistant"))bubble.addView(link("沉淀为新想法",()->db(()->{String id=rt.store.createText(shortTitle(m.optString("text")),m.optString("text"));rt.store.relation(id,p.id,"延伸");return id;},this::open)));history.addView(bubble);}});
+        EditText input=edit("继续补充，或问一个问题…",true);input.setText(prefs.getString("replyDraft."+p.id,""));input.addTextChangedListener(watch(value->prefs.edit().putString("replyDraft."+p.id,value).apply()));section.addView(input);
+        section.addView(primary("发送",()->{String value=input.getText().toString().trim();if(value.isEmpty())return;if(!requireCloud())return;String token=rt.account.token();int selected=role.getSelectedItemPosition();task("正在回复…",()->{
+            rt.store.message(p.id,"user",value,"");JSONArray saved=rt.store.rows("conversation",p.id),messages=new JSONArray();for(int i=Math.max(0,saved.length()-12);i<saved.length();i++){JSONObject m=saved.getJSONObject(i);messages.put(new JSONObject().put("role",m.getString("role")).put("content",m.getString("text")));}
+            String[] instructions={"用1到3句话简洁回答。","提出一个有用观察和一个值得思考的问题。","用精简可执行的结构整理。","在相关的前提下提出富有创意的方向。"};JSONObject response=NetworkModel.chat(token,languageModel(),"你是点界的思考伙伴。"+instructions[selected]+"基于这条想法与图片内容：\n"+rt.store.get(p.id).context(),messages);String answer=NetworkModel.responseText(response);rt.store.message(p.id,"assistant",answer,response.optString("model",languageModel()));return answer;
+        },answer->{prefs.edit().remove("replyDraft."+p.id).apply();render();});}));
+        section.addView(link("重试上一条问题",()->retryReply(p)));section.addView(label("回复失败时，已发送的文字仍保存在记录中。",12,MUTED));
+    }
+    private void retryReply(PointStore.Point p){if(!requireCloud())return;task("正在重试…",()->{JSONArray saved=rt.store.rows("conversation",p.id);if(saved.length()==0||!saved.getJSONObject(saved.length()-1).optString("role").equals("user"))throw new IOException("没有等待重试的问题");JSONArray messages=new JSONArray();for(int i=Math.max(0,saved.length()-12);i<saved.length();i++)messages.put(new JSONObject().put("role",saved.getJSONObject(i).getString("role")).put("content",saved.getJSONObject(i).getString("text")));JSONObject result=NetworkModel.chat(rt.account.token(),languageModel(),"基于想法与图片内容继续思考："+rt.store.get(p.id).context(),messages);rt.store.message(p.id,"assistant",NetworkModel.responseText(result),result.optString("model",languageModel()));return true;},ok->{prefs.edit().remove("replyDraft."+p.id).apply();render();});}
+    private void detailMenu(){choose("想法操作",new String[]{"编辑标题与原文","上传到云端","移入回收站","重新生成标题","添加图片：相册 / 拍照 / 涂鸦","理解音乐或现场声音","重新理解照片","显影"},i->{db(()->rt.store.get(detailId),p->{if(i==3){if(requireCloud())task("正在生成标题…",()->{rt.titles.generateNow(p.id);return true;},ok->render());}if(i==4)photoChoices(p.id);if(i==5){if(p.path==null)notice("这条想法没有原音");else audioAnalysis(p);}if(i==6&&requireCloud()){rt.photos.enqueuePoint(p.id,true);notice("已开始理解照片");}if(i==7)manifest(p);if(i==0)editPoint(p);if(i==1)upload(p);if(i==2)confirm("移入回收站？","原音和内容可以恢复。",()->db(()->{rt.store.trash(p.id,true);return true;},ok->{detailId=null;tab=1;render();}));});});}
+    private void upload(PointStore.Point p){if(!requireCloud())return;confirm("上传此条想法？","原文、转写、对话与附件将保存至你的点界账户。",()->task("正在上传…",()->{new CloudSync(rt.store).upload(p,rt.account.token());return true;},ok->notice("已上传，可在网页查看")));}
+    private void modelsPage(){LinearLayout body=scroll(content);LinearLayout account=card(body);account.addView(label("点界账户",20,INK));account.addView(link(rt.account.token().isEmpty()?"登录点界账户":rt.account.name()+" ›",this::accountPage));account.addView(label("与 iOS 使用同一账户与云端模型服务。",13,MUTED));account.addView(link("云端想法与手动上传",this::cloudPage));
+        LinearLayout updates=card(body);updates.addView(label("应用更新",18,INK));updates.addView(label("点界 Android "+BuildVersion.name(this),14,MUTED));updates.addView(primary("检查更新",()->startActivity(new Intent(this,UpdateActivity.class))));
+        LinearLayout settings=card(body);settings.addView(label("使用方式",18,INK));settings.addView(link(cloud()?"登录版 · 使用云端模型":"隐私版 · 仅本机处理",this::usageMode));settings.addView(label("隐私模式不会自动上传内容。除语音转写外，本地模型适配后续接入。",13,MUTED));
+        LinearLayout speech=card(body);speech.addView(label("语音转写",18,INK));speech.addView(spinner(new String[]{"中文离线转写 · Vosk","点界云端语音识别"},prefs.getInt("speechRoute",0),i->prefs.edit().putInt("speechRoute",i).apply()));
+        speech.addView(label(rt.speech.available()?"中文离线模型已安装 · 原音不上传":"中文离线模型未安装 · 下载约 42 MB",14,MUTED));
+        if(!rt.speech.available())speech.addView(primary(downloadFuture!=null&&!downloadFuture.isDone()?"暂停下载":"下载中文离线模型",()->{
+            if(downloadFuture!=null&&!downloadFuture.isDone()){downloadFuture.cancel(true);notice("下载已暂停，重新下载可继续");return;}
+            TextView progress=label("正在连接…",13,MUTED);speech.addView(progress);downloadFuture=rt.downloads.submit(()->{try{rt.speech.download(value->ui(()->progress.setText(value)));ui(()->{notice("中文离线转写已就绪");render();});}catch(Exception e){ui(()->{progress.setText(safeError(e));notice(safeError(e));});}});
+        }));else speech.addView(link("卸载语音模型",()->confirm("卸载中文转写模型？","原音和已保存的转写不会删除。",()->task("正在卸载…",()->{rt.speech.uninstall();return true;},ok->render()))));
+        Switch auto=new Switch(this);auto.setText("保存后自动转写");auto.setChecked(prefs.getBoolean("autoTranscribe",true));auto.setOnCheckedChangeListener((b,value)->prefs.edit().putBoolean("autoTranscribe",value).apply());speech.addView(auto);
+        speech.addView(label("本机转写当前支持普通话；其他录音语言可选择云端。",12,MUTED));
+        LinearLayout routes=card(body);routes.addView(label("云端模型与能力",18,INK));routes.addView(label("文本、图片理解、图片生成、语义向量与声音理解分别使用 iOS 的同一服务路由。",13,MUTED));routes.addView(spinner(new String[]{"点界云端 · 快速","点界云端 · 增强"},prefs.getBoolean("enhanced",false)?1:0,i->prefs.edit().putBoolean("enhanced",i==1).apply()));
+        routes.addView(link("检查云端能力",()->{if(requireCloud())task("正在检查…",()->NetworkModel.api("/v1/ai/capabilities","GET",rt.account.token(),null),value->message("云端能力",value.toString()));}));routes.addView(label("图片生成 · Stable Diffusion 1.5 · 点界云端\n图片理解 · Qwen3.5 · 点界云端\nEmbedding · multilingual-e5-small · 点界云端",14,MUTED));
+        LinearLayout preferences=card(body);preferences.addView(label("界面与资料",18,INK));preferences.addView(link("界面语言",()->choose("界面语言",new String[]{"跟随系统","简体中文","繁體中文","English","日本語"},i->{prefs.edit().putInt("appLanguage",i).apply();recreate();})));preferences.addView(link("全部重新整理与回收站",this::organization));preferences.addView(label("点界 · Android "+BuildVersion.name(this)+"\nAndroid 9 及以上",12,MUTED));
+    }
+    private void usageMode(){choose("欢迎使用点界",new String[]{"隐私版 · 原音与转写在本机","登录版 · 使用点界云端模型"},i->{prefs.edit().putBoolean("cloud",i==1).putBoolean("configured",true).apply();render();rt.photos.resumePending();});}
+    private void accountPage(){if(!rt.account.token().isEmpty()){new AlertDialog.Builder(this).setTitle(rt.account.name()).setMessage("已登录点界账户。登录版在保留照片后自动调用云端图片理解。原音与想法的同步需手动上传。")
+        .setNegativeButton("返回",null).setPositiveButton("退出登录",(d,w)->{String token=rt.account.token();rt.account.clear();render();rt.io.execute(()->{try{NetworkModel.logout(token);}catch(Exception ignored){}});}).show();return;}
+        LinearLayout form=col();form.setPadding(dp(20),0,dp(20),0);EditText email=edit("邮箱地址",false),password=edit("密码",false);email.setInputType(33);password.setInputType(129);form.addView(email);form.addView(password);form.addView(link("注册点界账户",()->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://dianjie.org/account/")))));form.addView(label("固定连接 dianjie.org，密码不会保存在手机上。",13,MUTED));
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("登录点界").setView(form).setNegativeButton("取消",null).setPositiveButton("登录",null).create();show(dialog);dialog.getButton(-1).setOnClickListener(v->{String address=email.getText().toString().trim(),secret=password.getText().toString();if(!android.util.Patterns.EMAIL_ADDRESS.matcher(address).matches()){email.setError("请输入有效邮箱");return;}if(secret.isEmpty()){password.setError("请输入密码");return;}task("正在登录…",()->{rt.account.save(NetworkModel.login(address,secret));return true;},ok->{prefs.edit().putBoolean("cloud",true).putBoolean("configured",true).apply();dialog.dismiss();render();rt.photos.resumePending();});});
+    }
+    private void cloudPage(){if(!requireCloud())return;task("正在读取云端版本…",()->{JSONArray all=new JSONArray();String cursor="";Set<String> seen=new HashSet<>();do{JSONObject page=NetworkModel.api("/v1/sync/points"+(cursor.isEmpty()?"":"?cursor="+java.net.URLEncoder.encode(cursor,"UTF-8")),"GET",rt.account.token(),null);JSONArray items=page.getJSONArray("items");for(int i=0;i<items.length();i++)all.put(items.getJSONObject(i));cursor=page.optString("next_cursor","");if(!cursor.isEmpty()&&!seen.add(cursor))throw new IOException("云端分页异常");}while(!cursor.isEmpty());return all;},items->{LinearLayout body=col();for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);body.addView(label(item.optString("title")+" · 版本 "+item.optInt("revision"),17,INK));body.addView(label(item.optString("preview"),14,MUTED));}if(items.length()==0)body.addView(label("还没有上传的想法",18,MUTED));ScrollView scroll=new ScrollView(this);scroll.addView(body);new AlertDialog.Builder(this).setTitle("云端想法").setView(scroll).setPositiveButton("完成",null).show();});}
+    private void organization(){choose("全部重新整理与回收站",new String[]{"全部重新整理","完全重复 / 空白候选","回收站","上传全部想法"},i->{if(i==0)reorganize();if(i==1)cleanupCandidates();if(i==2){content.removeAllViews();title.setText("回收站");ideasPage(true);}if(i==3){if(!requireCloud())return;confirm("上传全部想法？","会将原文、转写、对话和附件上传至你的点界账户。",()->task("正在逐条上传…",()->{int n=0;CloudSync sync=new CloudSync(rt.store);for(PointStore.Point p:rt.store.list("")){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("上传已暂停");sync.upload(p,rt.account.token());n++;}return n;},n->notice("已上传 "+n+" 条想法")));}});}
+    private void trashMenu(PointStore.Point p){choose("回收站 · "+p.title,new String[]{"恢复想法","永久删除"},i->{if(i==0)db(()->{rt.store.trash(p.id,false);return true;},ok->loadIdeas(true));else confirm("永久删除？","此记录的原音、图片和文字将从本机永久删除，无法恢复。",()->db(()->{rt.store.purge(p.id);return true;},ok->loadIdeas(true)));});}
+    private void cleanupCandidates(){db(()->{List<PointStore.Point> values=new ArrayList<>();Set<String> seen=new HashSet<>();List<PointStore.Point> points=rt.store.list("");Collections.reverse(points);for(PointStore.Point p:points){String value=p.effective().trim();if(p.path==null&&rt.store.rows("images",p.id).length()==0&&(value.isEmpty()||!seen.add(value)))values.add(p);}return values;},points->{if(points.isEmpty()){message("没有发现候选","只识别完全重复的文字或空白记录，不自动清理相似内容。");return;}String[] names=new String[points.size()];boolean[] selected=new boolean[points.size()];for(int i=0;i<names.length;i++)names[i]=points.get(i).title;new AlertDialog.Builder(this).setTitle("选择移入回收站的候选").setMultiChoiceItems(names,selected,(d,w,value)->selected[w]=value).setNegativeButton("取消",null).setPositiveButton("移入回收站",(d,w)->db(()->{for(int i=0;i<selected.length;i++)if(selected[i])rt.store.trash(points.get(i).id,true);return true;},ok->render())).show();});}
+    private void filter(){choose("筛选想法",new String[]{"全部录音与想法","说话人"+(speakerFilter.isEmpty()?"":"："+speakerFilter),"声音状态"+(voiceFilter.isEmpty()?"":"："+voiceFilter)},choice->{if(choice==0){speakerFilter="";voiceFilter="";render();}if(choice==1)db(()->rt.store.list(""),points->{Set<String> speakers=new TreeSet<>();for(PointStore.Point p:points)if(!p.speaker.isEmpty())speakers.add(p.speaker);List<String> values=new ArrayList<>();values.add("不限说话人");values.addAll(speakers);choose("说话人",values.toArray(new String[0]),i->{speakerFilter=i==0?"":values.get(i);render();});});if(choice==2){String[] values={"不限声音状态","平静","激动","低落","紧张","未标注"};choose("声音状态",values,i->{voiceFilter=i==0?"":values[i];render();});}});}
+
+    private void editFacets(PointStore.Point p){String[] fields={"domain","topic","project","expression"},labels={"知识领域","主题","项目","表达性质"};choose("独立分类标注",labels,i->input(labels[i],new String[]{p.domain,p.topic,p.project,p.expression}[i],value->db(()->{rt.store.field(p.id,fields[i],value);Set<String> manual=new LinkedHashSet<>(Arrays.asList(p.manual.split(",")));manual.add(fields[i]);rt.store.field(p.id,"manual",String.join(",",manual));return true;},ok->render())));}
+    private void reorganize(){if(!requireCloud())return;confirm("全部重新整理？","使用当前云端模型更新自动标题、知识领域与主题；保留手动标题和人工标注。已完成的条目会逐条保存，取消不会撤销已完成部分。",()->task("正在逐条重新整理…",()->{int n=0;SemanticIndex index=new SemanticIndex(this);for(PointStore.Point p:rt.store.list("")){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("已停止整理，已完成的内容已保存");JSONObject response=NetworkModel.chat(rt.account.token(),languageModel(),"为想法生成分类。只输出JSON对象，字段 domain（知识领域的名称）、topic（具体主题）、expression（问题/设想/计划/经验与观察/总结与方法/感受）。不要生成项目。人工标注不可覆盖。",new JSONArray().put(new JSONObject().put("role","user").put("content",p.context())));String raw=NetworkModel.responseText(response);int a=raw.indexOf('{'),b=raw.lastIndexOf('}');if(a<0||b<a)throw new IOException("模型分类格式异常");JSONObject result=new JSONObject(raw.substring(a,b+1));for(String field:new String[]{"domain","topic","expression"})if(!Arrays.asList(p.manual.split(",")).contains(field))rt.store.field(p.id,field,result.optString(field));rt.titles.regenerateAutomaticNow(p.id);n++;}return n;},n->{notice("已整理 "+n+" 条想法");render();}));}
+    private void reviewFrames(String point,List<byte[]> frames){
+        boolean[] selected=new boolean[frames.size()];Arrays.fill(selected,true);
+        ScrollView scroll=new ScrollView(this);LinearLayout gallery=col();gallery.setPadding(dp(16),dp(8),dp(16),dp(8));scroll.addView(gallery);
+        for(int i=0;i<frames.size();i++){
+            final int index=i;LinearLayout tile=col();gallery.addView(tile);
+            CheckBox keep=new CheckBox(this);keep.setText("画面 "+(i+1));keep.setChecked(true);keep.setOnCheckedChangeListener((button,value)->selected[index]=value);tile.addView(keep);
+            ImageView image=new ImageView(this);image.setContentDescription("录音画面 "+(i+1));image.setAdjustViewBounds(true);image.setScaleType(ImageView.ScaleType.FIT_CENTER);tile.addView(image,new LinearLayout.LayoutParams(-1,dp(180)));
+            image.setOnClickListener(view->keep.setChecked(!keep.isChecked()));
+            rt.downloads.execute(()->{try{Bitmap thumbnail=PhotoDecoder.fromBytes(frames.get(index),512);ui(()->image.setImageBitmap(thumbnail));}catch(IOException e){ui(()->keep.setText("画面 "+(index+1)+" · 预览不可用"));}});
+        }
+        show(new AlertDialog.Builder(this).setTitle("保留录音画面").setView(scroll).setNegativeButton("不保留",null).setPositiveButton("保存所选",(d,w)->task("正在保存画面…",()->{for(int i=0;i<frames.size();i++)if(selected[i])rt.store.addImage(point,frames.get(i),"录音相机");return point;},this::open)).create());
+    }
+    private void manifest(PointStore.Point point){
+        LinearLayout form=col();form.setPadding(dp(20),dp(12),dp(20),dp(12));form.addView(label("换一种方式，重遇这段回忆",18,INK));int[] selected={Math.max(0,Arrays.asList(ManifestationLens.IDS).indexOf(prefs.getString("manifestationLens","original")))};form.addView(spinner(ManifestationLens.NAMES,selected[0],i->selected[0]=i));
+        show(new AlertDialog.Builder(this).setTitle("显影").setView(form).setNegativeButton("取消",null).setPositiveButton("开始显影",(d,w)->{String lens=ManifestationLens.id(selected[0]);prefs.edit().putString("manifestationLens",lens).apply();manifest(point,lens);}).create());
+    }
+    private void manifest(PointStore.Point point,String lens){if(!requireCloud())return;String token=rt.account.token(),model=languageModel();task("正在显影…",()->{
+        PointStore.Point source=rt.store.get(point.id);if(source.context().trim().isEmpty())throw new IOException("请先写下想法或完成转写，再进行显影");
+        ImageGeneration workflow=new ImageGeneration((path,method,payload)->NetworkModel.api(path,method,token,payload),new ImageGeneration.Pending(){public String read(){return prefs.getString("manifestationJob","");}public void write(String value){if(value.isEmpty())prefs.edit().remove("manifestationJob").commit();else prefs.edit().putString("manifestationJob",value).commit();}},rt.account.id(),model,lens,job->{});
+        JSONObject result=workflow.generate(source.context());byte[] bytes=android.util.Base64.decode(result.getJSONArray("data").getJSONObject(0).getString("b64_json"),android.util.Base64.DEFAULT);Bitmap check=BitmapFactory.decodeByteArray(bytes,0,bytes.length);if(check==null)throw new IOException("作品暂时无法读取，请重试");ByteArrayOutputStream encoded=new ByteArrayOutputStream();check.compress(Bitmap.CompressFormat.JPEG,95,encoded);check.recycle();bytes=encoded.toByteArray();
+        if(rt.store.get(source.id).trashed!=0)throw new IOException("想法已移入回收站");File image=rt.store.addImage(source.id,bytes,result.optString("model","pointverse-image"));JSONArray images=rt.store.rows("images",source.id);String imageId="";for(int i=0;i<images.length();i++)if(image.getName().equals(images.getJSONObject(i).optString("path")))imageId=images.getJSONObject(i).getString("id");if(imageId.isEmpty())throw new IOException("作品保存未完成，请重试");rt.store.saveManifestation(source,"image",imageId,result.optString("model","pointverse-image"),lens);prefs.edit().remove("manifestationJob").commit();return imageId;
+    },imageId->{render();showManifestationImage(point.id,imageId,lens);});}
+    private void manifestationCard(LinearLayout body,PointStore.Point point){JSONArray artifacts=rt.store.rows("manifestations",point.id);if(artifacts.length()==0)return;LinearLayout section=card(body);section.addView(label("显影作品",18,INK));for(int i=artifacts.length()-1;i>=0;i--){JSONObject artifact=artifacts.optJSONObject(i);String value=artifact.optString("content"),lens=artifact.optString("lens","original");if(artifact.optString("kind").equals("image"))section.addView(link("查看作品 · "+ManifestationLens.name(lens),()->showManifestationImage(point.id,value,lens)));else{TextView text=label(value,16,INK);text.setTextIsSelectable(true);section.addView(text);}}section.addView(link("再次显影",()->manifest(point)));}
+    private void showManifestationImage(String point,String imageId,String lens){try{JSONObject item=rt.store.image(imageId);Bitmap bitmap=BitmapFactory.decodeFile(new File(rt.store.imageDirectory(),item.getString("path")).getAbsolutePath());if(bitmap==null)throw new IOException("作品文件无法读取");ImageView image=new ImageView(this);image.setImageBitmap(bitmap);image.setAdjustViewBounds(true);ScrollView scroll=new ScrollView(this);scroll.addView(image);show(new AlertDialog.Builder(this).setTitle("显影 · "+ManifestationLens.name(lens)).setView(scroll).setNegativeButton("完成",null).setPositiveButton("再显影一次",(d,w)->db(()->rt.store.get(point),this::manifest)).create());}catch(Exception e){notice("作品暂时无法读取，请重试");}}
+    private void imagesPage(){LinearLayout body=scroll(content);EditText prompt=edit("描述想生成的图片",true);prompt.setMinLines(3);prompt.setText(imagePrompt.isEmpty()?prefs.getString("imagePrompt",""):imagePrompt);body.addView(prompt);prompt.addTextChangedListener(watch(value->{imagePrompt=value;prefs.edit().putString("imagePrompt",value).apply();}));body.addView(primary("生成图片",()->generateImage(prompt.getText().toString().trim(),body)));body.addView(link("取消生成",this::cancelImage));body.addView(label("Stable Diffusion 1.5 · 点界云端\n先由云端文本模型提炼视觉描述，再交给生图模型；原始想法保持完整。相同描述再次生成可继续查询未完成任务。",13,MUTED));
+        if(generatedImage!=null){ImageView image=new ImageView(this);image.setImageBitmap(generatedImage);image.setAdjustViewBounds(true);body.addView(image,new LinearLayout.LayoutParams(-1,-2));body.addView(label("实际生成模型："+generatedModel,12,MUTED));body.addView(link("保存到相册",this::saveGallery));if(attachmentPoint!=null)body.addView(link("保存到想法",()->{String id=attachmentPoint;task("正在保存图片…",()->{ByteArrayOutputStream out=new ByteArrayOutputStream();generatedImage.compress(Bitmap.CompressFormat.JPEG,95,out);rt.store.addImage(id,out.toByteArray(),generatedModel);return id;},this::open);}));}
+        LinearLayout ocr=card(body);ocr.addView(label("图片提取文字",20,INK));ocr.addView(link("选择图片",()->{if(requireCloud()){attachmentPoint="__ocr";pickPhoto();}}));ocr.addView(label("文字识别使用点界云端模型，需要登录；所选图片会上传进行识别。",13,MUTED));
+    }
+    private void generateImage(String prompt,LinearLayout body){if(prompt.isEmpty()){notice("请描述想生成的图片");return;}if(!requireCloud())return;if(imageFuture!=null&&!imageFuture.isDone()){notice("图片正在生成中");return;}String token=rt.account.token();TextView progress=label("云端排队或生成中…",14,MUTED);body.addView(progress);
+        imageFuture=rt.io.submit(()->{try{ImageGeneration workflow=new ImageGeneration((path,method,payload)->NetworkModel.api(path,method,token,payload),new ImageGeneration.Pending(){public String read(){return prefs.getString("imageJob","");}public void write(String value){if(value.isEmpty())prefs.edit().remove("imageJob").commit();else prefs.edit().putString("imageJob",value).commit();}},rt.account.id(),languageModel(),job->{if(job.has("id"))imageJobId=job.optString("id");if(job.has("prompt"))generatedPrompt=job.optString("prompt");ui(()->{String state=job.optString("status");progress.setText(state.equals("summarizing")?"正在用云端文本模型提炼视觉描述…":state.equals("prepared")?"生图描述：\n"+job.optString("prompt"):"生成状态："+state);});});JSONObject job=workflow.generate(prompt);
+            byte[] bytes=android.util.Base64.decode(job.getJSONArray("data").getJSONObject(0).getString("b64_json"),android.util.Base64.DEFAULT);Bitmap image=BitmapFactory.decodeByteArray(bytes,0,bytes.length);if(image==null)throw new IOException("图片内容无法读取");generatedImage=image;generatedModel=job.optString("model","pointverse-image");prefs.edit().remove("imageJob").apply();imageJobId="";ui(()->{if(tab==3)render();});
+        }catch(Exception e){ui(()->{progress.setText(safeError(e));notice(safeError(e));});}});
+    }
+    private void cancelImage(){if(imageFuture!=null)imageFuture.cancel(true);String id=imageJobId,token=rt.account.token();imageJobId="";if(!id.isEmpty())rt.downloads.execute(()->{try{NetworkModel.api("/v1/ai/jobs/"+UUID.fromString(id)+"/cancel","POST",token,new JSONObject());prefs.edit().remove("imageJob").apply();}catch(Exception e){ui(()->notice("取消尚未确认，可稍后重试"));}});}
+    private void photoChoices(String id){attachmentPoint=id;choose("添加图片",new String[]{"相册","拍照","涂鸦"},i->{if(i==0)pickPhoto();if(i==1)takePhoto();if(i==2)doodle(id);});}
+    private void pickPhoto(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(intent,20);}
+    private Uri pendingCamera;private boolean pendingTakePhoto;
+    private void takePhoto(){if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){pendingTakePhoto=true;requestPermissions(new String[]{Manifest.permission.CAMERA},12);return;}try{pendingCamera=Uri.parse("content://"+getPackageName()+".capture/"+UUID.randomUUID()+".jpg");Intent intent=new Intent(MediaStore.ACTION_IMAGE_CAPTURE);intent.putExtra(MediaStore.EXTRA_OUTPUT,pendingCamera);intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("点界拍照",pendingCamera));startActivityForResult(intent,21);}catch(Exception e){notice("此设备没有可用的相机应用");}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK)return;if(request==20&&data!=null)loadPhoto(data.getData());if(request==21&&pendingCamera!=null)loadPhoto(pendingCamera);}
+    private void loadPhoto(Uri uri){String id=attachmentPoint;task("正在读取图片…",()->{BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;try(InputStream in=getContentResolver().openInputStream(uri)){BitmapFactory.decodeStream(in,null,bounds);}if(bounds.outWidth<=0)throw new IOException("无法读取图片");BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=1;while(Math.max(bounds.outWidth,bounds.outHeight)/options.inSampleSize>1600)options.inSampleSize*=2;try(InputStream in=getContentResolver().openInputStream(uri)){Bitmap bitmap=BitmapFactory.decodeStream(in,null,options);if(bitmap==null)throw new IOException("无法读取图片");return bitmap;}},bitmap->{if("__ocr".equals(id))recognizeImage(bitmap,null,null,true);else crop(bitmap,id);});}
+    private void crop(Bitmap source,String id){CropCanvas crop=new CropCanvas(this,source);AlertDialog dialog=new AlertDialog.Builder(this).setTitle("调整图片 · 拖动 / 双指缩放").setView(crop).setNegativeButton("取消",null).setPositiveButton("保存",(d,w)->{Bitmap image=crop.result();task("正在保存…",()->{ByteArrayOutputStream bytes=new ByteArrayOutputStream();image.compress(Bitmap.CompressFormat.JPEG,94,bytes);rt.store.addImage(id,bytes.toByteArray(),"用户照片");return id;},this::open);}).create();show(dialog);dialog.getWindow().setLayout(-1,dp(550));}
+    private void doodle(String id){DoodleCanvas drawing=new DoodleCanvas(this);AlertDialog dialog=new AlertDialog.Builder(this).setTitle("涂鸦").setView(drawing).setNeutralButton("清空",null).setNegativeButton("取消",null).setPositiveButton("保存",(d,w)->task("正在保存…",()->{ByteArrayOutputStream out=new ByteArrayOutputStream();drawing.result().compress(Bitmap.CompressFormat.JPEG,95,out);rt.store.addImage(id,out.toByteArray(),"用户涂鸦");return id;},this::open)).create();show(dialog);dialog.getButton(-3).setOnClickListener(v->drawing.clear());dialog.getWindow().setLayout(-1,dp(550));}
+    private void refreshPhotos(String point) {
+        if(photoBody==null||!point.equals(detailId))return;
+        int generation=pageVersion;LinearLayout target=photoBody;
+        db(()->rt.store.rows("images",point),items->{
+            if(generation!=pageVersion||target!=photoBody||!point.equals(detailId))return;
+            for(int i=0;i<items.length();i++) {
+                JSONObject item=items.optJSONObject(i);String imageId=item.optString("id");PhotoRow row=photoRows.get(imageId);
+                if(row==null) {
+                    row=new PhotoRow();row.item=item;photoRows.put(imageId,row);PhotoRow current=row;
+                    File file=new File(rt.store.imageDirectory(),item.optString("path"));
+                    ImageView image=imageView(file);target.addView(image);image.setOnClickListener(v->photoActions(point,current.item,file));
+                    row.caption=label("",15,INK);row.caption.setTextIsSelectable(true);target.addView(row.caption);
+                    row.candidate=label("",14,MUTED);row.candidate.setTextIsSelectable(true);target.addView(row.candidate);
+                    row.state=label("",12,MUTED);target.addView(row.state);
+                }
+                row.item=item;String caption=item.optString("caption");row.caption.setText(item.optInt("caption_edited")!=0&&!caption.isEmpty()?"我的图片说明：\n"+caption:caption);row.caption.setVisibility(caption.isEmpty()?View.GONE:View.VISIBLE);
+                String candidate="";
+                if(item.optInt("caption_edited")!=0){
+                    String visual=item.optString("visual_text"),ocr=item.optString("ocr_text");
+                    candidate=(visual.isEmpty()?"":"最新图片理解：\n"+visual)+(ocr.isEmpty()?"":(visual.isEmpty()?"":"\n\n")+(item.optString("ocr_model").isEmpty()?"旧版识别文字：\n":"云端识别文字：\n")+ocr);
+                }
+                row.candidate.setText(candidate);row.candidate.setVisibility(candidate.isEmpty()?View.GONE:View.VISIBLE);
+                row.state.setText(photoStatus(item));
+            }
+        });
+    }
+    private String photoStatus(JSONObject item) {
+        String state=item.optString("analysis_state"),message;
+        switch(state) {
+            case "pending":message="照片已保存，等待云端识别…";break;
+            case "ocr_running":message="正在云端提取图片文字…";break;
+            case "text_complete":message="云端文字识别完成";break;
+            case "partial":message="图片理解已完成，文字识别可点图片重试";break;
+            case "vision_running":message="正在理解图片…";break;
+            case "waiting_cloud":message=!cloud()?"隐私版仅保存照片；切换登录版后可识字和理解图片":rt.account.token().isEmpty()?"请先登录点界账户，照片与已识别文字已保存":"照片已保存，等待云端识别";break;
+            case "failed":message="图片处理未完成，点图片可选择重试方式";break;
+            case "manual":message="已保留原有图片说明，可重新理解";break;
+            default:message="图片理解完成";
+        }
+        if(!item.optString("visual_model").isEmpty())message+="\n理解来源："+item.optString("visual_model");
+        if(!item.optString("ocr_text").isEmpty())message+="\n文字识别来源："+(item.optString("ocr_model").isEmpty()?"旧版结果，待云端重识别":item.optString("ocr_model"));
+        if(item.optInt("caption_edited")!=0)message+="\n思考时优先采用你编辑的说明";
+        if(!item.optString("analysis_error").isEmpty())message+="\n"+item.optString("analysis_error");
+        return message;
+    }
+    private void photoActions(String id,JSONObject item,File file) {
+        choose("图片操作",new String[]{"重新理解图片","云端提取文字","编辑图片文字"},i->{
+            if(i==2)input("图片文字",item.optString("caption"),value->db(()->{rt.store.imageCaption(item.optString("id"),value);return true;},ok->refreshPhotos(id)));
+            else if(requireCloud()){rt.photos.enqueueImage(id,item.optString("id"),i==1);notice(i==1?"正在云端识字，原图保留":"正在理解图片，原图保留");}
+        });
+    }
+    private void recognizeImage(Bitmap image,String point,String imageId,boolean ocr){
+        if(!requireCloud())return;task("正在云端识别图片文字…",()->rt.photos.extractText(image,Locale.getDefault().toLanguageTag()),text->input("识别文字",text,value->{Intent share=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,value);startActivity(Intent.createChooser(share,"分享文字"));}));
+    }
+
+    private void saveGallery(){if(generatedImage==null)return;if(Build.VERSION.SDK_INT==28&&checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},11);return;}Bitmap image=generatedImage;task("正在保存到相册…",()->{ContentValues values=new ContentValues();values.put(MediaStore.Images.Media.DISPLAY_NAME,"点界-"+System.currentTimeMillis()+".jpg");values.put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg");if(Build.VERSION.SDK_INT>=29){values.put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/点界");values.put(MediaStore.Images.Media.IS_PENDING,1);}Uri uri=getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IOException("无法创建相册图片");try{try(OutputStream out=getContentResolver().openOutputStream(uri)){if(!image.compress(Bitmap.CompressFormat.JPEG,96,out))throw new IOException("图片写入失败");}if(Build.VERSION.SDK_INT>=29){ContentValues ready=new ContentValues();ready.put(MediaStore.Images.Media.IS_PENDING,0);getContentResolver().update(uri,ready,null,null);}return true;}catch(Exception e){getContentResolver().delete(uri,null,null);throw e;}},ok->notice("已保存到相册"));}
+    private void soundCard(LinearLayout body,PointStore.Point p){
+        LinearLayout sound=card(body);sound.addView(label("音乐与现场声音",18,INK));sound.addView(link(p.analysis.isEmpty()?"开始理解":"重新理解",()->audioAnalysis(p)));
+        try{JSONObject value=new JSONObject(p.analysis);if(!value.has("loudness_db"))throw new JSONException("legacy");
+            sound.addView(label(AudioUnderstanding.join(value.optJSONArray("tags")==null?new JSONArray():value.optJSONArray("tags")," · "),15,INK));
+            String metrics=String.format(Locale.ROOT,"%.1f dBFS",value.getDouble("loudness_db"));if(value.has("bpm"))metrics+="  ·  "+Math.round(value.getDouble("bpm"))+" BPM";if(value.has("dominant_pitch_hz"))metrics+="  ·  "+Math.round(value.getDouble("dominant_pitch_hz"))+" Hz";sound.addView(label(metrics,14,MUTED));
+            JSONArray notes=value.optJSONArray("notes"),events=value.optJSONArray("note_sequence");if(notes!=null&&notes.length()>0)sound.addView(label("估计音符："+AudioUnderstanding.join(notes,"  "),15,INK));
+            if(events!=null&&events.length()>0)sound.addView(link("播放音符 / 停止",()->{if(notePlayer.isPlaying()){notePlayer.stop();return;}if(player!=null&&player.isPlaying())player.pause();notePlayer.play(events,()->{});}));
+            if(value.has("key"))sound.addView(label("估计调性："+value.getString("key"),14,MUTED));
+            JSONArray labels=value.optJSONArray("labels");if(labels!=null){List<String> candidates=new ArrayList<>();for(int i=0;i<Math.min(3,labels.length());i++){JSONObject item=labels.getJSONObject(i);candidates.add(AudioUnderstanding.label(item.getString("label"))+" "+Math.round(item.getDouble("score")*100)+"%");}sound.addView(label("声音候选："+String.join(" · ",candidates)+"\n分数仅用于候选间比较，不代表识别准确率。",12,MUTED));}
+            if(!value.optString("cloud_error").isEmpty())sound.addView(label(value.optString("cloud_error"),13,0xffff9f0a));
+            sound.addView(label("来源：基础声学测量"+(value.optString("cloud_model").isEmpty()?"":" + 点界云端 CLAP · 前 "+Math.round(value.optDouble("sample_seconds"))+" 秒"),12,MUTED));
+        }catch(JSONException ignored){sound.addView(label("提取响度、BPM、音高、音符和估计调性，并识别音乐、人声或环境声。",14,MUTED));}
+        sound.addView(link("识别人声 / 歌词候选",()->transcribe(p,false)));sound.addView(label("音符与调性为估计结果，适合清晰单旋律；多人、多乐器可能不准。当前不提供曲库查歌名。",12,MUTED));
+    }
+    private void audioAnalysis(PointStore.Point p){if(!requireCloud())return;confirm("理解音乐与现场声音","前 30 秒原音将发送到点界云端分类；基础声学特征在设备上测量，不需要下载模型。",()->task("正在提取声音特征与音乐信息…",()->{
+        JSONObject value=AudioUnderstanding.analyze(rt.store.audioFile(p),rt.store.get(p.id).effective(),wav->NetworkModel.api("/v1/ai/audio/classifications","POST",rt.account.token(),new JSONObject().put("model","pointverse-sound").put("audio",android.util.Base64.encodeToString(wav,android.util.Base64.NO_WRAP))));
+        if(rt.store.get(p.id).trashed!=0)throw new IOException("想法已移入回收站");rt.store.field(p.id,"analysis",value.toString());rt.titles.enqueue(p.id);return value;
+    },value->{render();if(!value.optString("cloud_error").isEmpty())notice(value.optString("cloud_error"));}));}
+    private final Map<String,String> facetFilters=new LinkedHashMap<>();private int dimension=0,days=0;
+    private void universePage(){content.addView(segments(new String[]{"宇宙","脑图","分类"},Arrays.asList("宇宙","脑图","分类").indexOf(universeMode),i->{universeMode=new String[]{"宇宙","脑图","分类"}[i];render();}));int generation=pageVersion;
+        db(()->rt.store.list(listQuery),points->{if(generation!=pageVersion)return;try{SemanticIndex index=new SemanticIndex(this);if(universeMode.equals("分类")){facetPage(points,index);return;}if(points.isEmpty()){LinearLayout body=card(content);body.addView(label("宇宙尚未形成",23,INK));body.addView(label("记录更多想法后，相关 Point 会逐渐形成星球与星系。",15,MUTED));return;}
+            UniverseCanvas canvas=new UniverseCanvas(this,points,index,universeMode.equals("脑图"),id->open(id));content.addView(canvas,new LinearLayout.LayoutParams(-1,0,1));LinearLayout foot=row();foot.addView(link("重置视角",canvas::reset));foot.addView(link("搜索定位",()->mapSearch(canvas)));foot.addView(link("开始回忆",()->{LinearLayout body=scroll(content);memories(body);}));content.addView(foot);
+        }catch(Exception e){notice(safeError(e));}});
+    }
+    private void facetPage(List<PointStore.Point> points,SemanticIndex index){LinearLayout body=scroll(content);String[] titles={"知识领域","主题","项目","表达性质"},keys={"domain","topic","project","expression"};body.addView(label("分类浏览",20,INK));body.addView(label("人工分类优先；未分析条目使用与 iOS 相同的关键词候选。",13,MUTED));body.addView(spinner(titles,dimension,i->{if(dimension!=i){dimension=i;render();}}));body.addView(spinner(new String[]{"全部时间","最近 7 天","最近 30 天","最近 90 天"},days,i->{if(days!=i){days=i;render();}}));
+        for(int n=0;n<keys.length;n++){final String key=keys[n];final int field=n;Set<String> values=new TreeSet<>();for(PointStore.Point p:points){String value=index.value(p,key);if(!value.isEmpty())values.add(value);}List<String> labels=new ArrayList<>();labels.add(titles[n]+" · 不限");labels.addAll(values);int selected=facetFilters.containsKey(key)?labels.indexOf(facetFilters.get(key)):0;body.addView(spinner(labels.toArray(new String[0]),Math.max(0,selected),i->{String previous=facetFilters.get(key);if(i==0)facetFilters.remove(key);else facetFilters.put(key,labels.get(i));if(!Objects.equals(previous,facetFilters.get(key)))render();}));}
+        body.addView(link("清除全部筛选",()->{facetFilters.clear();days=0;listQuery="";render();}));Map<String,List<PointStore.Point>> grouped=new TreeMap<>();long cutoff=days==0?0:System.currentTimeMillis()-new int[]{0,7,30,90}[days]*86400000L;
+        for(PointStore.Point p:points){if(p.created<cutoff)continue;boolean matches=true;for(Map.Entry<String,String> f:facetFilters.entrySet())if(!f.getValue().equals(index.value(p,f.getKey())))matches=false;if(!matches)continue;String term=index.value(p,keys[dimension]);grouped.computeIfAbsent(term.isEmpty()?"尚未归类":term,key->new ArrayList<>()).add(p);}
+        for(Map.Entry<String,List<PointStore.Point>> group:grouped.entrySet()){LinearLayout section=card(body);section.addView(label(group.getKey()+" · "+group.getValue().size(),19,INK));for(PointStore.Point p:group.getValue())section.addView(link(p.title,()->open(p.id)));}body.addView(link("全部重新整理与回收站",this::organization));
+    }
+    private void mapSearch(){mapSearch(null);}private void mapSearch(UniverseCanvas canvas){input("搜索想法",listQuery,value->db(()->rt.store.list(value),points->{if(points.isEmpty()){notice("没有找到相关想法");return;}String[] labels=new String[points.size()];for(int i=0;i<labels.length;i++)labels[i]=points.get(i).title;choose("搜索定位",labels,i->{if(canvas!=null)canvas.focus(points.get(i).id);else open(points.get(i).id);});}));}
+    private void related(PointStore.Point source,LinearLayout section){if(!requireCloud())return;confirm("查找关联想法","为比较语义，会将本机想法文字发送到点界向量服务。候选不代表已确认关系。",()->task("正在计算关联候选…",()->{List<PointStore.Point> all=rt.store.list("");for(PointStore.Point p:all)if(p.embedding.isEmpty()&&!p.context().trim().isEmpty()){String text=p.context().substring(0,Math.min(2000,p.context().length()));JSONObject response=NetworkModel.api("/v1/ai/embeddings","POST",rt.account.token(),new JSONObject().put("model","pointverse-embedding").put("input",new JSONArray().put(text)).put("input_type","passage"));rt.store.saveEmbedding(p.id,p.revision,response.getJSONArray("data").getJSONObject(0).getJSONArray("embedding").toString());}SemanticIndex index=new SemanticIndex(this);return index.related(rt.store.get(source.id),rt.store.list(""));},points->{for(PointStore.Point p:points){LinearLayout candidate=col();candidate.addView(link(p.title,()->open(p.id)));candidate.addView(link("确认关系",()->choose("关系类型",new String[]{"相关","支持","反驳","延伸"},i->db(()->{rt.store.relation(source.id,p.id,new String[]{"相关","支持","反驳","延伸"}[i]);return true;},ok->notice("已记录关系")))));section.addView(candidate);}}));}
+    private void evaluate(){db(()->rt.store.list(""),points->{try{SemanticIndex index=new SemanticIndex(this);Map<String,List<PointStore.Point>> groups=new TreeMap<>();for(PointStore.Point p:points){String key=index.value(p,"domain");groups.computeIfAbsent(key.isEmpty()?"尚未归类":key,v->new ArrayList<>()).add(p);}String[] labels=groups.keySet().toArray(new String[0]);if(labels.length==0){notice("还没有可评估的区域");return;}choose("分层质量评估 · 领域",labels,i->{String key=labels[i];List<PointStore.Point> group=groups.get(key);LinearLayout form=col();form.setPadding(dp(20),0,dp(20),0);form.addView(label(key+" · "+group.size()+" 条想法",18,INK));Spinner score=spinner(new String[]{"1 · 不相关","2 · 较弱","3 · 一般","4 · 较好","5 · 很好"},2,n->{});form.addView(score);EditText notes=edit("评价与建议（不会自动改图）",true);form.addView(notes);form.addView(link("用当前模型评估",()->{if(!requireCloud())return;task("正在评估…",()->{StringBuilder context=new StringBuilder();for(PointStore.Point p:group)context.append(p.title).append(": ").append(p.context().substring(0,Math.min(250,p.context().length()))).append('\n');return NetworkModel.responseText(NetworkModel.chat(rt.account.token(),languageModel(),"评估这些想法是否属于同一主题，指出不确定性和调整建议，不修改原始内容。",new JSONArray().put(new JSONObject().put("role","user").put("content",context.toString()))));},notes::setText);}));new AlertDialog.Builder(this).setTitle("区域质量").setView(form).setNegativeButton("取消",null).setPositiveButton("保存评价",(d,w)->db(()->{rt.store.review(key,score.getSelectedItemPosition()+1,notes.getText().toString());return true;},ok->notice("已保存评价，不自动修改归属"))).show();});}catch(Exception e){notice(safeError(e));}});}
+    private void saveField(String id,String field,String value){db(()->{rt.store.field(id,field,value);return true;},ok->render());}
+    private String shown(String value){return value.isEmpty()?"尚未归类":value;}
+    private boolean cloud(){return prefs.getBoolean("cloud",false);}private String languageModel(){return prefs.getBoolean("enhanced",false)?"pointverse-cloud-enhanced":"pointverse-cloud";}
+    private boolean requireCloud(){if(!cloud()){message("当前为隐私版","可在“我的”页切换登录版使用云端服务，本地记录与离线转写始终可用。");return false;}if(rt.account.token().isEmpty()){accountPage();return false;}return true;}
+    private <T> void db(Callable<T> action,Consumer<T> done){rt.db.execute(()->{try{T value=action.call();ui(()->done.accept(value));}catch(Exception e){ui(()->{busy=false;notice(safeError(e));});}});}
+    private <T> void task(String text,Callable<T> action,Consumer<T> done){
+        ProgressDialog progress=new ProgressDialog(this);progress.setMessage(text);progress.setCancelable(false);
+        final Future<?>[] running={null};progress.setButton(DialogInterface.BUTTON_NEGATIVE,"取消",(d,w)->{if(running[0]!=null)running[0].cancel(true);});show(progress);
+        running[0]=rt.io.submit(()->{try{T value=action.call();ui(()->{progress.dismiss();done.accept(value);});}catch(Exception e){ui(()->{progress.dismiss();notice(safeError(e));});}});
+    }
+    private void ui(Runnable action){runOnUiThread(()->{if(!isDestroyed()&&!isFinishing())action.run();});}
+    private String safeError(Exception e){return e instanceof IOException&&e.getMessage()!=null?e.getMessage():"操作未完成，原始内容仍已保留，请重试";}
+    private void notice(String text){if(isDestroyed())return;Toast.makeText(this,text,Toast.LENGTH_LONG).show();if(status!=null)status.setText(text);}
+    private void message(String title,String text){show(new AlertDialog.Builder(this).setTitle(title).setMessage(text).setPositiveButton("好",null).create());}
+    private void confirm(String title,String text,Runnable action){show(new AlertDialog.Builder(this).setTitle(title).setMessage(text).setNegativeButton("取消",null).setPositiveButton("继续",(d,w)->action.run()).create());}
+    private void choose(String title,String[] values,Consumer<Integer> action){show(new AlertDialog.Builder(this).setTitle(title).setItems(values,(d,w)->action.accept(w)).setNegativeButton("取消",null).create());}
+    private void input(String title,String initial,Consumer<String> action){EditText input=edit(title,true);input.setText(initial);input.setMinLines(3);show(new AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("取消",null).setPositiveButton("保存",(d,w)->action.accept(input.getText().toString().trim())).create());}
+    private void show(Dialog dialog){dialogs.add(dialog);dialog.show();}
+    private LinearLayout col(){LinearLayout view=new LinearLayout(this);view.setOrientation(LinearLayout.VERTICAL);return view;}private LinearLayout row(){LinearLayout view=new LinearLayout(this);view.setGravity(Gravity.CENTER_VERTICAL);return view;}
+    private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
+    private TextView label(String text,int size,int color){TextView view=new TextView(this);view.setText(strings.text(text));view.setTextColor(color);view.setTextSize(size);view.setPadding(0,dp(4),0,dp(4));return view;}
+    private EditText edit(String hint,boolean multiline){EditText input=new EditText(this);input.setHint(strings.text(hint));input.setTextColor(INK);input.setTextSize(16);input.setSingleLine(!multiline);if(multiline){input.setGravity(Gravity.TOP);input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);}input.setPadding(dp(12),dp(12),dp(12),dp(12));return input;}
+    private Button link(String text,Runnable action){Button button=new Button(this);button.setText(strings.text(text));button.setAllCaps(false);button.setTextSize(14);button.setTextColor(ACCENT);button.setMinHeight(dp(44));button.setMinimumHeight(dp(44));button.setBackgroundColor(Color.TRANSPARENT);button.setOnClickListener(v->action.run());return button;}
+    private Button primary(String text,Runnable action){Button button=link(text,action);button.setTextColor(Color.WHITE);button.setBackground(round(ACCENT,12));LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,dp(48));params.setMargins(0,dp(12),0,dp(6));button.setLayoutParams(params);return button;}
+    private GradientDrawable round(int color,int radius){GradientDrawable drawable=new GradientDrawable();drawable.setColor(color);drawable.setCornerRadius(dp(radius));return drawable;}
+    private LinearLayout card(LinearLayout parent){LinearLayout card=col();card.setPadding(dp(16),dp(12),dp(16),dp(12));card.setBackground(round(CARD,12));LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.setMargins(dp(16),dp(8),dp(16),dp(8));parent.addView(card,params);return card;}
+    private LinearLayout scroll(LinearLayout parent){ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout body=col();body.setPadding(0,dp(8),0,dp(24));scroll.addView(body);parent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return body;}
+    private LinearLayout segments(String[] labels,int selected,Consumer<Integer> action){LinearLayout row=row();row.setPadding(dp(14),dp(6),dp(14),dp(6));for(int i=0;i<labels.length;i++){final int n=i;Button button=link(labels[i],()->action.accept(n));button.setBackground(round(i==selected?CARD:BG,9));button.setTextColor(i==selected?INK:MUTED);row.addView(button,new LinearLayout.LayoutParams(0,dp(44),1));}return row;}
+    private Spinner spinner(String[] values,int selected,Consumer<Integer> action){Spinner spinner=new Spinner(this);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,values);spinner.setAdapter(adapter);spinner.setSelection(Math.max(0,selected));spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int i,long id){action.accept(i);}public void onNothingSelected(AdapterView<?> p){}});return spinner;}
+    private TextWatcher watch(Consumer<String> action){return new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){action.accept(s.toString());}public void afterTextChanged(Editable e){}};}
+    private static String time(long milliseconds){long seconds=milliseconds/1000;return String.format(Locale.getDefault(),"%02d:%02d",seconds/60,seconds%60);}
+    private String shortTitle(String text){String value=text.trim().replace('\n',' ');return value.substring(0,Math.min(28,value.length()));}
+    private ImageView imageView(File file){ImageView image=new ImageView(this);try{image.setImageBitmap(PhotoDecoder.fromFile(file,1280));}catch(IOException e){image.setContentDescription("图片暂时无法读取");}image.setAdjustViewBounds(true);image.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));return image;}
+    private void hideKeyboard(){View view=getCurrentFocus();if(view!=null)((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(view.getWindowToken(),0);}
+    private void play(PointStore.Point p){notePlayer.stop();if(player!=null){if(player.isPlaying())player.pause();else player.start();return;}player=new MediaPlayer();try{player.setDataSource(rt.store.audioFile(p).getAbsolutePath());player.setOnPreparedListener(mp->{mp.start();handler.post(playTicker);});player.setOnCompletionListener(mp->{if(playbackSeek!=null)playbackSeek.setProgress(0);});player.setOnErrorListener((mp,w,e)->{stopPlayer();notice("原音暂时无法播放");return true;});player.prepareAsync();}catch(Exception e){stopPlayer();notice("原音暂时无法播放");}}
+    private final Runnable playTicker=new Runnable(){public void run(){if(player!=null){try{if(playbackSeek!=null)playbackSeek.setProgress(player.getCurrentPosition());if(playbackTime!=null)playbackTime.setText(time(player.getCurrentPosition())+" / "+time(player.getDuration()));handler.postDelayed(this,300);}catch(IllegalStateException ignored){}}}};
+    private void stopPlayer(){handler.removeCallbacks(playTicker);if(player!=null){player.release();player=null;}}
+    @Override protected void onResume(){
+        super.onResume();resumed=true;rt.photos.addListener(photoListener);rt.titles.addListener(titleListener);if(ready){rt.photos.resumePending();if(detailId!=null)refreshPhotos(detailId);}
+        // Permission dialogs and backgrounding close the old camera; rebuild it before recording.
+        if(ready&&tab==0&&detailId==null&&captureMode.equals("voice")&&prefs.getBoolean("captureCamera",false)&&camera==null)render();
+        if(permissionPending){permissionPending=false;startRecording();}
+    }
+    @Override protected void onPause(){rt.photos.removeListener(photoListener);rt.titles.removeListener(titleListener);resumed=false;super.onPause();notePlayer.stop();if(capture.isRecording())finishRecording();stopPlayer();if(camera!=null){camera.close();camera=null;}}
+    @Override protected void onDestroy(){rt.photos.removeListener(photoListener);rt.titles.removeListener(titleListener);handler.removeCallbacksAndMessages(null);stopPlayer();for(Dialog dialog:dialogs)if(dialog.isShowing())dialog.dismiss();super.onDestroy();notePlayer.close();}
+    @Override public void onBackPressed(){if(detailId!=null){detailId=null;render();}else if(tab!=0){tab=0;render();}else super.onBackPressed();}
+}

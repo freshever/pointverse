@@ -81,3 +81,29 @@ bash server/deploy/update-web.sh alex@172.245.205.27 h5
 该域名的 `/web/*`、`/v1/*`、健康检查转发至 Mac mini，其他路径由 VPS 提供静态文件，不将未知静态路径转发到 Mac。接口保留原始 Host 和 Origin 进行同源校验，使用仅限当前主机的 HttpOnly、Secure 会话 Cookie，不设置父域 Domain；主站与 H5 账户相同、浏览器登录会话独立。
 
 Cloudflare 需要 `h5` 或有效的 `*` DNS 记录指向 `172.245.205.27`；橙云时使用 Full (strict)。Caddy 为该主机自动签发独立证书，DNS 未生效前无法完成公网 HTTPS 验证。
+
+## Android 安装包与版本管理
+
+公开下载页：`https://dianjie.org/downloads/android/`，账户网页也提供入口。APK、版本列表和下载页存放在 VPS 的 `/home/alex/pointverse/web/android`，沿用已有只读静态挂载，无需启停 Mac 后端。版本文件位于 `files/`，文件名含版本号、构建号、渠道与 SHA-256 前缀。
+
+发布已构建的 Android 测试包：
+
+```sh
+bash server/deploy/publish-android.sh
+# 或指定安装包、服务器和更新说明：
+bash server/deploy/publish-android.sh /absolute/path/pointverse-debug.apk alex@172.245.205.27 '本次更新说明'
+```
+
+脚本检查 APK 签名、应用 ID 和 Android 9 最低版本，优先通过 rsync 复用上一安装包并只传差异（不可用时回退 scp），上传后在 VPS 再次校验文件大小与 SHA-256，然后原子更新 `releases.json` 的最新版指针。旧包不覆盖、不自动删除；同一包重复发布不产生重复历史。签名证书变更会拒绝发布，避免用户无法直接升级。后续构建必须保留同一调试签名文件，当前 SDK 构建签名已迁移到被 Git 忽略的 `android/.signing/debug.keystore`，清理 build 目录不会重新生成签名；仍应妥善备份，勿发布到公开目录。
+
+首次发布仅在现有 Caddy 配置插入独立下载路由，保留其他线上配置；校验通过后热加载。配置或热加载失败会还原本次操作前的配置。账户首页入口通过复制当前线上静态版本后原子切换加入，保留线上其他资源。下载页与版本列表不缓存，带内容摘要的 APK 长期缓存，下载响应类型为 `application/vnd.android.package-archive`。
+
+回退最新版（使用 `releases.json` 中现有文件名）：
+
+```sh
+ssh alex@172.245.205.27 python3 /home/alex/pointverse/tools/android-release.py \
+  --root /home/alex/pointverse/web/android \
+  --activate pointverse-VERSION-CODE-debug-SHA_PREFIX.apk
+```
+
+回退只更换网站推荐下载的版本，Android 系统可能拒绝安装较低 versionCode。发布与回退通过 SSH 管理，公开网页仅供查看与下载，不接受匿名上传。发布脚本的本地校验：`python3 server/deploy/test-android-release.py`。

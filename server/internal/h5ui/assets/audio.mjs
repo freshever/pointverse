@@ -1,6 +1,6 @@
-export const MAX_SECONDS=120;
+export const MAX_SECONDS=1800;
 export function encodeWAV(samples, sampleRate=16000) {
- if(!(samples instanceof Float32Array)||!samples.length||samples.length>sampleRate*MAX_SECONDS)throw new Error('录音需在 2 分钟以内。');
+ if(!(samples instanceof Float32Array)||!samples.length||samples.length>sampleRate*MAX_SECONDS)throw new Error('录音需在 30 分钟以内。');
  const bytes=new ArrayBuffer(44+samples.length*2),view=new DataView(bytes);
  const word=(offset,value)=>{for(let i=0;i<value.length;i++)view.setUint8(offset+i,value.charCodeAt(i));};
  word(0,'RIFF');view.setUint32(4,36+samples.length*2,true);word(8,'WAVE');word(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sampleRate,true);view.setUint32(28,sampleRate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);word(36,'data');view.setUint32(40,samples.length*2,true);
@@ -8,13 +8,13 @@ export function encodeWAV(samples, sampleRate=16000) {
  return bytes;
 }
 export async function prepareAudio(blob) {
- if(!blob.size||blob.size>20*1024*1024)throw new Error('请选择 20 MB 以内的音频文件。');
+ if(!blob.size||blob.size>100*1024*1024)throw new Error('请选择 100 MB 以内的音频文件。');
  const Context=globalThis.AudioContext||globalThis.webkitAudioContext;
  const Offline=globalThis.OfflineAudioContext||globalThis.webkitOfflineAudioContext;
  if(!Context||!Offline)throw new Error('当前浏览器无法处理音频，请使用 Safari 或 Chrome。');
  const context=new Context();let decoded;
  try{decoded=await context.decodeAudioData(await blob.arrayBuffer());}catch{throw new Error('无法读取此音频格式，请换用 WAV、M4A 或其他浏览器支持的音频。');}finally{await context.close();}
- if(!Number.isFinite(decoded.duration)||decoded.duration<=0||decoded.duration>MAX_SECONDS||decoded.numberOfChannels>2)throw new Error('请选择 2 分钟以内的单声道或双声道录音。');
+ if(!Number.isFinite(decoded.duration)||decoded.duration<=0||decoded.duration>MAX_SECONDS||decoded.numberOfChannels>2)throw new Error('请选择 30 分钟以内的单声道或双声道录音。');
  const length=Math.min(16000*MAX_SECONDS,Math.floor(decoded.duration*16000));
  if(!length)throw new Error('录音太短，请重新录制。');
  const offline=new Offline(1,length,16000),source=offline.createBufferSource();source.buffer=decoded;source.connect(offline.destination);source.start();
@@ -36,4 +36,13 @@ export function recordingManifest({ids,createdAt,sha256,byteCount,duration,text,
  audio_assets:[{id:ids.asset,message_id:ids.message,relative_path:'audio/'+ids.asset+'.wav',sha256,byte_count:byteCount,duration_ms:Math.round(duration*1000),codec:'pcm_s16le',sample_rate:16000,state:'available',created_at:createdAt}],
  transcripts:[{id:ids.transcript,asset_id:ids.asset,engine_text:engineText,user_text:text,locale:language||'und',model_id:model,model_sha256:'',state:'succeeded',error_code:null,created_at:createdAt,updated_at:createdAt}],
  point_images:[],transcription_candidates:[],derivations:[],facet_overrides:[],confirmed_relations:[],origins:[]}};
+}
+
+// Prepared WAV is always canonical PCM16 mono 16 kHz. Upload each bounded slice.
+export function wavChunk(blob,index,seconds=120){
+ const start=44+index*seconds*32000,end=Math.min(blob.size,start+seconds*32000);
+ if(start>=blob.size)return null;
+ const header=encodeWAV(new Float32Array(1)).slice(0,44),view=new DataView(header);
+ view.setUint32(4,36+end-start,true);view.setUint32(40,end-start,true);
+ return new Blob([header,blob.slice(start,end)],{type:'audio/wav'});
 }

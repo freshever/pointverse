@@ -1,6 +1,6 @@
-import {prepareAudio,toBase64,recordingManifest,MAX_SECONDS} from './audio.mjs';
+import {prepareAudio,toBase64,recordingManifest,MAX_SECONDS,wavChunk} from './audio.mjs';
 const $=id=>document.getElementById(id);
-let owner=null,recorder=null,stream=null,ticker=null,started=0,chunks=[],chunkBytes=0,wav=null,duration=0,previewURL=null,busy='',requestController=null,engineText='',model='',language='',savePayload=null,ids=null,createdAt=0,generation=0,discarding=false,disposed=false;
+let owner=null,recorder=null,stream=null,ticker=null,started=0,chunks=[],chunkBytes=0,wav=null,duration=0,previewURL=null,busy='',requestController=null,engineText='',model='',language='',savePayload=null,ids=null,createdAt=0,completedParts=[],generation=0,discarding=false,disposed=false;
 const status=value=>{$('status').textContent=value;};
 function controls(){
  const recording=!!stream,working=!!busy;
@@ -22,7 +22,7 @@ async function api(path,{body,method='GET',signal,timeout=30000}={}){
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }
 function stopTracks(){stream?.getTracks().forEach(track=>track.stop());stream=null;clearInterval(ticker);ticker=null;}
-function clearAudio(){generation++;wav=null;duration=0;engineText='';model='';savePayload=null;ids=null;if(previewURL)URL.revokeObjectURL(previewURL);previewURL=null;$('audio').removeAttribute('src');$('audio').load();$('preview').hidden=true;$('result').hidden=true;$('saved').hidden=true;$('transcript').value='';$('file').value='';$('timer').textContent='00:00 / 02:00';controls();}
+function clearAudio(){generation++;wav=null;duration=0;engineText='';completedParts=[];model='';savePayload=null;ids=null;if(previewURL)URL.revokeObjectURL(previewURL);previewURL=null;$('audio').removeAttribute('src');$('audio').load();$('preview').hidden=true;$('result').hidden=true;$('saved').hidden=true;$('transcript').value='';$('file').value='';$('timer').textContent='00:00 / 30:00';controls();}
 async function accept(blob){
  const version=++generation;busy='preparing';controls();status('正在准备音频，尚未上传…');
  try{
@@ -42,11 +42,11 @@ $('start').addEventListener('click',async()=>{
   clearAudio();stream=acquired;chunks=[];chunkBytes=0;discarding=false;
   const type=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(value=>MediaRecorder.isTypeSupported(value));
   recorder=type?new MediaRecorder(stream,{mimeType:type}):new MediaRecorder(stream);
-  recorder.ondataavailable=event=>{if(event.data.size){chunks.push(event.data);chunkBytes+=event.data.size;if(chunkBytes>20*1024*1024){discarding=true;if(recorder.state==='recording')recorder.stop();status('录音文件超出限制，请缩短后重录。');}}};
+  recorder.ondataavailable=event=>{if(event.data.size){chunks.push(event.data);chunkBytes+=event.data.size;if(chunkBytes>100*1024*1024){discarding=true;if(recorder.state==='recording')recorder.stop();status('录音文件超出限制，请缩短后重录。');}}};
   recorder.onerror=()=>{discarding=true;stopTracks();busy='';status('录音中断，请重新录制或选择音频文件。');controls();};
   recorder.onstop=()=>{const blob=new Blob(chunks,{type:recorder.mimeType});chunks=[];stopTracks();busy='';controls();if(!discarding&&!disposed)accept(blob);};
   started=performance.now();recorder.start(1000);busy='';status('正在录音，音频暂存在当前页面，尚未上传。');
-  ticker=setInterval(()=>{const seconds=Math.min(MAX_SECONDS,Math.floor((performance.now()-started)/1000));$('timer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')} / 02:00`;if((performance.now()-started)/1000>=MAX_SECONDS-0.5&&recorder.state==='recording')recorder.stop();},250);
+  ticker=setInterval(()=>{const seconds=Math.min(MAX_SECONDS,Math.floor((performance.now()-started)/1000));$('timer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')} / 30:00`;if((performance.now()-started)/1000>=MAX_SECONDS-0.5&&recorder.state==='recording')recorder.stop();},250);
  }catch(error){stopTracks();busy='';status(error.name==='NotAllowedError'?'未获得麦克风权限。可在浏览器设置中允许，或选择音频文件。':'无法启动麦克风，请检查设备是否被占用。');}finally{if(busy==='permission')busy='';controls();}
 });
 $('stop').addEventListener('click',()=>{if(recorder?.state==='recording'){busy='stopping';controls();recorder.stop();}});
@@ -55,7 +55,17 @@ $('discard').addEventListener('click',()=>{if(!busy){clearAudio();status('录音
 $('transcribe').addEventListener('click',async()=>{
  if(!owner||busy||!wav)return;busy='transcribing';requestController=new AbortController();controls();status('正在上传并识别，请稍候…');
  try{
-  const result=await api('/web/ai/audio/transcriptions',{method:'POST',body:{audio:toBase64(await wav.arrayBuffer())},signal:requestController.signal,timeout:180000});
+  const count=Math.ceil((wav.size-44)/(120*32000));
+  for(let index=completedParts.length;index<count;index++){
+   if(requestController.signal.aborted)throw new DOMException('Aborted','AbortError');
+   status(`正在识别第 ${index+1} / ${count} 段，已完成 ${index} 段…`);
+   const chunk=wavChunk(wav,index);
+   const part=await api('/web/ai/audio/transcriptions',{method:'POST',body:{audio:toBase64(await chunk.arrayBuffer())},signal:requestController.signal,timeout:180000});
+   if(typeof part.text!=='string')throw new Error('分段结果异常，请重试。');
+   completedParts.push(part);
+   $('transcript').value=completedParts.map(value=>value.text).filter(Boolean).join('\n');
+  }
+  const result={text:completedParts.map(value=>value.text).filter(Boolean).join('\n'),model:[...new Set(completedParts.map(value=>value.model))].join(' / '),language:completedParts[0]?.language};
   if(typeof result.text!=='string')throw new Error('识别结果异常，请保留录音重试。');
   engineText=result.text;model=result.model||'pointverse-cloud-speech';language=result.language||'und';$('transcript').value=engineText;$('result').hidden=false;$('model').textContent='识别模型：'+model;savePayload=null;
   status(engineText.trim()?'识别完成，可修改文字后保存。':'未识别到清晰语音，可重试或手动输入文字后保存。');
@@ -68,7 +78,7 @@ $('save').addEventListener('click',async()=>{
   // Stable IDs and exact payload let a lost commit response be retried without duplication.
   if(!savePayload){const bytes=await wav.arrayBuffer();const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),byte=>byte.toString(16).padStart(2,'0')).join('');savePayload={manifest:recordingManifest({ids,createdAt,sha256,byteCount:wav.size,duration,text:$('transcript').value,engineText,model,language})};}
   const manifest=savePayload.manifest;
-  await api('/web/sync/assets/'+manifest.assets[0].sha256,{method:'PUT',body:wav,timeout:120000});
+  await api('/web/sync/assets/'+manifest.assets[0].sha256,{method:'PUT',body:wav,timeout:300000});
   const saved=await api('/web/sync/points',{method:'POST',body:manifest});if(saved.point_id!==ids.point)throw new Error('保存结果异常，请重试。');
   savePayload.saved=true;$('saved').hidden=false;status('录音与文字已保存到云端想法。');
  }catch(error){status(error.name==='AbortError'?'保存超时，可点击保存重试；不会重复创建想法。':error.message);}finally{busy='';controls();}

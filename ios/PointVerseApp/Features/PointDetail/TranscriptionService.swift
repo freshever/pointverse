@@ -120,39 +120,51 @@ actor TranscriptionService {
         guard let cloudBaseURL, let cloudToken else {
             throw ExternalModelConnectionError.server(status: 401, message: "请先登录点界账户。")
         }
-        let wav = try Self.cloudWAV(audioURL)
-        var request = URLRequest(url: cloudBaseURL.appending(path: "v1/ai/audio/transcriptions"))
-        request.httpMethod = "POST"; request.timeoutInterval = 150
-        request.setValue("Bearer " + cloudToken, forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["audio": wav.base64EncodedString()])
-        let (data, response) = try await NetworkModelRequestExecutor.perform(request, maximumAttempts: 1)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw ExternalModelConnectionError.server(status: (response as? HTTPURLResponse)?.statusCode ?? 502, message: "云端转写暂时不可用。")
+        let file = try AVAudioFile(forReading: audioURL)
+        let totalSeconds = Double(file.length) / file.processingFormat.sampleRate
+        guard totalSeconds > 0, totalSeconds <= 1800 else {
+            throw ExternalModelConnectionError.server(status: 413, message: "云端转写支持30分钟以内的录音。")
         }
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let text = object["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw PointVerseError.transcriptionFailed
+        var texts: [String] = []
+        var models = Set<String>()
+        for index in 0..<Int(ceil(totalSeconds / 120)) {
+            try Task.checkCancellation()
+            let wav = try Self.cloudWAV(audioURL, startSeconds: Double(index) * 120)
+            var request = URLRequest(url: cloudBaseURL.appending(path: "v1/ai/audio/transcriptions"))
+            request.httpMethod = "POST"; request.timeoutInterval = 150
+            request.setValue("Bearer " + cloudToken, forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["audio": wav.base64EncodedString()])
+            let (data, response) = try await NetworkModelRequestExecutor.perform(request, maximumAttempts: 1)
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let text = object["text"] as? String else { throw PointVerseError.transcriptionFailed }
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { texts.append(text) }
+            models.insert((object["model"] as? String) ?? "server-managed")
         }
+        guard !texts.isEmpty else { throw PointVerseError.transcriptionFailed }
         UserDefaults.standard.set("cloud", forKey: "pointverse.lastAIExecution")
-        let model = (object["model"] as? String) ?? "whisper-base"
-        return .init(text: text, modelID: "pointverse-cloud-" + model, modelSHA256: "server-managed")
+        return .init(text: texts.joined(separator: "\n"), modelID: "pointverse-cloud-" + models.sorted().joined(separator: "/"), modelSHA256: "server-managed")
     }
 
-    private static func cloudWAV(_ url: URL) throws -> Data {
+    private static func cloudWAV(_ url: URL, startSeconds: Double = 0) throws -> Data {
         let file = try AVAudioFile(forReading: url)
-        let seconds = Double(file.length) / file.processingFormat.sampleRate
-        guard seconds > 0, seconds <= 120, file.processingFormat.channelCount <= 2,
+        let totalSeconds = Double(file.length) / file.processingFormat.sampleRate
+        let seconds = min(120, totalSeconds - startSeconds)
+        guard seconds > 0, totalSeconds <= 1800, file.processingFormat.channelCount <= 2,
               (8000...96000).contains(file.processingFormat.sampleRate) else {
-            throw ExternalModelConnectionError.server(status: 413, message: "云端转写目前支持 120 秒以内的录音；较长录音可选择本机转写。")
+            throw ExternalModelConnectionError.server(status: 413, message: "云端转写支持30分钟以内的录音。")
         }
-        guard let source = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+        let startFrame = AVAudioFramePosition(startSeconds * file.processingFormat.sampleRate)
+        file.framePosition = startFrame
+        let frameCount = AVAudioFrameCount(min(file.length - startFrame, AVAudioFramePosition(120 * file.processingFormat.sampleRate)))
+        guard let source = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount),
               let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true),
               let converter = AVAudioConverter(from: file.processingFormat, to: format),
               let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(ceil(seconds * 16000) + 32)) else {
             throw PointVerseError.audioDecodeFailed
         }
-        try file.read(into: source)
+        try file.read(into: source, frameCount: frameCount)
         var supplied = false
         var error: NSError?
         let status = converter.convert(to: output, error: &error) { _, state in

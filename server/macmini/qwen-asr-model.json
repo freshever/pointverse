@@ -1,0 +1,18 @@
+{
+  "id": "qwen3-asr-1.7b",
+  "repository": "mlx-community/Qwen3-ASR-1.7B-8bit",
+  "revision": "a8379a2e2f9e313c9292cdf1af4055ab56d50d55",
+  "upstream_model": "Qwen/Qwen3-ASR-1.7B",
+  "precision": "8bit",
+  "files": {
+    "chat_template.json": [1161, "git", "c44736493efd71ec96218cc626904698cdb13235"],
+    "config.json": [7188, "git", "888cc7fae19ea9ede543b1ae82e9c78aa06104ca"],
+    "generation_config.json": [142, "git", "7382a4d347c0a865b76bb1b8277f66a5ac312854"],
+    "merges.txt": [1671853, "git", "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"],
+    "model.safetensors": [2463307541, "sha256", "bf304b009cc7eca79283056f787b44c952d24ac22cec787b39732bba3c23c13c"],
+    "model.safetensors.index.json": [78968, "git", "f0191caac2794d5b6fba0ab3eeb70f8eff90319e"],
+    "preprocessor_config.json": [330, "git", "8f7f07346466d5d494ec0d4969d1c3d0190eed72"],
+    "tokenizer_config.json": [12487, "git", "b93109843922a40c6654c5449d3bf95372267c66"],
+    "vocab.json": [2776833, "git", "4783fe10ac3adce15ac8f358ef5462739852c569"]
+  }
+}

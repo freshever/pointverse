@@ -1,0 +1,23 @@
+plugins { id 'com.android.application' }
+def appVersion = new Properties()
+rootProject.file('version.properties').withInputStream { appVersion.load(it) }
+android {
+    namespace 'com.pointverse.app'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.pointverse.app'
+        minSdk 28
+        targetSdk 35
+        versionCode appVersion.getProperty('versionCode').toInteger()
+        versionName appVersion.getProperty('versionName')
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+dependencies {
+    implementation 'com.alphacephei:vosk-android:0.3.75@aar'
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+    androidTestCompileOnly files("${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.runner.jar",
+            "${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.base.jar")
+}

@@ -16,6 +16,7 @@ import (
 	"pointverse/server/internal/config"
 	"pointverse/server/internal/database"
 	"pointverse/server/internal/httpapi"
+	"pointverse/server/internal/musefinger"
 )
 
 func main() {
@@ -50,10 +51,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	musefingerScores := musefinger.New(pool, authentication)
 	slog.Info("login providers configured", "google", providers.Enabled("google"), "apple", providers.Enabled("apple"))
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.TrustedProxy(httpapi.New(func(ctx context.Context) error { return database.Ready(ctx, pool) }, authentication, cloudStorage, aiService), cfg.TrustedProxyIP),
+		Handler:           httpapi.TrustedProxy(httpapi.New(func(ctx context.Context) error { return database.Ready(ctx, pool) }, authentication, cloudStorage, aiService, musefingerScores), cfg.TrustedProxyIP),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute,
 		WriteTimeout: 5 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20,
 	}

@@ -15,6 +15,7 @@ import wave
 import struct
 import screenprobe_backend
 import media_backend
+from model_storage import model_storage_ready
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_BODY = 1 << 20
@@ -25,10 +26,14 @@ ADMISSION = threading.BoundedSemaphore(3)  # one running, at most two waiting
 QUEUE_TIMEOUT = 10
 SUPPORT = os.path.dirname(os.path.abspath(__file__))
 SPEECH_MODEL_ID = os.environ.get("POINTVERSE_SPEECH_MODEL", "whisper-large-v3-turbo")
-if SPEECH_MODEL_ID not in ("whisper-small", "whisper-large-v3-turbo"):
+if SPEECH_MODEL_ID not in ("whisper-small", "whisper-large-v3-turbo", "qwen3-asr-1.7b"):
     raise ValueError("speech_model_not_allowed")
-SPEECH_MODEL = os.path.join(SUPPORT, "models", SPEECH_MODEL_ID)
-SPEECH_PYTHON = os.path.join(SUPPORT, "runtime", "bin", "python")
+MODEL_ROOT = os.environ.get("POINTVERSE_MODEL_ROOT", os.path.join(SUPPORT, "models"))
+MODEL_VOLUME = os.environ.get("POINTVERSE_MODEL_VOLUME", "")
+MODEL_VOLUME_UUID = os.environ.get("POINTVERSE_MODEL_VOLUME_UUID", "")
+SPEECH_MODEL = os.path.join(MODEL_ROOT, SPEECH_MODEL_ID)
+SPEECH_PYTHON = os.path.join(SUPPORT, "asr-runtime" if SPEECH_MODEL_ID == "qwen3-asr-1.7b" else "runtime", "bin", "python")
+SPEECH_RUNNER = "transcribe-qwen.py" if SPEECH_MODEL_ID == "qwen3-asr-1.7b" else "transcribe.py"
 MAX_AUDIO_BODY = 8 << 20
 CHAT_BACKEND = os.environ.get("POINTVERSE_CHAT_BACKEND", "ollama")
 DESKTOP_USER = os.environ.get("POINTVERSE_DESKTOP_USER_ID", "")
@@ -129,8 +134,9 @@ def unload_chat_models(keep=None):
 
 
 def speech_ready():
-    return os.path.isfile(SPEECH_PYTHON) and all(os.path.isfile(os.path.join(SPEECH_MODEL, name))
-        for name in ("model.bin", "config.json", "tokenizer.json"))
+    if not model_storage_ready(MODEL_ROOT,MODEL_VOLUME,MODEL_VOLUME_UUID,MIN_FREE_BYTES):return False
+    names=("model.safetensors","config.json","tokenizer_config.json","preprocessor_config.json","vocab.json","merges.txt","revision.json") if SPEECH_MODEL_ID=="qwen3-asr-1.7b" else ("model.bin","config.json","tokenizer.json")
+    return os.path.isfile(SPEECH_PYTHON) and all(os.path.isfile(os.path.join(SPEECH_MODEL,name)) for name in names)
 
 
 def validate_audio(payload):
@@ -145,7 +151,7 @@ def validate_audio(payload):
 
 
 def resources_ready():
-    return shutil.disk_usage(os.path.expanduser("~")).free >= MIN_FREE_BYTES
+    return model_storage_ready(MODEL_ROOT,MODEL_VOLUME,MODEL_VOLUME_UUID,MIN_FREE_BYTES)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -330,7 +336,7 @@ class Handler(BaseHTTPRequestHandler):
                 path = os.path.join(directory, "input.wav")
                 with open(path, "wb") as output:
                     output.write(audio)
-                result = subprocess.run([SPEECH_PYTHON, os.path.join(SUPPORT, "transcribe.py"), SPEECH_MODEL, path],
+                result = subprocess.run([SPEECH_PYTHON, os.path.join(SUPPORT, SPEECH_RUNNER), SPEECH_MODEL, path],
                                         capture_output=True, timeout=120, check=True)
                 body = json.dumps(json.loads(result.stdout)).encode()
             self.send_response(200)

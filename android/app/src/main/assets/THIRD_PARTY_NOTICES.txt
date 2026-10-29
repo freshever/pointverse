@@ -1,0 +1,16 @@
+点界 Android · Third-party notices
+
+Vosk Android 0.3.75 / Vosk Chinese small model 0.22
+Copyright Alpha Cephei. Apache License 2.0.
+https://github.com/alphacep/vosk-api
+https://alphacephei.com/vosk/models
+
+JNA 5.18.1
+Copyright JNA contributors. Used under Apache License 2.0 (dual licensed).
+https://github.com/java-native-access/jna
+
+The iOS app icon and application interface strings are reused from this repository.
+The LCC outline snapshot and app-authored translations/facets are reused from iOS.
+The LCC source and rights URLs remain in the original repository resource.
+
+Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
