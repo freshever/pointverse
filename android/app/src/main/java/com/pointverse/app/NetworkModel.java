@@ -16,6 +16,7 @@ final class NetworkModel {
         String message="云端服务暂不可用（"+code+"），请稍后重试";
         if(code==400)message=path.contains("/images/")?"生图描述不符合要求，请精简描述后重试":"提交内容不符合服务要求，请检查后重试";
         if(code==404)message=path.contains("/jobs/")?"上次生图任务已过期或不存在，请重新生成":"云端功能暂不可用，请更新应用后重试";
+        if(code==404&&path.startsWith("/v1/sync/"))message="云端版本或附件暂时缺失，此条未下载，本机内容保持不变";
         if(code==503)message="云端服务繁忙或暂不可用，请稍后重试";
         if(reason.equals("model_not_installed"))message="云端所需模型尚未就绪，请稍后重试";
         if(reason.equals("image_queue_full")||reason.equals("node_busy")||reason.equals("queue_timeout"))message="云端任务较多，请稍后重试";
@@ -68,8 +69,16 @@ final class NetworkModel {
         HttpsURLConnection connection=(HttpsURLConnection)new URL(SERVICE+"/v1/sync/assets/"+hash).openConnection();
         try{connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(180000);connection.setRequestMethod("PUT");connection.setDoOutput(true);connection.setRequestProperty("Authorization","Bearer "+token);connection.setRequestProperty("Content-Type","application/octet-stream");connection.setFixedLengthStreamingMode(file.length());
             try(InputStream in=new FileInputStream(file);OutputStream out=connection.getOutputStream()){byte[] bytes=new byte[32768];int n;while((n=in.read(bytes))!=-1){if(Thread.currentThread().isInterrupted()||!cloudAllowed.getAsBoolean())throw new InterruptedIOException("上传已停止");out.write(bytes,0,n);}}
-            int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException(code==401?"登录已过期，请重新登录":"附件上传失败（"+code+"）");
+            int code=connection.getResponseCode();if(code<200||code>=300)throw code==401||code==403?new ServiceException(code,"unauthorized","登录已过期，请重新登录"):serviceError(code,"","/v1/sync/assets/"+hash);
         }finally{connection.disconnect();}
+    }
+    static void downloadFile(String path,String token,File destination,long maximum,String expectedHash,long expectedBytes)throws Exception {
+        if(!path.matches("/v1/sync/(assets/[a-f0-9]{64}|points/[a-f0-9-]{36}/versions/[a-f0-9]{64})")||!cloudAllowed.getAsBoolean())throw new IOException("同步地址无效或已切换隐私模式");
+        HttpsURLConnection connection=(HttpsURLConnection)new URL(SERVICE+path).openConnection();boolean complete=false;
+        try{connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);connection.setConnectTimeout(15000);connection.setReadTimeout(120000);connection.setRequestProperty("Authorization","Bearer "+token);int status=connection.getResponseCode();if(status==401||status==403)throw new ServiceException(status,"unauthorized","登录已过期，请重新登录");if(status!=200)throw serviceError(status,"",path);long declared=connection.getContentLengthLong();if(declared>maximum)throw new IOException("云端附件超过大小限制");java.security.MessageDigest digest=java.security.MessageDigest.getInstance("SHA-256");long count=0;
+            try(InputStream in=connection.getInputStream();FileOutputStream out=new FileOutputStream(destination)){byte[] block=new byte[32768];int n;while((n=in.read(block))!=-1){if(Thread.currentThread().isInterrupted()||!cloudAllowed.getAsBoolean())throw new InterruptedIOException("下载已暂停");count+=n;if(count>maximum)throw new IOException("云端附件超过大小限制");digest.update(block,0,n);out.write(block,0,n);}out.getFD().sync();}
+            StringBuilder hash=new StringBuilder();for(byte b:digest.digest())hash.append(String.format(java.util.Locale.ROOT,"%02x",b&255));if(!expectedHash.equals(hash.toString())||(expectedBytes>=0&&count!=expectedBytes))throw new IOException("云端文件校验失败，已保留本机内容");complete=true;
+        }finally{connection.disconnect();if(!complete)destination.delete();}
     }
     static JSONObject request(URL url,String method,String token,byte[] data,String type) throws Exception {
         if(!"https".equals(url.getProtocol()) || !"dianjie.org".equals(url.getHost()))throw new IOException("无效服务地址");
@@ -82,7 +91,7 @@ final class NetworkModel {
             if(!token.isEmpty())connection.setRequestProperty("Authorization","Bearer "+token);
             if(data!=null){connection.setDoOutput(true);connection.setRequestProperty("Content-Type",type);connection.setFixedLengthStreamingMode(data.length);try(OutputStream out=connection.getOutputStream()){out.write(data);}}
             int code=connection.getResponseCode();
-            if(code==401||code==403)throw new IOException(token.isEmpty()?"邮箱或密码不正确，请重试":"登录已过期，请重新登录点界账户");
+            if(code==401||code==403)throw new ServiceException(code,"unauthorized",token.isEmpty()?"邮箱或密码不正确，请重试":"登录已过期，请重新登录点界账户");
             if(code==429)throw new IOException("服务请求过多，请稍后重试");
             if(code==413)throw new IOException("内容或附件超出云端限制");
             if(code<200||code>=300){String reason="";try(InputStream error=connection.getErrorStream()){if(error!=null){byte[] bytes=new byte[4096];int count=error.read(bytes);if(count>0){JSONObject response=new JSONObject(new String(bytes,0,count,StandardCharsets.UTF_8));Object detail=response.opt("error");reason=detail instanceof JSONObject?((JSONObject)detail).optString("code"):detail instanceof String?(String)detail:"";}}}catch(Exception ignored){}throw serviceError(code,reason,url.getPath());}

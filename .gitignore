@@ -12,3 +12,4 @@ ios/build/
 ios/.venv-embedding/
 *.xcuserstate
 xcuserdata/
+test-mode/

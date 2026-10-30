@@ -26,7 +26,7 @@ final class PointStore extends SQLiteOpenHelper {
     }
     PointStore(Context context) { this(context, "points.db"); }
     PointStore(Context context, String databaseName) {
-        super(context, databaseName, null, 8);
+        super(context, databaseName, null, 9);
         File base = new File(context.getNoBackupFilesDir(), databaseName + "-media");
         staging = new File(base, "staging"); audio = new File(base, "audio");
         if ((!staging.isDirectory() && !staging.mkdirs()) || (!audio.isDirectory() && !audio.mkdirs()))
@@ -42,6 +42,7 @@ final class PointStore extends SQLiteOpenHelper {
         upgradeV5(db);
         upgradeV6(db);
         upgradeV7(db);
+        upgradeV9(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if(oldVersion<2) upgradeV2(db);
@@ -51,7 +52,11 @@ final class PointStore extends SQLiteOpenHelper {
         if(oldVersion<6) upgradeV6(db);
         if(oldVersion<7) upgradeV7(db);
         if(oldVersion<8) upgradeV8(db);
+        if(oldVersion<9) upgradeV9(db);
     }
+    private void upgradeV9(SQLiteDatabase db){db.execSQL("CREATE TABLE IF NOT EXISTS snapshots(point_id TEXT NOT NULL,revision INTEGER NOT NULL,manifest TEXT NOT NULL,PRIMARY KEY(point_id,revision))");db.execSQL("DELETE FROM snapshots");db.execSQL("CREATE TABLE sync_versions(account TEXT NOT NULL,remote_id TEXT NOT NULL,manifest_hash TEXT NOT NULL,local_id TEXT NOT NULL,local_revision INTEGER NOT NULL,PRIMARY KEY(account,remote_id,manifest_hash))");db.execSQL("CREATE TABLE sync_sources(point_id TEXT PRIMARY KEY,manifest TEXT NOT NULL,files TEXT NOT NULL,primary_audio TEXT NOT NULL,primary_message TEXT NOT NULL)");}
+    File cloudDirectory(){File dir=new File(audio.getParentFile(),"cloud");if(!dir.exists()&&!dir.mkdirs())throw new IllegalStateException("无法创建同步目录");return dir;}
+    static void removeTree(File file){File[] children=file.listFiles();if(children!=null)for(File child:children)removeTree(child);file.delete();}
     private void upgradeV8(SQLiteDatabase db){boolean lens=false;try(Cursor c=db.rawQuery("PRAGMA table_info(manifestations)",null)){while(c.moveToNext())if(c.getString(c.getColumnIndexOrThrow("name")).equals("lens"))lens=true;}if(!lens)db.execSQL("ALTER TABLE manifestations ADD COLUMN lens TEXT NOT NULL DEFAULT 'original'");}
     private void upgradeV7(SQLiteDatabase db){db.execSQL("CREATE TABLE manifestations(id TEXT PRIMARY KEY,point_id TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,model TEXT NOT NULL,lens TEXT NOT NULL DEFAULT 'original',source_revision INTEGER NOT NULL,created INTEGER NOT NULL)");db.execSQL("CREATE INDEX manifestations_point ON manifestations(point_id,created)");}
     String saveManifestation(Point source,String text,String model)throws IOException {return saveManifestation(source,"text",text,model,"original");}
@@ -291,8 +296,8 @@ final class PointStore extends SQLiteOpenHelper {
         Point p=get(id);if(p.trashed==0)throw new IllegalStateException("请先移入回收站");
         // Delete the DB references first; unreferenced files are kept if cleanup is interrupted.
         org.json.JSONArray images=rows("images",id);SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
-        try {ContentValues tombstone=new ContentValues();tombstone.put("id",id);db.insertWithOnConflict("tombstones",null,tombstone,SQLiteDatabase.CONFLICT_IGNORE);for(String table:new String[]{"candidates","conversation","images","snapshots","feedback","manifestations"})db.delete(table,"point_id=?",new String[]{id});db.delete("relations","source=? OR target=?",new String[]{id,id});db.delete("points","id=?",new String[]{id});db.setTransactionSuccessful();}finally{db.endTransaction();}
-        if(p.path!=null)audioFile(p).delete();for(int i=0;i<images.length();i++)new File(imageDirectory(),images.optJSONObject(i).optString("path")).delete();
+        try {ContentValues tombstone=new ContentValues();tombstone.put("id",id);db.insertWithOnConflict("tombstones",null,tombstone,SQLiteDatabase.CONFLICT_IGNORE);for(String table:new String[]{"candidates","conversation","images","snapshots","feedback","manifestations"})db.delete(table,"point_id=?",new String[]{id});db.delete("relations","source=? OR target=?",new String[]{id,id});db.delete("sync_sources","point_id=?",new String[]{id});db.delete("points","id=?",new String[]{id});db.setTransactionSuccessful();}finally{db.endTransaction();}
+        removeTree(new File(cloudDirectory(),id));if(p.path!=null)audioFile(p).delete();for(int i=0;i<images.length();i++)new File(imageDirectory(),images.optJSONObject(i).optString("path")).delete();
     }
-    File audioFile(Point p) { return new File(audio,p.path); }
+    File audioFile(Point p) { return p.path.startsWith("cloud/")?new File(audio.getParentFile(),p.path):new File(audio,p.path); }
 }
